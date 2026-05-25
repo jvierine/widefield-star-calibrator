@@ -6,6 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const childProcess = require("node:child_process");
 const {performance} = require("node:perf_hooks");
+const vm = require("node:vm");
 
 const AutoIdentifier = require("../js/auto_identifier.js");
 const StarDetector = require("../js/star_detector.js");
@@ -23,8 +24,18 @@ const TEST_CASE_DIR = path.join(ROOT, "test_cases");
 const OUT_DIR = path.join(ROOT, "lucky-report");
 const ASSET_DIR = path.join(OUT_DIR, "assets");
 const SUPPORTED_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".heic", ".heif"]);
+const CODE_LANGUAGES = new Set(["python", "julia", "c", "matlab"]);
+const CODE_EXTENSIONS = {python: "py", julia: "jl", c: "c", matlab: "m"};
 const BROWN_CONRADY_OPTMOD = 20;
 const DEG = Math.PI / 180;
+
+function loadExportGenerators() {
+    const source = fs.readFileSync(path.join(ROOT, "js", "export_generators.js"), "utf8");
+    const context = {window: {}, Number};
+    vm.createContext(context);
+    vm.runInContext(source, context, {filename: "export_generators.js"});
+    return context.window.AidaExportGenerators;
+}
 
 function parseArgs(argv) {
     const options = {
@@ -37,6 +48,8 @@ function parseArgs(argv) {
         alt: 0,
         timestampUtc: "",
         outDir: OUT_DIR,
+        outputCode: false,
+        codeLanguage: "python",
         keepGoing: true,
     };
     for (let i = 0; i < argv.length; i += 1) {
@@ -58,6 +71,14 @@ function parseArgs(argv) {
             options.timestampUtc = String(next() || "");
         } else if (arg === "--out") {
             options.outDir = path.resolve(next());
+        } else if (arg === "--code") {
+            options.outputCode = true;
+            if (CODE_LANGUAGES.has(String(argv[i + 1] || "").toLowerCase())) {
+                options.codeLanguage = String(next()).toLowerCase();
+            }
+        } else if (arg === "--code-language" || arg === "--language") {
+            options.outputCode = true;
+            options.codeLanguage = String(next() || "").toLowerCase();
         } else if (arg === "--stop-on-error") {
             options.keepGoing = false;
         } else if (arg === "--help" || arg === "-h") {
@@ -70,6 +91,9 @@ function parseArgs(argv) {
     if (!Number.isFinite(options.limit) || options.limit <= 0) {
         options.limit = Infinity;
     }
+    if (!CODE_LANGUAGES.has(options.codeLanguage)) {
+        throw new Error(`unsupported code language ${options.codeLanguage}; use ${Array.from(CODE_LANGUAGES).join(", ")}`);
+    }
     return options;
 }
 
@@ -77,14 +101,15 @@ function usage() {
     console.log(`Usage:
   npm run lucky:report
   npm run lucky:report -- calibration_images/IMG_9953.HEIC
-  npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z
+  npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --code python
   npm run lucky:report -- --filter IMG_0537
   npm run lucky:report -- --limit 5
 
 Give one or more image filenames, or omit filenames to scan calibration_images/.
 If site/time flags are omitted, saved test-case metadata and image EXIF-derived
 metadata are used when available before falling back to filename/fallback values.
-The script logs progress and timing, and writes lucky-report/index.html.
+The script logs progress and timing, and writes lucky-report/index.html. Add
+--code python|julia|c|matlab to also write mapper source files.
 HEIC/JPEG inputs are converted to PNG report assets with macOS sips.`);
 }
 
@@ -130,6 +155,36 @@ function optparText(result) {
     return `[${[result.testCase.optmod].concat(result.optpar).map(value =>
         Number.isFinite(Number(value)) ? Number(value).toPrecision(12) : "0"
     ).join(", ")}]`;
+}
+
+function exportContext(result) {
+    return {
+        optmod: result.testCase.optmod,
+        optpar: result.optpar,
+        width: result.testCase.width,
+        height: result.testCase.height,
+    };
+}
+
+function writeMapperCodeOutputs(results, options) {
+    if (!options.outputCode) {
+        return;
+    }
+    const generators = loadExportGenerators();
+    const codeDir = path.join(options.outDir, "code");
+    fs.mkdirSync(codeDir, {recursive: true});
+    for (const result of results) {
+        if (result.error || !Array.isArray(result.optpar)) {
+            continue;
+        }
+        const ext = CODE_EXTENSIONS[options.codeLanguage];
+        const filename = `${sanitizeId(result.testCase.id)}_mapper.${ext}`;
+        const absolutePath = path.join(codeDir, filename);
+        const code = generators.mapperCode(exportContext(result), options.codeLanguage);
+        fs.writeFileSync(absolutePath, code);
+        result.codePath = path.relative(options.outDir, absolutePath).replace(/\\/g, "/");
+        result.codeLanguage = options.codeLanguage;
+    }
 }
 
 function run(command, args, options = {}) {
@@ -984,6 +1039,7 @@ function resultPanel(result, index) {
             <p>${c.metadataFound ? "matched saved test-case metadata" : "no saved metadata; used inferred/fallback metadata"}</p>
             <h3>Fitted optpar</h3>
             <pre><code>${escapeHtml(optparText(result))}</code></pre>
+            ${result.codePath ? `<h3>Mapper code</h3><p><code>${escapeHtml(result.codePath)}</code> (${escapeHtml(result.codeLanguage)})</p>` : ""}
             <h3>Timing</h3>
             <table><tbody>${timingRows(result.timings || {})}</tbody></table>
             <h3>Stages</h3>
@@ -1111,6 +1167,10 @@ function summaryJson(results, command = reportCommand()) {
             matches: result.matches ? result.matches.length : 0,
             finalRmsPx: Number.isFinite(result.finalRms) ? result.finalRms : null,
             optpar: result.error ? null : [result.testCase.optmod].concat(result.optpar),
+            mapperCode: result.codePath ? {
+                language: result.codeLanguage,
+                path: result.codePath,
+            } : null,
             timings: result.timings || {},
             error: result.error || null,
         })),
@@ -1166,6 +1226,7 @@ async function main() {
     for (let i = 0; i < images.length; i += 1) {
         results.push(await analyzeImage(images[i], i, images.length, metadataMap, options));
     }
+    writeMapperCodeOutputs(results, options);
     const outFile = path.join(options.outDir, "index.html");
     const command = reportCommand(process.argv.slice(2));
     fs.writeFileSync(outFile, pageHtml(results, command));
