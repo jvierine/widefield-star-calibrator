@@ -57,8 +57,8 @@ const YaleCatalog = loadBrowserScript("star_catalog.js").AIDA_STAR_CATALOG;
 const WIDTH = 1920;
 const HEIGHT = 1080;
 const DATE = new Date(Date.UTC(2025, 1, 19, 3, 47, 1));
-const LAT_DEG = 51.4492;
-const LON_DEG = 14.2794;
+const LAT_DEG = 51.4;
+const LON_DEG = 14.3;
 const MODELS = [1, 2, 3, 4, 5, 12, 20];
 const REAL_CASE_IMAGE = path.join(
     __dirname,
@@ -70,8 +70,8 @@ const REAL_CASE = {
     width: 1920,
     height: 1080,
     date: new Date(Date.UTC(2025, 1, 19, 3, 46, 0)),
-    latDeg: 52.495090,
-    lonDeg: 12.630850,
+    latDeg: 52.5,
+    lonDeg: 12.6,
     optmod: 2,
     optpar: [
         0.784905000000,
@@ -94,8 +94,8 @@ const REAL_CASE_010095_0345 = {
     width: 1920,
     height: 1080,
     date: new Date(Date.UTC(2025, 1, 19, 3, 45, 0)),
-    latDeg: 52.495090,
-    lonDeg: 12.630850,
+    latDeg: 52.5,
+    lonDeg: 12.6,
     optmod: 2,
     optpar: [
         0.7904385249067769,
@@ -118,8 +118,8 @@ const REAL_CASE_010760 = {
     width: 1920,
     height: 1080,
     date: new Date(Date.UTC(2025, 1, 19, 3, 44, 0)),
-    latDeg: 50.992500,
-    lonDeg: 7.185110,
+    latDeg: 51.0,
+    lonDeg: 7.2,
     altM: 0,
     optmod: 2,
     optpar: [
@@ -143,8 +143,8 @@ const REAL_CASE_010880_AMS0881 = {
     width: 1920,
     height: 1080,
     date: new Date(Date.UTC(2025, 1, 19, 3, 46, 0)),
-    latDeg: 51.449200,
-    lonDeg: 14.279400,
+    latDeg: 51.4,
+    lonDeg: 14.3,
     altM: 384.3,
     optmod: 2,
     optpar: [
@@ -168,8 +168,8 @@ const REAL_CASE_010881_AMS0882 = {
     width: 1920,
     height: 1080,
     date: new Date(Date.UTC(2025, 1, 19, 3, 46, 1)),
-    latDeg: 51.449200,
-    lonDeg: 14.279440,
+    latDeg: 51.4,
+    lonDeg: 14.3,
     altM: 0,
     optmod: 2,
     optpar: [
@@ -193,8 +193,8 @@ const REAL_CASE_012165 = {
     width: 1920,
     height: 1080,
     date: new Date(Date.UTC(2025, 1, 19, 3, 44, 0)),
-    latDeg: 51.463056,
-    lonDeg: 7.221944,
+    latDeg: 51.5,
+    lonDeg: 7.2,
     altM: 0,
     optmod: 2,
     optpar: [

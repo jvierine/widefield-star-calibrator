@@ -34,6 +34,11 @@ def clean(value):
     return value
 
 
+def scrub_station_coordinate(value: float) -> float:
+    """Coarsen public allsky7 station coordinates to about 0.1 degrees."""
+    return round(float(value), 1)
+
+
 def timestamp_from_name(name: str) -> str | None:
     match = re.search(r"(20\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{2})_(\d{3})", name)
     if not match:
@@ -102,8 +107,8 @@ def main() -> None:
                 "timestampUtc": timestamp_from_name(png),
                 "width": width,
                 "height": height,
-                "latDeg": float(handle["camera_lat_deg"][()]),
-                "lonDeg": float(handle["camera_lon_deg"][()]),
+                "latDeg": scrub_station_coordinate(handle["camera_lat_deg"][()]),
+                "lonDeg": scrub_station_coordinate(handle["camera_lon_deg"][()]),
                 "optpar": [float(value) for value in handle["optpar"][()]],
                 "calibrationPoints": mat_calibration_points(mat_files[mat]),
             })

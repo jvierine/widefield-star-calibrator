@@ -94,8 +94,8 @@ const HUMAN_REVIEW_NOTES = new Map([
 
 const KNOWN_CASE_OVERRIDES = new Map([
     ["2025_02_19_03_44_00_000_010760_first1s", {
-        latDeg: 50.992500,
-        lonDeg: 7.185110,
+        latDeg: 51.0,
+        lonDeg: 7.2,
         altM: 0,
         optmod: 2,
         optpar: [

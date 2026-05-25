@@ -6745,19 +6745,21 @@ end
     }
 
     function applyImageMetadata(name, exifMetadata = null) {
+        const applied = [];
         const guessed = AidaTools.guessTimestampFromAllsky7Name(name);
         if (guessed) {
             controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(guessed);
+            applied.push("allsky7 filename time");
         }
         const station = AidaTools.guessAllsky7StationMetadata(name);
         if (station) {
             controls.latDeg.value = station.latDeg.toFixed(6);
             controls.lonDeg.value = station.lonDeg.toFixed(6);
+            applied.push("scrubbed allsky7 station position");
         }
         if (!exifMetadata) {
-            return [];
+            return applied;
         }
-        const applied = [];
         if (exifMetadata.timestampUtc instanceof Date && !Number.isNaN(exifMetadata.timestampUtc.getTime())) {
             controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(exifMetadata.timestampUtc);
             applied.push("time");
@@ -6857,7 +6859,7 @@ end
                     appliedExif.push("iPhone camera");
                 }
                 if (appliedExif.length > 0) {
-                    state.fitMessage = `image metadata: used EXIF ${appliedExif.join(", ")}`;
+                    state.fitMessage = `image metadata: used ${appliedExif.join(", ")}`;
                 }
                 state.pendingMatch = null;
                 if (onLoaded) {

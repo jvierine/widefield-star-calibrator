@@ -29,8 +29,8 @@ const ALLSKY_CASE = {
     width: 1920,
     height: 1080,
     date: new Date("2025-02-19T03:46:01.000Z"),
-    latDeg: 52.208700,
-    lonDeg: 14.121500,
+    latDeg: 52.2,
+    lonDeg: 14.1,
     altM: 56.0,
     optmod: 2,
     optpar: [

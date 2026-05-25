@@ -93,6 +93,18 @@
                 <input id="altM" type="number" step="1" value="0">
             </label>
             <button id="luckyFit" class="primary-action" type="button">I'm feeling lucky... (L)</button>
+            <label>Export language
+                <select id="exportLanguage">
+                    <option value="python" selected>Python</option>
+                    <option value="julia">Julia</option>
+                    <option value="c">C</option>
+                    <option value="matlab">MATLAB</option>
+                </select>
+            </label>
+            <div class="button-row button-row-2">
+                <button id="copyOptpar" type="button">Copy optpar</button>
+                <button id="copyPythonMapper" type="button">Copy mapper code</button>
+            </div>
         </section>
 
         <section>
@@ -190,18 +202,6 @@
             <button id="fitLens" type="button">Fit lens with Nelder-Mead (F)</button>
             <button id="fitLensLm" type="button">Fit lens with Levenberg-Marquardt (G)</button>
             <button id="undoFit" type="button" disabled>Undo</button>
-            <label>Export language
-                <select id="exportLanguage">
-                    <option value="python" selected>Python</option>
-                    <option value="julia">Julia</option>
-                    <option value="c">C</option>
-                    <option value="matlab">MATLAB</option>
-                </select>
-            </label>
-            <div class="button-row button-row-2">
-                <button id="copyOptpar" type="button">Copy optpar</button>
-                <button id="copyPythonMapper" type="button">Copy mapper code</button>
-            </div>
             <div id="localTestCaseTools" hidden>
                 <button id="submitTestCase" type="button">Submit as test case</button>
                 <div id="saveFeedback" class="save-feedback" aria-live="polite" hidden></div>

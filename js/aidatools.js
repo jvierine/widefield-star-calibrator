@@ -229,13 +229,14 @@
     }
 
     const ALLSKY7_STATION_METADATA = [
-        {tokens: ["010760"], latDeg: 50.9925, lonDeg: 7.18511},
-        {tokens: ["012165"], latDeg: 51.463056, lonDeg: 7.221944},
-        {tokens: ["010095", "010096"], latDeg: 52.49509, lonDeg: 12.63085},
-        {tokens: ["010125"], latDeg: 52.1236, lonDeg: 8.70178},
-        {tokens: ["010314", "cam5"], latDeg: 50.3773, lonDeg: 11.1898},
-        {tokens: ["010880", "010881", "ams0881", "ams0882"], latDeg: 51.4492, lonDeg: 14.2794},
-        {tokens: ["010028", "010031", "ams0228", "ams0221"], latDeg: 52.2087, lonDeg: 14.1215},
+        // Public allsky7 station coordinates are intentionally coarsened.
+        {tokens: ["010760"], latDeg: 51.0, lonDeg: 7.2},
+        {tokens: ["012165"], latDeg: 51.5, lonDeg: 7.2},
+        {tokens: ["010095", "010096"], latDeg: 52.5, lonDeg: 12.6},
+        {tokens: ["010125"], latDeg: 52.1, lonDeg: 8.7},
+        {tokens: ["010314", "cam5"], latDeg: 50.4, lonDeg: 11.2},
+        {tokens: ["010880", "010881", "ams0881", "ams0882"], latDeg: 51.4, lonDeg: 14.3},
+        {tokens: ["010028", "010031", "ams0228", "ams0221"], latDeg: 52.2, lonDeg: 14.1},
     ];
 
     function guessAllsky7StationMetadata(name) {

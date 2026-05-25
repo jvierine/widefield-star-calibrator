@@ -107,6 +107,11 @@ The browser uses true 0-based image pixel coordinates. The AIDA/MATLAB optical
 model values are converted from MATLAB's 1-based pixel convention inside
 `js/aidatools.js`.
 
+The bundled public allsky7 station lookup intentionally uses scrubbed
+coordinates rounded to 0.1 degrees. This keeps the example data useful without
+publishing exact station positions. For production calibration, enter the exact
+station latitude and longitude before fitting.
+
 The browser camera model is tested against the Python and MATLAB reference
 implementations for the parametric AIDA optmods `1`, `2`, `3`, `4`, `5`, and
 `12`, and has a separate browser unit test for the Brown-Conrady

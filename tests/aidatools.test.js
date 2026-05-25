@@ -278,14 +278,14 @@ test("allsky7 filename timestamp parser handles underscores and milliseconds", (
 
 test("allsky7 station metadata parser handles known camera ids and aliases", () => {
     const station = AidaTools.guessAllsky7StationMetadata("2025_02_19_03_46_00_000_010095_first1s.png");
-    assert.equal(station.latDeg, 52.49509);
-    assert.equal(station.lonDeg, 12.63085);
+    assert.equal(station.latDeg, 52.5);
+    assert.equal(station.lonDeg, 12.6);
 
     const aliasStation = AidaTools.guessAllsky7StationMetadata(
         "2025_02_19_03_46_00_000_010880_ams0881_first1s.png",
     );
-    assert.equal(aliasStation.latDeg, 51.4492);
-    assert.equal(aliasStation.lonDeg, 14.2794);
+    assert.equal(aliasStation.latDeg, 51.4);
+    assert.equal(aliasStation.lonDeg, 14.3);
     assert.equal(AidaTools.guessAllsky7StationMetadata("unknown_first1s.png"), null);
 });
 
