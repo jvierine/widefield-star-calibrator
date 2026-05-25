@@ -1,0 +1,23 @@
+{
+  "description": "High-water mark for the IMG_9953 pre-undistorted automatic star finder plus asterism diagnostic. The slow test fails if correctIdentifiedStars drops below this value and raises this value when a future run improves it.",
+  "metric": "correctIdentifiedStars",
+  "correctIdentifiedStars": 138,
+  "oracleDetectorHits": 155,
+  "asterismIdentifiedStars": 155,
+  "incorrectIdentifiedStars": 17,
+  "maxMag": 6.5,
+  "detectorOptions": {
+    "maxDetections": 650,
+    "scanStep": 1,
+    "thresholdSigma": 1.5,
+    "localThresholdSigma": 1.5,
+    "requireGlobalThreshold": false,
+    "maxRadiusPx": 5,
+    "maxElongation": 4,
+    "suppressionRadiusPx": 10,
+    "crowdingRadiusPx": 36,
+    "maxCrowding": 7,
+    "crowdingScorePower": 1.25
+  },
+  "updatedUtc": "2026-05-25T00:00:00.000Z"
+}

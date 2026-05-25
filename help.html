@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIDA Browser Star Calibration Help</title>
+<style>
+    body {
+        margin: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #111827;
+        background: #f8fafc;
+        line-height: 1.55;
+    }
+
+    main {
+        max-width: 900px;
+        margin: 0 auto;
+        padding: 28px 18px 42px;
+    }
+
+    h1 {
+        margin: 0 0 8px;
+        font-size: 28px;
+    }
+
+    h2 {
+        margin: 28px 0 8px;
+        font-size: 18px;
+    }
+
+    p {
+        margin: 0 0 12px;
+    }
+
+    .copyright-line {
+        margin: 0 0 18px;
+        color: #4b5563;
+        font-size: 13px;
+        font-weight: 650;
+    }
+
+    ol,
+    ul {
+        padding-left: 24px;
+    }
+
+    li {
+        margin: 8px 0;
+    }
+
+    kbd {
+        display: inline-block;
+        padding: 1px 6px;
+        border: 1px solid #cbd5e1;
+        border-bottom-width: 2px;
+        border-radius: 5px;
+        background: #ffffff;
+        color: #0f172a;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 13px;
+        line-height: 1.2;
+    }
+
+    code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.95em;
+    }
+
+    .equation-block {
+        overflow-x: auto;
+        margin: 12px 0;
+        padding: 12px;
+        border: 1px solid #dbeafe;
+        border-radius: 6px;
+        background: #eff6ff;
+        color: #1e3a8a;
+    }
+
+    .symbol-list {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 6px 14px;
+        margin: 12px 0;
+        padding: 12px;
+        border: 1px solid #dbeafe;
+        border-radius: 6px;
+        background: #ffffff;
+    }
+
+    .symbol-list span {
+        display: inline-block;
+        min-width: 92px;
+        color: #1d4ed8;
+        font-weight: 700;
+    }
+
+    a {
+        color: #1d4ed8;
+    }
+</style>
+</head>
+<body>
+<main>
+    <h1>AIDA browser star calibration workflow</h1>
+    <p class="copyright-line">
+        Copyright &copy; Juha Vierinen, Bj&ouml;rn Gustavsson, and Codex.
+    </p>
+    <p>
+        This page is a compact checklist for using the browser calibrator to
+        identify stars, fit the AIDA optical parameters, and export the result.
+    </p>
+    <p>
+        The automatic workflow is intended for wide-field cameras, roughly
+        above 30 degrees field of view, looking at catalog stars brighter than
+        magnitude 7. Some effort has been made to keep the fitting robust in
+        real scenes with aurora, buildings, bad star detections, and nonlinear
+        lens effects, but the solver still needs enough visible star structure
+        to anchor the calibration.
+    </p>
+
+    <h2>Basic workflow</h2>
+    <ol>
+        <li>
+            Load an all-sky PNG, JPEG, or iPhone HEIC image. The bundled example
+            image is loaded automatically when the page opens.
+        </li>
+        <li>
+            Check the UTC timestamp, latitude, longitude, and altitude. The
+            browser first tries EXIF metadata from the image. If that is not
+            available, known allsky7 filenames are used to fill time and station
+            position.
+        </li>
+        <li>
+            Check the initial camera parameters. The browser sets
+            <code>f1 = 1</code> and guesses <code>f2</code> from the loaded image
+            aspect ratio, so ordinary 16:9 images and 4:3 phone images start
+            with different vertical focal scales.
+        </li>
+        <li>
+            Use brightness, contrast, and the high-pass filter so stars are easy
+            to see. The high-pass filter is on by default.
+        </li>
+        <li>
+            The page opens in star pairing view, with the image in the
+            background and catalogue stars circled in red. Press <kbd>C</kbd> to
+            switch between pairing view and Stellarium-style catalog view. Press
+            <kbd>X</kbd> to alternate pure image and pure Stellarium views with
+            labels and pairing annotations hidden. The az/el grid remains visible
+            in those views when enabled. Press <kbd>N</kbd> to toggle star names. The play/stop button
+            next to Help starts or stops a generated background score with
+            random harmonic phrases and subtle space-audio feedback while you work.
+        </li>
+        <li>
+            Roughly align the catalog field of view before picking stars:
+            left-drag the image to move the 90 degree elevation point, right-drag
+            to rotate the azimuth grid, and use the mouse wheel to scale the
+            horizontal and vertical focal lengths together.
+        </li>
+        <li>
+            For a hands-off attempt, press <kbd>L</kbd> or the
+            <em>I'm feeling lucky...</em> button. This follows the same
+            bootstrap idea used in the graphical test cases: first a
+            conservative magnitude-4 bright-star search, then a blind spherical
+            asterism match to seed the selected optical model's rotation and
+            coarse focal scale. It then fits the selected model in sweeps using
+            the brightest matched stars first, expands to fainter stars with
+            the improved projection, prunes obvious automatic outliers from the
+            residual pattern, and repeats until the model stops improving. Late
+            expansion stages only keep additional stars when they do not
+            substantially increase the fit RMSE, because a bad automatic star
+            usually worsens the residuals immediately.
+        </li>
+        <li>
+            Hold <kbd>S</kbd> and click an image star. The local star position is
+            refined with an interpolated Gaussian-smoothed density estimate.
+            Release <kbd>S</kbd>, then click the matching red catalog star.
+        </li>
+        <li>
+            Repeat until at least four reliable star pairs are available. More
+            well-spread pairs usually gives a more stable lens fit.
+        </li>
+        <li>
+            Press <kbd>F</kbd> for the robust randomized Nelder-Mead fit, or
+            <kbd>G</kbd> for the ordinary least-squares Levenberg-Marquardt fit.
+            Press <kbd>Cmd/Ctrl Z</kbd> to undo an accepted fit.
+        </li>
+        <li>
+            Press <kbd>R</kbd> to inspect fit residuals. The suggested red marker
+            identifies the star pair furthest from the median residual pattern.
+        </li>
+        <li>
+            Use the export buttons to copy either the fitted
+            <code>optpar = [...]</code> array or mapper code. When running from
+            the local server, use <em>Submit as test case</em> to store the
+            calibrated image, picked star locations, residuals, timestamp,
+            coordinates, and best-fit lens model under <code>test_cases/</code>.
+        </li>
+    </ol>
+
+    <h2>Useful controls</h2>
+    <ul>
+        <li><kbd>S</kbd>: enter star picking and select an image star while held.</li>
+        <li><kbd>C</kbd>: toggle star pairing view and Stellarium-style catalog view.</li>
+        <li><kbd>X</kbd>: alternate pure image view and pure Stellarium view, hiding labels and pairings while respecting the az/el grid toggle.</li>
+        <li><kbd>N</kbd>: show or hide catalog star names in the current view.</li>
+        <li>Play/stop button next to Help: start or stop the evolving generated planetarium score and subtle interaction blips.</li>
+        <li><kbd>K</kbd>: show or hide tiny KDE subpixel dots at the picked image-star positions.</li>
+        <li><kbd>T</kbd>: show or hide the lucky asterism line overlay.</li>
+        <li><kbd>A</kbd>: show or hide the az/el grid.</li>
+        <li><kbd>L</kbd>: run <em>I'm feeling lucky...</em>, which automatically detects, identifies, seeds, and iteratively fits the selected model. Running it again respects marked bad star finder positions.</li>
+        <li><kbd>F</kbd>: fit the selected model parameters with robust Nelder-Mead.</li>
+        <li><kbd>G</kbd>: fit the selected model parameters with Levenberg-Marquardt.</li>
+        <li><kbd>Cmd/Ctrl Z</kbd>: undo the most recent accepted fit or automatic pairing batch.</li>
+        <li><kbd>D</kbd> + click: delete the nearest matched star pairing.</li>
+        <li><kbd>M</kbd> + click or drag: paint a 100 px radius circle over bad yellow star finder detections. Their raw pixel positions are saved in test-case metadata and ignored by later automatic searches.</li>
+        <li><kbd>R</kbd>: show or hide residual view.</li>
+        <li>Submit as test case button: save the current image metadata, <code>[optmod, ...optpar]</code>, residuals, manual or automatic pairings, and bad star finder detection positions into <code>aida_js_calibrator/test_cases/</code> when using the local server.</li>
+        <li><kbd>Esc</kbd>: cancel the current star selection or close the density popup.</li>
+        <li>Left mouse drag: move the field of view by shifting the 90 degree elevation point.</li>
+        <li>Right mouse drag: rotate the field of view around the 90 degree elevation point.</li>
+        <li>Mouse wheel: zoom the field of view by changing <code>f1</code> and <code>f2</code> together.</li>
+    </ul>
+
+    <h2>Field of view adjustment</h2>
+    <p>
+        The first alignment step is meant to be visual and approximate. Drag with
+        the left mouse button until the catalog zenith is near the image zenith.
+        Drag with the right mouse button to rotate the star field so bright
+        catalog stars line up with the image orientation. Use the mouse wheel if
+        the projected catalog field is too wide or too narrow. After the field is
+        close, use <kbd>S</kbd> to create accurate star pairs and let the lens
+        optimizer refine the selected model parameters.
+    </p>
+
+    <h2>Star picking details</h2>
+    <p>
+        When <kbd>S</kbd> is held, a magnified view follows the mouse. Click near
+        the image star; the magnifier disappears and a density-estimate popup is
+        placed away from the click area. The selected star position is found from
+        a 40x interpolated local image patch smoothed with a Gaussian kernel, and
+        the popup shows the unfiltered interpolated bitmap underneath scientific
+        contour lines of the smoothed density estimate.
+    </p>
+    <p>
+        Press <kbd>K</kbd> to inspect only the picked subpixel image-star
+        positions. In this KDE-dot mode all other overlays are hidden, which is
+        useful for checking whether the centroiding is landing on the intended
+        stars.
+    </p>
+
+    <h2>Residuals and undo</h2>
+    <p>
+        Residual mode draws the fitted catalog location and the selected image
+        location for each pair. The suggested removal marker is based on the
+        star whose residual is furthest from the main residual pattern, rather
+        than simply the largest absolute residual.
+    </p>
+    <p>
+        Accepted fits and automatic pairing batches are stored in an undo stack.
+        Use the Undo button or <kbd>Cmd/Ctrl Z</kbd> to restore the state from
+        before the latest accepted fit or automatic pairing run. Loading a new
+        image or removing all star pairings clears the undo history.
+    </p>
+
+    <h2>Lens models</h2>
+    <p>
+        The model selector includes the self-contained parametric AIDA models
+        from the MATLAB code: optmods 1, 2, 3, 4, 5, and 12. The lookup-table
+        and instrument-specific MATLAB variants are not included because they
+        require external calibration tables or camera-specific code.
+        Brown-Conrady is provided as a standard radial/tangential distortion
+        alternative under browser optmod 20; see Nowakowski and Skarbek
+        (2013), "Analysis of Brown camera distortion model", SPIE volume 8903.
+    </p>
+    <div class="equation-block">
+        <strong>AIDA radial models (<code>optmod 1,2,3,4,5,12</code>)</strong>
+        \[
+        \begin{aligned}
+        \mathbf{o}_{\mathrm{AIDA}}&=[f_1,f_2,\alpha,\beta,\gamma,d_u,d_v,a_r]\\
+        \theta&=\tan^{-1}\!\left(\frac{\sqrt{s_1^2+s_2^2}}{s_3}\right)\\
+        q_1(\theta)&=\tan\theta\\
+        q_2(\theta)&=\sin(a_r\theta)\\
+        q_3(\theta)&=a_r\theta+(1-a_r)\tan\theta\\
+        q_4(\theta)&=\theta^{a_r}\\
+        q_5(\theta)&=\tan(a_r\theta)\\
+        q_{12}(\theta)&=
+        \begin{cases}
+        \tan(a_r\theta)/a_r,&a_r>0\\
+        \theta,&a_r=0\\
+        \sin(a_r\theta)/a_r,&a_r<0
+        \end{cases}\\
+        x&=W\left(f_1\frac{s_1}{\sqrt{s_1^2+s_2^2}}q(\theta)+\frac{1}{2}+d_u\right)-1\\
+        y&=H\left(f_2\frac{s_2}{\sqrt{s_1^2+s_2^2}}q(\theta)+\frac{1}{2}+d_v\right)-1
+        \end{aligned}
+        \]
+    </div>
+    <div class="equation-block">
+        <strong>Brown-Conrady radial/tangential model</strong>
+        \[
+        \begin{aligned}
+        \mathbf{o}_{\mathrm{BC}}&=[f_1,f_2,\alpha,\beta,\gamma,d_u,d_v,k_1,k_2,k_3,p_1,p_2]\\
+        x_n&=s_1/s_3,\quad y_n=s_2/s_3,\quad r^2=x_n^2+y_n^2\\
+        L(r)&=1+k_1r^2+k_2r^4+k_3r^6\\
+        x_d&=x_nL(r)+2p_1x_ny_n+p_2(r^2+2x_n^2)\\
+        y_d&=y_nL(r)+p_1(r^2+2y_n^2)+2p_2x_ny_n\\
+        x&=W\left(f_1x_d+\frac{1}{2}+d_u\right)-1\\
+        y&=H\left(f_2y_d+\frac{1}{2}+d_v\right)-1
+        \end{aligned}
+        \]
+    </div>
+    <div class="symbol-list">
+        <div><span>\(f_1, f_2\)</span> horizontal and vertical focal scale factors.</div>
+        <div><span>\(\alpha,\beta,\gamma\)</span> camera rotation angles in degrees.</div>
+        <div><span>\(d_u, d_v\)</span> principal-point offsets in normalized image coordinates.</div>
+        <div><span>\(s_1,s_2,s_3\)</span> star direction vector after camera rotation.</div>
+        <div><span>\(W,H\)</span> image width and height in pixels.</div>
+        <div><span>\(x,y\)</span> 0-based image pixel coordinates.</div>
+        <div><span>\(\theta\)</span> off-axis angle from the camera boresight.</div>
+        <div><span>\(q(\theta)\)</span> radial projection law for the selected AIDA model.</div>
+        <div><span>\(a_r\)</span> AIDA radial model parameter.</div>
+        <div><span>\(x_n,y_n\)</span> normalized pinhole image coordinates.</div>
+        <div><span>\(r\)</span> radius in normalized pinhole coordinates.</div>
+        <div><span>\(k_1,k_2,k_3\)</span> Brown-Conrady radial distortion coefficients.</div>
+        <div><span>\(p_1,p_2\)</span> Brown-Conrady tangential distortion coefficients.</div>
+        <div><span>\(x_d,y_d\)</span> distorted normalized image coordinates.</div>
+    </div>
+    <p>
+        The rotation angles are calibration parameters for the camera attitude.
+        In practical use, \(\alpha\) and \(\beta\) tilt the optical axis so the
+        projected zenith point moves across the image, while \(\gamma\) rolls
+        the star field around that optical axis. The implementation applies the
+        same rotation convention in the browser, the copied Python export, and
+        the AIDA reference camera model.
+    </p>
+    <p>
+        For ordinary rectilinear lenses and narrow or moderate fields of view,
+        start with optmod 1 or Brown-Conrady. Brown-Conrady is usually the more
+        useful choice for phone cameras and other lenses with radial and
+        tangential distortion; it has worked well with iPhone images. For
+        fisheye and all-sky cameras, optmod 2, 3, 4, 5, or 12 are better
+        starting points because their radial laws are written directly in
+        off-axis angle. Optmod 2 is a sine-like fisheye model, optmod 3 is a
+        flexible blend of equidistant and rectilinear behavior, optmod 4 is a
+        power-law equidistant variant, optmod 5 is a scaled rectilinear model
+        that can become steep at large fields of view, and optmod 12 smoothly
+        switches between sine-like, equidistant, and tangent-like radial laws
+        depending on the sign of \(a_r\).
+    </p>
+
+    <h2>Test cases</h2>
+    <p>
+        Saved test cases live under <code>aida_js_calibrator/test_cases/</code>.
+        Each case directory contains the calibrated image and a
+        <code>metadata.json</code> file with image name, UTC timestamp, site
+        coordinates, manually or automatically paired stars, residuals, and an
+        <code>[optmod, ...optpar]</code> array whose first element is always the
+        optical model number. To add a new case from the browser, run
+        <code>npm run serve</code>, calibrate an image, and press
+        <em>Submit as test case</em>.
+    </p>
+
+    <h2>Export notes</h2>
+    <p>
+        The copied <code>optpar</code> array always starts with the optical
+        model number. For AIDA radial models it contains
+        <code>[optmod, f1, f2, alpha, beta, gamma, du, dv, radial_alpha]</code>.
+        For the Brown-Conrady model (browser <code>optmod 20</code>), it contains
+        <code>[20, f1, f2, alpha, beta, gamma, du, dv, k1, k2, k3, p1, p2]</code>.
+        The export language selector can copy the array and mapper code as
+        Python, Julia, C, or MATLAB. The generated mapper code reads the model
+        number from the first element before applying the parameter vector. The
+        Python mapper includes the existing numerical
+        <code>image_to_az_el</code> inverse; the Julia, C, and MATLAB
+        exports provide the same forward <code>az_el_to_image</code> projection
+        so they can be embedded in analysis code and inverted numerically when
+        needed.
+    </p>
+    <p>
+        The inverse mapping is most meaningful for pixels inside the calibrated
+        field of view and above the horizon. If the lens model is poorly
+        constrained, add or remove star pairs and refit before exporting.
+    </p>
+
+    <h2>References</h2>
+    <ol>
+        <li>
+            Lang, D., Hogg, D. W., Mierle, K., Blanton, M., and Roweis, S.
+            (2010). Astrometry.net: Blind astrometric calibration of arbitrary
+            astronomical images. <em>The Astronomical Journal</em>,
+            139(5), 1782--1800.
+        </li>
+        <li>
+            Nowakowski, A. and Skarbek, W. (2013). Analysis of Brown camera
+            distortion model. In <em>Photonics Applications in Astronomy,
+            Communications, Industry, and High-Energy Physics Experiments
+            2013</em>, SPIE volume 8903, pages 248--257.
+        </li>
+    </ol>
+
+    <p><a href="index.html">Back to the calibrator</a></p>
+</main>
+<script>
+window.MathJax = {
+    tex: {inlineMath: [["\\(", "\\)"], ["$", "$"]]}
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+</body>
+</html>

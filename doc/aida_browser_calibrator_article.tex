@@ -1,0 +1,615 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{tikz}
+\usepackage{xcolor}
+\usetikzlibrary{arrows.meta,positioning}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!55!black,
+  citecolor=blue!55!black,
+  urlcolor=blue!55!black
+}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible
+}
+
+\title{A Browser-Based Wide-Field Star Calibration Tool for AIDA Camera Models}
+\author{Juha Vierinen \and Bjorn Gustavsson \and Codex}
+\date{Draft for AIDA Browser Calibrator v0.2.6}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe a browser-based calibration tool for fitting wide-field camera
+models to images of the night sky. The application combines manual star
+pairing, automatic bright-star detection, blind asterism matching, robust
+nonlinear optimization, residual inspection, and code export in a self-contained
+HTML and JavaScript interface. The current implementation is designed for
+wide-field and all-sky cameras with fields of view above roughly 30 degrees and
+stars brighter than visual magnitude 7. It uses simple but sufficiently
+malleable parametric lens models that are known to work on a wide range of
+wide-field cameras, including fisheye lenses used in auroral research, and it
+also supports a Brown-Conrady model for ordinary phone cameras. The tool
+emphasizes practical calibration under imperfect observing conditions,
+including aurora, buildings, image noise, nonlinear lens effects, and spurious
+star detections.
+\end{abstract}
+
+\section{Introduction}
+
+Wide-field optical calibration is needed when image pixels must be mapped to
+sky directions. Examples include all-sky auroral imaging, meteor cameras,
+planetarium-style camera alignment, and phone-camera photographs of bright
+stars. Traditional calibration workflows often combine several separate tools:
+image viewers, star catalogs, custom fitting scripts, and hand-written export
+code. The AIDA browser calibrator packages these steps into one application.
+
+The application is intentionally local and transparent. Images are loaded in the
+browser. The bright-star catalog is embedded in JavaScript. The lens model,
+projection, star detection, asterism matching, fitting, residual analysis, and
+export routines are all implemented client-side. When served by the local
+development server, the application can also save calibrated test cases for
+regression testing.
+
+\section{User Workflow}
+
+The workflow is centered on matching image detections to catalog stars. The user
+loads an image, verifies the UTC timestamp and observer location, selects a
+lens model, and roughly aligns the sky projection. The application supports
+manual pairing through a keyboard-modified click workflow. Holding \texttt{S}
+and clicking near an image star opens a local density estimate; the centroid is
+refined at subpixel resolution and can then be paired with a catalog star.
+
+The ``I'm feeling lucky'' path automates the same idea. It detects bright image
+features, attempts a blind spherical asterism match, seeds the selected optical
+model, expands the number of candidate matches, fits the lens parameters, and
+rejects obvious outliers. The user can paint bad star-finder regions with
+\texttt{M}+click. These marked regions remove yellow automatic detections from
+future automatic matching and are saved with submitted test-case metadata.
+
+\section{Coordinate Systems}
+
+The application uses true zero-based image pixel coordinates in the browser. A
+catalog star is first converted from right ascension and declination to local
+azimuth and zenith angle using the image timestamp and observer position. Let
+\(\alpha_\star\) be right ascension, \(\delta_\star\) declination, \(\phi\) the
+observer latitude, and \(H\) the local hour angle. The altitude is
+\begin{equation}
+  h = \sin^{-1}\left(\cos H \cos\delta_\star \cos\phi
+      + \sin\delta_\star \sin\phi\right),
+\end{equation}
+and the zenith angle is
+\begin{equation}
+  z = \frac{\pi}{2} - h.
+\end{equation}
+The local sky unit vector used by the browser projection model is
+\begin{equation}
+  \mathbf{e} =
+  \begin{bmatrix}
+    \sin z \sin A \\
+    \sin z \cos A \\
+    \cos z
+  \end{bmatrix},
+\end{equation}
+where \(A\) is azimuth.
+
+\section{Camera Rotation and Projection}
+
+The browser implementation uses a three-angle camera rotation convention
+compatible with the historical calibration tools. The rotation matrix is
+\begin{equation}
+  R = R_y(\alpha) R_x(\beta) R_z(\gamma).
+\end{equation}
+The local sky vector is transformed into camera coordinates by
+\begin{equation}
+  \mathbf{s} = \mathbf{e} R,
+  \qquad
+  \mathbf{s} = (s_1, s_2, s_3).
+\end{equation}
+The radial angle from the optical axis is
+\begin{equation}
+  \theta = \tan^{-1}\left(\frac{\sqrt{s_1^2+s_2^2}}{s_3}\right).
+\end{equation}
+
+For the sine-like fisheye model, exposed in the interface as
+\texttt{optmod 2}, the radial mapping is
+\begin{equation}
+  r = \sin(a_r \theta),
+\end{equation}
+and the normalized pixel coordinates are
+\begin{align}
+  u &= f_1 \frac{s_1}{\sqrt{s_1^2+s_2^2}} r + \frac{1}{2} + d_u, \\
+  v &= f_2 \frac{s_2}{\sqrt{s_1^2+s_2^2}} r + \frac{1}{2} + d_v.
+\end{align}
+The browser pixel coordinates are then
+\begin{equation}
+  x = u W - 1, \qquad y = v H - 1,
+\end{equation}
+where \(W\) and \(H\) are image width and height. The \(-1\) term converts from
+the historical MATLAB one-based convention to browser zero-based coordinates.
+
+\section{Supported Lens Models}
+
+The current browser supports a family of simple but sufficiently malleable
+parametric lens models, exposed as \texttt{optmod 1}, \texttt{2}, \texttt{3},
+\texttt{4}, \texttt{5}, and \texttt{12}. These models are not intended to be
+complete physical descriptions of a lens. They are compact radial projection
+laws that have been found to fit a wide range of wide-field cameras in
+practice, including fisheye lenses used in auroral research. They share the
+parameter vector
+\begin{equation}
+  \mathbf{p} = [f_1, f_2, \alpha, \beta, \gamma, d_u, d_v, a_r].
+\end{equation}
+The browser also supports a Brown-Conrady model, called \texttt{optmod 20} in
+the interface, with radial and tangential coefficients:
+\begin{equation}
+  \mathbf{p}_{BC} =
+  [f_1, f_2, \alpha, \beta, \gamma, d_u, d_v,
+   k_1, k_2, k_3, p_1, p_2].
+\end{equation}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+Model & Use case & Notes \\
+\midrule
+Optmod 2 & all-sky and fisheye cameras & \(\sin(a_r\theta)\) radial law \\
+Optmod 12 & flexible wide-field lenses & tangent/sine branch by sign \\
+Brown-Conrady & phone and ordinary lenses & radial plus tangential distortion \\
+\bottomrule
+\end{tabular}
+\caption{Common model choices in the browser calibrator.}
+\end{table}
+
+\section{Star Detection}
+
+Automatic detection starts from a grayscale representation of the input image.
+The detector estimates local and global brightness structure, thresholds
+candidate peaks, suppresses nearby duplicates, and rejects obviously elongated
+or crowded detections. Detected stars are ranked by contrast and flux-like
+scores. Painted bad regions are applied as exclusion masks before automatic
+pairing, allowing the user to remove spurious detections from buildings,
+aurora, hot pixels, or image artifacts.
+This design follows the practical lessons of Source Extractor
+\cite{bertin1996sextractor} and SEP \cite{barbary2016sep}: estimate a
+spatially variable background and noise field, use a compact PSF-like matched
+filter to favor point sources, and treat segmentation/deblending ideas as a way
+to prevent extended structures from masquerading as stars. The browser
+implementation does not expose these as user tuning parameters. Instead, it
+uses automatic local background estimates and matched-filter peak scoring
+inside the detector, with mesh background/RMS estimation retained as an
+oracle-tested diagnostic option rather than a mandatory GUI setting. Detector
+changes are validated offline with oracle tests that compare detections against
+catalog stars projected through known lens models.
+
+Manual picking uses a different path. The user clicks near a star and the tool
+extracts a local image patch. A smoothed density estimate is computed on an
+interpolated grid, and the local peak is used as the subpixel image coordinate.
+This gives the user a controlled way to create high-confidence calibration
+pairs even when automatic detection is confused.
+
+\section{Asterism Matching}
+
+The browser contains two matching strategies. The projected matcher uses the
+current lens model to project catalog stars into the image and then performs
+nearest-neighbor matching with robust filtering. This works well after the
+model is already roughly aligned. The blind matcher is more important for the
+``I'm feeling lucky'' workflow because it must establish an initial sky
+orientation before a useful lens fit exists.
+
+\subsection{Current Blind Matcher}
+
+The current blind matcher is a local, browser-sized version of an astrometric
+index. It does not use a precomputed all-sky quad index. Instead, for each
+image and observing time it builds a temporary index from stars that are above
+the local horizon and bright enough for the current search stage.
+
+The main input sets are:
+\begin{enumerate}
+  \item image detections \(\mathcal{D}=\{d_i\}\), sorted by star-detector
+        score;
+  \item visible catalog stars \(\mathcal{C}=\{c_j\}\), sorted by visual
+        magnitude;
+  \item a small grid of pre-flattening lens guesses, including candidate
+        focal scales, radial parameters, signs, and approximate projection
+        families.
+\end{enumerate}
+For a candidate pre-flattening model, every selected image detection is mapped
+from pixel coordinates into an approximate unit vector
+\(\tilde{\mathbf{v}}_i\). The mapping is intentionally rough: its purpose is
+not to calibrate the lens, but to make triangle side lengths in image space
+comparable with angular side lengths in the sky. Catalog stars are converted to
+local sky unit vectors \(\mathbf{u}_j\) from the timestamp and observer
+location.
+
+\begin{figure}[h]
+\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[
+    node distance=1.2cm,
+    box/.style={draw, rounded corners, align=center, minimum width=3.0cm,
+                minimum height=0.9cm, fill=blue!5},
+    smallbox/.style={draw, rounded corners, align=center, minimum width=2.6cm,
+                minimum height=0.75cm, fill=green!6},
+    arrow/.style={-{Stealth[length=2.4mm]}, thick}
+]
+  \node[box] (img) {image pixels\\bright detections};
+  \node[box, right=1.6cm of img] (flat) {pre-flatten\\with trial lens};
+  \node[box, right=1.6cm of flat] (triimg) {detection\\triangles};
+  \node[smallbox, below=1.0cm of img] (cat) {Yale catalog\\visible stars};
+  \node[smallbox, right=1.6cm of cat] (sky) {local sky\\unit vectors};
+  \node[smallbox, right=1.6cm of sky] (tric) {catalog\\triangles};
+  \node[box, right=1.6cm of triimg] (kd) {triangle signature\\KD-tree lookup};
+  \node[box, right=1.6cm of kd] (rot) {candidate rotation\\and scoring};
+  \node[box, below=1.0cm of rot] (seed) {seed optpar\\then nonlinear fit};
+
+  \draw[arrow] (img) -- (flat);
+  \draw[arrow] (flat) -- (triimg);
+  \draw[arrow] (cat) -- (sky);
+  \draw[arrow] (sky) -- (tric);
+  \draw[arrow] (triimg) -- (kd);
+  \draw[arrow] (tric) -| (kd);
+  \draw[arrow] (kd) -- (rot);
+  \draw[arrow] (rot) -- (seed);
+\end{tikzpicture}
+}
+\caption{Current browser blind-matching pipeline. The catalog index is built
+on demand for the local sky at the image time. The detection side is rebuilt
+for several approximate lens pre-flattening hypotheses.}
+\label{fig:asterism-pipeline}
+\end{figure}
+
+\subsection{Triangle Signature}
+
+For each set of candidate points, the matcher builds triangular asterisms. For
+a triangle with side lengths \(a\le b\le c\), the current signature is a
+two-dimensional, scale-free descriptor
+\begin{equation}
+  \mathbf{q} =
+  \begin{bmatrix}
+    a/c\\
+    b/c
+  \end{bmatrix}.
+\end{equation}
+Degenerate triangles are rejected before indexing. The three vertices must be
+distinct detections or catalog stars, so the same star candidate cannot appear
+twice in one triangle. For image-detection triangles, the shortest pixel side
+must also be at least
+\begin{equation}
+  N_{\mathrm{MIN\_ANGLE\_PIX}} = 50 \ \mathrm{px}.
+\end{equation}
+Conversely, the longest pixel side must not exceed one quarter of the image
+width,
+\begin{equation}
+  c \le \frac{W}{4}.
+\end{equation}
+This prevents very large triangles from dominating the search. Such triangles
+are a poor choice for wide lenses because small radial-model errors near the
+edge of the field produce large changes in their side ratios. After these
+pixel-scale checks, the matcher still requires a minimum shortest-to-longest
+side ratio and a minimum area relative to \(c^2\). These tests remove tiny,
+duplicate, over-wide, and nearly collinear triples, which are poor rotation
+constraints and are common in noisy detections.
+
+Catalog triangle signatures are inserted into a two-dimensional KD-tree. For
+each image-detection triangle, the matcher searches the KD-tree for nearby
+catalog signatures. A nearby signature does not prove an identification; it
+only proposes a candidate correspondence between three image detections and
+three catalog stars. Each proposed correspondence gives a rotation hypothesis.
+For the spherical matcher, the rotation is estimated from two vector pairs and
+the third vertex is used as a consistency check. The rotation is then scored
+against all available stars, not just the three that generated the hypothesis.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[scale=1.0]
+  \coordinate (a) at (0,0);
+  \coordinate (b) at (3.8,0.4);
+  \coordinate (c) at (1.0,2.5);
+  \draw[very thick, blue!65] (a) -- (b) -- (c) -- cycle;
+  \fill[blue!70] (a) circle (2pt) node[below left] {\(d_1\)};
+  \fill[blue!70] (b) circle (2pt) node[right] {\(d_2\)};
+  \fill[blue!70] (c) circle (2pt) node[above] {\(d_3\)};
+  \node at (1.9,-0.25) {\(c\)};
+  \node at (2.55,1.55) {\(b\)};
+  \node at (0.25,1.25) {\(a\)};
+  \node[align=center] at (1.9,-1.05)
+      {sort sides \(a\le b\le c\)\\store \((a/c,\ b/c)\)};
+
+  \begin{scope}[xshift=7.0cm]
+    \draw[->] (-0.2,0) -- (3.2,0) node[right] {\(a/c\)};
+    \draw[->] (0,-0.2) -- (0,3.0) node[above] {\(b/c\)};
+    \fill[red!70] (1.05,1.95) circle (2pt);
+    \draw[red!70, thick] (1.05,1.95) circle (0.32);
+    \node[align=center] at (1.65,2.45) {KD-tree\\nearby catalog\\triangles};
+    \fill[gray!70] (0.7,1.6) circle (1.5pt);
+    \fill[gray!70] (1.2,1.75) circle (1.5pt);
+    \fill[gray!70] (1.35,2.1) circle (1.5pt);
+    \fill[gray!70] (2.1,2.55) circle (1.5pt);
+  \end{scope}
+\end{tikzpicture}
+\caption{Triangle signatures remove overall scale by using side ratios. A
+candidate image triangle queries a KD-tree of catalog triangle signatures; each
+near neighbor proposes a possible three-star correspondence.}
+\label{fig:triangle-signature}
+\end{figure}
+
+\subsection{Rejected Gradient Diagnostic}
+
+An earlier prototype also estimated local direction-cosine gradients for each
+candidate triangle. The idea was to use finite differences of the east and
+north sky-vector components with respect to image \(x\) and \(y\). In practice
+these measurements were too noisy for fisheye and other very wide field
+images, and they did not improve candidate selection beyond the triangle
+signature and support-triangle checks. The current browser implementation does
+not compute or filter on these gradients during asterism search.
+
+\subsection{Candidate Scoring and Seeding}
+
+A triangle correspondence is accepted only if it explains additional stars.
+After a candidate rotation \(R_k\) is generated, every pre-flattened detection
+vector is rotated into the catalog frame and matched to nearby catalog vectors.
+The candidate score increases with the number and brightness of consistent
+matches and decreases with angular residuals, ambiguous alternatives, and
+conflicts. The chosen candidate returns:
+\begin{itemize}
+  \item matched image detections and catalog stars;
+  \item the approximate camera rotation;
+  \item the pre-flattening parameters that generated the best detection
+        vectors;
+  \item diagnostic counts such as scored rotations and triangle counts.
+\end{itemize}
+The browser converts the recovered rotation into the selected camera-angle
+parameterization and seeds the selected lens model. Subsequent Levenberg-Marquardt and
+Nelder-Mead sweeps operate in pixel space and no longer rely on the triangle
+signature approximation.
+
+\subsection{Lucky Search Stages}
+
+The ``I'm feeling lucky'' workflow is a staged bootstrap and refinement
+procedure. It is designed to avoid committing to weak, ambiguous detections
+until there is some evidence that the image and catalog are already on the
+same geometric track. The main steps are:
+\begin{enumerate}
+  \item \textbf{Detect compact bright peaks.} The detector ranks candidate
+        peaks by contrast, flux, compactness, central concentration, peak
+        dominance, low outer-aperture flux, elongation, saturation, and local
+        crowding. Bad star-finder regions painted by the user are masked.
+  \item \textbf{Blind spherical bootstrap.} Candidate image detections are
+        pre-flattened with a small grid of lens hypotheses and converted to
+        unit vectors. Triangular asterisms from the image are matched against
+        local catalog triangles. The image is also divided into six partially
+        overlapping regions; the search keeps a capped set of promising
+        asterisms from each region so that one cluttered part of the frame
+        does not dominate the search.
+  \item \textbf{Support-triangle verification.} A seed asterism is not accepted
+        by itself. The candidate rotation must extend to neighboring stars:
+        each seed star is tested in additional triangles with nearby provisional
+        matches. These support triangles use the same minimum side length,
+        maximum side length, and minimum height limits as the main asterisms.
+        When regional detection coverage is enabled, support must span at
+        least two image regions. Accepted support triangles are drawn in the
+        GUI as cyan diagnostic asterisms.
+  \item \textbf{Stop on an empty first stage.} If the first blind asterism
+        stage finds no matched stars, the lucky workflow stops. It does not
+        proceed to fainter stars, because the later stages would otherwise have
+        a high chance of following noise or non-star structure.
+  \item \textbf{Seed the lens model and fit bright pairs.} A successful blind
+        match gives an approximate camera rotation and pre-flattening lens
+        parameters. These seed the selected lens model. The browser then fits
+        the brightest automatic pairs first with robust Nelder-Mead and
+        Levenberg-Marquardt sweeps.
+  \item \textbf{Add weaker stars cautiously.} Once a model exists, later stages
+        use projected catalog positions to add fainter detections. Each new
+        weak-star pairing must participate in one or two consistent triangle
+        checks with already trusted pairs before it is accepted. This prevents
+        isolated false detections from entering the fit merely because they are
+        near a projected catalog star.
+  \item \textbf{Reject harmful expansion.} Expansion stages are guarded by the
+        fit residual. If newly added automatic stars increase the RMS error too
+        much, that stage is reverted. Automatic outliers can also be pruned and
+        the fit repeated.
+\end{enumerate}
+
+There is a deliberate difference between the allsky7-style path and the more
+general phone-image path. For \texttt{optmod 2}, which is the simple but
+malleable fisheye model used for allsky7-like auroral cameras, the first blind
+bootstrap uses a restricted pre-flattening grid inherited from earlier working
+calibrations:
+\begin{equation}
+  f_1 \in \{0.80,0.70,0.90,1.00,0.60\},
+  \qquad
+  a_r \in \{0.30,0.50,0.60,0.80,0.90,1.00\}
+\end{equation}
+and emphasizes bright all-sky stars before later projected refinements. This
+keeps the radial search from wandering through lens shapes that are plausible
+for ordinary photographs but poor for allsky7 fisheye geometry.
+
+For ordinary phone-camera images, including iPhone photographs, the generic
+lucky path starts with a deeper blind catalog limit, allows both pinhole and
+fisheye pre-flattening hypotheses, and later widens the radial grid. This is
+useful because phone images can have a less all-sky-like field geometry and
+often benefit from more candidate stars in the first blind stage. In both
+paths, the same rule is used after the first stage: weaker stars are only added
+after a seed exists, and they are checked against local asterisms and the RMS
+guard before being trusted.
+
+For the Brown-Conrady model, the blind bootstrap assumes a locally flat field
+for the initial search. Pixel coordinates are converted to approximate rays
+with a pinhole scale only; there is no radial pre-flattening and no \(a_r\)
+parameter in this stage. Brown-Conrady radial and tangential distortion terms
+are fitted later in pixel space after star pairings have been established.
+The \texttt{IMG\_9953} pre-undistortion sensitivity test indicates that the
+tangential coefficients \(p_1\) and \(p_2\) are weakly useful for the
+asterism-search phase and may be unnecessary until the final refinement.
+The current development recommendation is therefore to keep
+\(p_1=p_2=0\) during blind pre-flattening and early Brown-Conrady fitting,
+then release these parameters only in the last pixel-space fit if the residual
+structure supports them.
+The same sweep tests are also useful because they deliberately separate star
+finding from asterism identification. In these diagnostics, automatic
+detections are filtered through an oracle map built from the saved calibrated
+lens model before the asterism search is run. Under those conditions the
+asterism matcher is extremely robust over a surprisingly broad range of
+pre-undistortion parameters. This implies that the main missing component for
+ordinary phone-camera images is not primarily a better triangle matcher, but a
+very reliable star detector: it must suppress false star-like detections while
+still retaining as many true stellar peaks as possible. False detections can
+dominate the triangle search space and lead the blind matcher down incorrect
+hypotheses, while missed true stars remove the geometric redundancy needed to
+reject those hypotheses.
+The pinhole scale search is one-dimensional: \(f_2\) is initialized from
+\(f_1\) and the image aspect ratio,
+\begin{equation}
+  f_2 = f_1\,\frac{W}{H},
+\end{equation}
+where \(W\) and \(H\) are the image width and height. Thus the ratio
+\(f_1/f_2\) is not treated as a substantially uncertain parameter during blind
+asterism construction; it is assumed to be close to the image aspect ratio.
+
+\subsection{Known Weaknesses for Wide-Field Images}
+
+This is the part of the implementation most likely to need further work. The
+current triangle approach has several limitations for all-sky and other very
+wide fields:
+\begin{enumerate}
+  \item \textbf{Pre-flattening sensitivity.} If the trial radial model is too
+        far from the true lens, image triangles are distorted enough that their
+        side ratios no longer land near the correct catalog signatures.
+  \item \textbf{Triangle ambiguity.} Bright-star triangles in a wide field can
+        have many similar side-ratio signatures, especially when only two side
+        ratios are used. The current ambiguity rejection helps but can also
+        reject real weak-star solutions.
+  \item \textbf{Catalog depth versus speed.} Going to magnitude 7 increases the
+        number of useful stars, but the number of possible triangles grows
+        rapidly. The current code caps triangle counts and neighbor searches,
+        so it is not a complete enumeration of all possible asterisms.
+  \item \textbf{Local sky dependence.} The browser builds its catalog triangles
+        from the visible local sky rather than from a global precomputed index.
+        This is correct for the entered time and location, but it also means
+        wrong metadata directly damages the blind search.
+  \item \textbf{Non-star detections.} Aurora texture, buildings, hot pixels,
+        clouds, and compression artifacts create plausible local maxima. These
+        can form many false triangles before the matching stage has enough
+        information to reject them.
+  \item \textbf{Fisheye edge distortion.} Near the horizon, small radial-model
+        errors create large angular errors. Triangles spanning the edge of an
+        all-sky image are therefore less reliable than triangles concentrated
+        nearer the central sky.
+\end{enumerate}
+
+Possible improvements include a richer invariant descriptor, quads rather than
+triangles, explicit indexing by angular scale, better use of magnitude ordering,
+adaptive pre-flattening grids for fisheye lenses, and a staged local-to-global
+verification procedure closer to astrometry.net. Another practical direction is
+to keep the triangle proposal mechanism but score candidates with a stronger
+model-aware verification pass before accepting a seed.
+
+\section{Fitting}
+
+Once a set of star pairs exists, the objective function is the sum of squared
+pixel residuals:
+\begin{equation}
+  J(\mathbf{p}) = \sum_i
+  \left[
+    \left(x_i - \hat{x}_i(\mathbf{p})\right)^2
+    +
+    \left(y_i - \hat{y}_i(\mathbf{p})\right)^2
+  \right].
+\end{equation}
+Here \((x_i,y_i)\) is the measured image position and
+\((\hat{x}_i,\hat{y}_i)\) is the catalog star projected through the selected
+camera model.
+
+Two optimizers are available. The robust Nelder-Mead path tries many jittered
+starts, trims bad residuals, and is useful when the initial model is uncertain
+or a pair is wrong. The Levenberg-Marquardt path uses numerical derivatives and
+is faster near a good solution. The lucky workflow combines these in sweeps:
+bright reliable stars are fit first, then additional automatic stars are added
+only if they do not substantially increase the root-mean-square error.
+
+\section{Residual Inspection and Undo}
+
+Residual view draws the displacement between each picked image coordinate and
+the fitted catalog projection. The application highlights a suggested outlier
+based on deviation from the median residual pattern. Accepted fits and
+automatic pairing batches are stored on an undo stack, so the user can safely
+try automatic expansion and return to the previous state.
+
+\section{Test Cases and Reproducibility}
+
+When the app is served by the local Node server, a calibrated image can be
+submitted as a test case. A test case stores image metadata, timestamp,
+location, lens model, fitted parameters, matched stars, residuals, and
+painted bad star-finder positions. JavaScript unit tests cover coordinate
+conversion, camera model behavior, star matching utilities, export generators,
+and selected synthetic asterism cases. Heavier image-based tests are skipped by
+default and are intended for explicit full-test runs.
+
+\section{Exports}
+
+The browser can export the fitted parameter vector and mapper code in Python,
+Julia, C, or MATLAB. The exported code implements the same forward mapping used
+by the browser, which maps azimuth and elevation to image pixels for the
+selected lens model. This makes the browser calibration directly usable in
+downstream AIDA analysis scripts.
+
+\section{Limitations}
+
+The automatic workflow is best suited to wide fields of view above about
+30 degrees and scenes containing multiple stars brighter than magnitude 7.
+Aurora, buildings, clouds, saturation, and non-star point sources can still
+confuse the star detector and asterism matcher. The browser implementation also
+uses bounded local data structures for responsiveness; for arbitrary narrow
+field blind plate solving, a full astrometry.net-style quad index remains a
+better architecture.
+
+\section{Conclusion}
+
+The AIDA browser calibrator provides a practical, inspectable workflow for
+turning wide-field star images into calibrated camera models. It combines
+manual control with automatic assistance, keeps the calibration state visible,
+and exports model code that can be used outside the browser. Version 0.2.6
+stabilizes the asterism diagnostics, allsky7 lucky recipe, and
+whole-image Brown-Conrady phone-camera bootstrap path used for further
+development.
+
+\section*{Acknowledgments}
+
+This software and article draft were prepared by Juha Vierinen, Bjorn
+Gustavsson, and Codex. The implementation builds on practical calibration
+workflows developed for all-sky camera analysis and on the historical parameter
+conventions used by AIDA-compatible calibration tools.
+
+\begin{thebibliography}{9}
+
+\bibitem{bertin1996sextractor}
+E. Bertin and S. Arnouts.
+\newblock SExtractor: Software for source extraction.
+\newblock \emph{Astronomy and Astrophysics Supplement Series}, 117:393--404,
+1996.
+\newblock doi:10.1051/aas:1996164.
+
+\bibitem{barbary2016sep}
+K. Barbary.
+\newblock SEP: Source Extractor as a library.
+\newblock \emph{Journal of Open Source Software}, 1(6):58, 2016.
+\newblock doi:10.21105/joss.00058.
+
+\end{thebibliography}
+
+\end{document}

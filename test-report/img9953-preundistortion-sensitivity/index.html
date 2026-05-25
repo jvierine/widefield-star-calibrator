@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>IMG_9953 Pre-Undistortion Sensitivity</title>
+<style>
+body { margin: 0; background: #f5f7fa; color: #17202a; font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+h1 { margin: 0 0 8px; font-size: 24px; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 18px 0; }
+.metric, .card, .note { background: white; border: 1px solid #d9e1ea; border-radius: 8px; padding: 12px; }
+.metric b { display: block; font-size: 24px; }
+.plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(470px, 1fr)); gap: 14px; }
+.plot { width: 100%; height: auto; }
+.plot-bg { fill: #fff; }
+.frame { fill: none; stroke: #cbd5df; }
+.line { fill: none; stroke: #1565c0; stroke-width: 3; }
+.point { fill: #1565c0; stroke: white; stroke-width: 1; }
+.default-point { fill: #f9a825; stroke: #3c2a00; stroke-width: 1.5; }
+.zero { stroke: #8794a3; stroke-dasharray: 4 4; }
+.default-line { stroke: #f9a825; stroke-dasharray: 3 5; }
+.threshold { stroke: #c62828; stroke-dasharray: 5 5; }
+.title { font-weight: 700; font-size: 16px; }
+.axis, .tick { fill: #46515f; font-size: 12px; }
+.top-tick { fill: #6a4a00; }
+pre { background: #eef2f7; border-radius: 6px; padding: 12px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>IMG_9953 Pre-Undistortion Sensitivity</h1>
+<p>This report perturbs the pre-undistortion lens parameters around the saved Brown-Conrady calibration, then reruns the asterism matcher on the same oracle-validated automatic detections.</p>
+<section class="note">
+<h2>Repeat From Command Line</h2>
+<pre><code>cd /Users/j/src/AIDA_tools/aida_js_calibrator &amp;&amp; npm run report:img9953-sensitivity</code></pre>
+</section>
+<div class="metrics">
+<div class="metric"><span>Baseline correct matches</span><b>1</b></div>
+<div class="metric"><span>Default BC matches</span><b>5</b></div>
+<div class="metric"><span>Oracle detector hits</span><b>158</b></div>
+<div class="metric"><span>Raw detections</span><b>650</b></div>
+<div class="metric"><span>Max magnitude</span><b>6.5</b></div>
+</div>
+<section class="note">
+<h2>Recommendation</h2>
+<p><b>Common zoom 90% basin:</b> 0.20x to 2.22x.</p>
+<p>Gold markers show the app's Brown-Conrady default parameter value for each one-parameter sweep.</p>
+<ul><li>Use full-resolution star scanning for iPhone/Brown-Conrady images before drawing conclusions about the asterism matcher.</li><li>For pre-undistortion, search a coarse common focal zoom grid first because triangle ratios are partly scale-invariant but pixel-side gates still matter.</li><li>Keep f1/f2 aspect ratio close to the EXIF/image-width initialization; sweep common zoom more aggressively than differential f1-vs-f2 changes.</li><li>Treat principal point offsets and low-order radial terms as the most important pre-flattening parameters after focal scale.</li><li>Keep tangential coefficients p1 and p2 fixed at zero during blind pre-flattening and early fitting; only release them in the final pixel-space fit after robust star identities exist.</li></ul>
+</section>
+<section class="note">
+<h2>Processing Steps Per Point</h2>
+<p><b>Important:</b> this is a sensitivity diagnostic, not a full blind lucky run. It intentionally removes most false detections before the sweep so that the plot isolates how the asterism matcher responds to pre-undistortion errors.</p>
+<ol>
+<li>Load the saved PNG test image and run the automatic star detector once with the detector options below.</li>
+<li>Project the Yale catalogue through the saved calibrated Brown-Conrady optpar. This creates the reference catalogue positions for the test case.</li>
+<li>Build an oracle validation map by matching automatic detections to those saved-calibration catalogue positions within the case match radius.</li>
+<li>For every sweep point, keep only automatic detections that were oracle-validated in step 3. This means the sweep is not measuring false-positive rejection.</li>
+<li>Pre-undistort both the oracle-validated detections and the catalogue positions with the perturbed optpar for that sweep point.</li>
+<li>Run <code>identifyStarsByAsterisms</code> on those pre-undistorted positions using the matcher options below.</li>
+<li>Score the returned matches against the oracle validation map as correct, incorrect, or unknown.</li>
+</ol>
+<p>The plots can therefore look better than a real GUI run if the live star finder produces many false positives, misses the useful stars, or if the initial blind optpar is much worse than the tested perturbation grid.</p>
+<h3>Detector options</h3>
+<pre>{
+  &quot;maxDetections&quot;: 650,
+  &quot;scanStep&quot;: 1,
+  &quot;thresholdSigma&quot;: 1.5,
+  &quot;localThresholdSigma&quot;: 1.5,
+  &quot;requireGlobalThreshold&quot;: false,
+  &quot;maxRadiusPx&quot;: 5,
+  &quot;maxElongation&quot;: 4,
+  &quot;suppressionRadiusPx&quot;: 10,
+  &quot;crowdingRadiusPx&quot;: 36,
+  &quot;maxCrowding&quot;: 7,
+  &quot;crowdingScorePower&quot;: 1.25
+}</pre>
+<h3>Asterism matcher options</h3>
+<pre>{
+  &quot;maxDistancePx&quot;: 35,
+  &quot;minMatches&quot;: 8,
+  &quot;maxDetectionTriangleStars&quot;: 80,
+  &quot;maxCatalogTriangleStars&quot;: 160,
+  &quot;maxDetectionTriangles&quot;: 2600,
+  &quot;maxCatalogTriangles&quot;: 16000,
+  &quot;triangleSignatureRadius&quot;: 0.02,
+  &quot;maxNeighborTriangles&quot;: 8,
+  &quot;maxCandidateTransforms&quot;: 3000,
+  &quot;maxMagnitude&quot;: 6.5,
+  &quot;maxDetections&quot;: 650,
+  &quot;maxCatalogStars&quot;: &quot;clamped to 200..650 from the perturbed catalog&quot;
+}</pre>
+</section>
+<section class="plots"><section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line>
+        <line class="default-line" x1="367.1" y1="58" x2="367.1" y2="262"></line>
+        <line class="threshold" x1="58" y1="260.6" x2="462" y2="260.6"></line>
+        <path class="line" d="M 58.0 58.0 L 91.7 262.0 L 125.3 262.0 L 159.0 250.0 L 192.7 254.5 L 226.3 257.5 L 260.0 260.5 L 293.7 230.5 L 327.3 221.5 L 361.0 254.5 L 367.1 254.5 L 394.7 262.0 L 428.3 257.5 L 462.0 260.5"></path>
+        <circle class="point" cx="58.0" cy="58.0" r="4"><title>f1 0.103: 136 correct</title></circle>
+<circle class="point" cx="91.7" cy="262.0" r="4"><title>f1 0.201: 0 correct</title></circle>
+<circle class="point" cx="125.3" cy="262.0" r="4"><title>f1 0.299: 0 correct</title></circle>
+<circle class="point" cx="159.0" cy="250.0" r="4"><title>f1 0.396: 8 correct</title></circle>
+<circle class="point" cx="192.7" cy="254.5" r="4"><title>f1 0.494: 5 correct</title></circle>
+<circle class="point" cx="226.3" cy="257.5" r="4"><title>f1 0.592: 3 correct</title></circle>
+<circle class="point" cx="260.0" cy="260.5" r="4"><title>f1 0.689: 1 correct</title></circle>
+<circle class="point" cx="293.7" cy="230.5" r="4"><title>f1 0.787: 21 correct</title></circle>
+<circle class="point" cx="327.3" cy="221.5" r="4"><title>f1 0.885: 27 correct</title></circle>
+<circle class="point" cx="361.0" cy="254.5" r="4"><title>f1 0.982: 5 correct</title></circle>
+<circle class="point default-point" cx="367.1" cy="254.5" r="6"><title>f1 Brown-Conrady default 1.000: 5 correct</title></circle>
+<circle class="point" cx="394.7" cy="262.0" r="4"><title>f1 1.080: 0 correct</title></circle>
+<circle class="point" cx="428.3" cy="257.5" r="4"><title>f1 1.178: 3 correct</title></circle>
+<circle class="point" cx="462.0" cy="260.5" r="4"><title>f1 1.275: 1 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">f1</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">relative perturbation</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual f1 value</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.85</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.85</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">0.103</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">0.689</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">1.275</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">136</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -85.0% to 85.0%</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line>
+        <line class="default-line" x1="367.6" y1="58" x2="367.6" y2="262"></line>
+        <line class="threshold" x1="58" y1="256.3" x2="462" y2="256.3"></line>
+        <path class="line" d="M 58.0 262.0 L 91.7 249.3 L 125.3 255.6 L 159.0 262.0 L 192.7 262.0 L 226.3 236.5 L 260.0 255.6 L 293.7 230.1 L 327.3 198.3 L 361.0 255.6 L 367.6 255.6 L 394.7 230.1 L 428.3 128.1 L 462.0 58.0"></path>
+        <circle class="point" cx="58.0" cy="262.0" r="4"><title>f2 0.138: 0 correct</title></circle>
+<circle class="point" cx="91.7" cy="249.3" r="4"><title>f2 0.268: 2 correct</title></circle>
+<circle class="point" cx="125.3" cy="255.6" r="4"><title>f2 0.398: 1 correct</title></circle>
+<circle class="point" cx="159.0" cy="262.0" r="4"><title>f2 0.528: 0 correct</title></circle>
+<circle class="point" cx="192.7" cy="262.0" r="4"><title>f2 0.658: 0 correct</title></circle>
+<circle class="point" cx="226.3" cy="236.5" r="4"><title>f2 0.788: 4 correct</title></circle>
+<circle class="point" cx="260.0" cy="255.6" r="4"><title>f2 0.918: 1 correct</title></circle>
+<circle class="point" cx="293.7" cy="230.1" r="4"><title>f2 1.048: 5 correct</title></circle>
+<circle class="point" cx="327.3" cy="198.3" r="4"><title>f2 1.178: 10 correct</title></circle>
+<circle class="point" cx="361.0" cy="255.6" r="4"><title>f2 1.308: 1 correct</title></circle>
+<circle class="point default-point" cx="367.6" cy="255.6" r="6"><title>f2 Brown-Conrady default 1.333: 1 correct</title></circle>
+<circle class="point" cx="394.7" cy="230.1" r="4"><title>f2 1.438: 5 correct</title></circle>
+<circle class="point" cx="428.3" cy="128.1" r="4"><title>f2 1.568: 21 correct</title></circle>
+<circle class="point" cx="462.0" cy="58.0" r="4"><title>f2 1.698: 32 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">f2</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">relative perturbation</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual f2 value</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.85</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.85</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">0.138</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">0.918</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">1.698</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">32</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -70.8% to 85.0%</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line>
+        <line class="default-line" x1="260.3" y1="58" x2="260.3" y2="262"></line>
+        <line class="threshold" x1="58" y1="231.4" x2="462" y2="231.4"></line>
+        <path class="line" d="M 58.0 126.0 L 91.7 126.0 L 125.3 58.0 L 159.0 228.0 L 192.7 194.0 L 226.3 160.0 L 260.0 228.0 L 260.3 228.0 L 293.7 160.0 L 327.3 160.0 L 361.0 160.0 L 394.7 160.0 L 428.3 160.0 L 462.0 126.0"></path>
+        <circle class="point" cx="58.0" cy="126.0" r="4"><title>du -0.220: 4 correct</title></circle>
+<circle class="point" cx="91.7" cy="126.0" r="4"><title>du -0.184: 4 correct</title></circle>
+<circle class="point" cx="125.3" cy="58.0" r="4"><title>du -0.147: 6 correct</title></circle>
+<circle class="point" cx="159.0" cy="228.0" r="4"><title>du -0.110: 1 correct</title></circle>
+<circle class="point" cx="192.7" cy="194.0" r="4"><title>du -0.074: 2 correct</title></circle>
+<circle class="point" cx="226.3" cy="160.0" r="4"><title>du -0.037: 3 correct</title></circle>
+<circle class="point" cx="260.0" cy="228.0" r="4"><title>du -0.000: 1 correct</title></circle>
+<circle class="point default-point" cx="260.3" cy="228.0" r="6"><title>du Brown-Conrady default 0.000: 1 correct</title></circle>
+<circle class="point" cx="293.7" cy="160.0" r="4"><title>du 0.036: 3 correct</title></circle>
+<circle class="point" cx="327.3" cy="160.0" r="4"><title>du 0.073: 3 correct</title></circle>
+<circle class="point" cx="361.0" cy="160.0" r="4"><title>du 0.110: 3 correct</title></circle>
+<circle class="point" cx="394.7" cy="160.0" r="4"><title>du 0.146: 3 correct</title></circle>
+<circle class="point" cx="428.3" cy="160.0" r="4"><title>du 0.183: 3 correct</title></circle>
+<circle class="point" cx="462.0" cy="126.0" r="4"><title>du 0.220: 4 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">du</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual du value</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.22</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.22</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-0.220</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">-0.000</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">0.220</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">6</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.220 to 0.220 normalized image</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line>
+        <line class="default-line" x1="260.8" y1="58" x2="260.8" y2="262"></line>
+        <line class="threshold" x1="58" y1="216.1" x2="462" y2="216.1"></line>
+        <path class="line" d="M 58.0 58.0 L 91.7 58.0 L 125.3 160.0 L 159.0 160.0 L 192.7 109.0 L 226.3 211.0 L 260.0 211.0 L 260.8 211.0 L 293.7 211.0 L 327.3 160.0 L 361.0 160.0 L 394.7 109.0 L 428.3 109.0 L 462.0 160.0"></path>
+        <circle class="point" cx="58.0" cy="58.0" r="4"><title>dv -0.221: 4 correct</title></circle>
+<circle class="point" cx="91.7" cy="58.0" r="4"><title>dv -0.184: 4 correct</title></circle>
+<circle class="point" cx="125.3" cy="160.0" r="4"><title>dv -0.148: 2 correct</title></circle>
+<circle class="point" cx="159.0" cy="160.0" r="4"><title>dv -0.111: 2 correct</title></circle>
+<circle class="point" cx="192.7" cy="109.0" r="4"><title>dv -0.074: 3 correct</title></circle>
+<circle class="point" cx="226.3" cy="211.0" r="4"><title>dv -0.038: 1 correct</title></circle>
+<circle class="point" cx="260.0" cy="211.0" r="4"><title>dv -0.001: 1 correct</title></circle>
+<circle class="point default-point" cx="260.8" cy="211.0" r="6"><title>dv Brown-Conrady default 0.000: 1 correct</title></circle>
+<circle class="point" cx="293.7" cy="211.0" r="4"><title>dv 0.036: 1 correct</title></circle>
+<circle class="point" cx="327.3" cy="160.0" r="4"><title>dv 0.072: 2 correct</title></circle>
+<circle class="point" cx="361.0" cy="160.0" r="4"><title>dv 0.109: 2 correct</title></circle>
+<circle class="point" cx="394.7" cy="109.0" r="4"><title>dv 0.146: 3 correct</title></circle>
+<circle class="point" cx="428.3" cy="109.0" r="4"><title>dv 0.182: 3 correct</title></circle>
+<circle class="point" cx="462.0" cy="160.0" r="4"><title>dv 0.219: 2 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">dv</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual dv value</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.22</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.22</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-0.221</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">-0.001</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">0.219</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">4</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.220 to 0.220 normalized image</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line>
+        <line class="default-line" x1="233.9" y1="58" x2="233.9" y2="262"></line>
+        <line class="threshold" x1="58" y1="225.3" x2="462" y2="225.3"></line>
+        <path class="line" d="M 58.0 262.0 L 91.7 221.2 L 125.3 221.2 L 159.0 262.0 L 192.7 221.2 L 226.3 221.2 L 233.9 221.2 L 260.0 221.2 L 293.7 221.2 L 327.3 221.2 L 361.0 262.0 L 394.7 58.0 L 428.3 262.0 L 462.0 139.6"></path>
+        <circle class="point" cx="58.0" cy="262.0" r="4"><title>k1 -1.045: 0 correct</title></circle>
+<circle class="point" cx="91.7" cy="221.2" r="4"><title>k1 -0.845: 1 correct</title></circle>
+<circle class="point" cx="125.3" cy="221.2" r="4"><title>k1 -0.645: 1 correct</title></circle>
+<circle class="point" cx="159.0" cy="262.0" r="4"><title>k1 -0.445: 0 correct</title></circle>
+<circle class="point" cx="192.7" cy="221.2" r="4"><title>k1 -0.245: 1 correct</title></circle>
+<circle class="point" cx="226.3" cy="221.2" r="4"><title>k1 -0.045: 1 correct</title></circle>
+<circle class="point default-point" cx="233.9" cy="221.2" r="6"><title>k1 Brown-Conrady default 0.000: 1 correct</title></circle>
+<circle class="point" cx="260.0" cy="221.2" r="4"><title>k1 0.155: 1 correct</title></circle>
+<circle class="point" cx="293.7" cy="221.2" r="4"><title>k1 0.355: 1 correct</title></circle>
+<circle class="point" cx="327.3" cy="221.2" r="4"><title>k1 0.555: 1 correct</title></circle>
+<circle class="point" cx="361.0" cy="262.0" r="4"><title>k1 0.755: 0 correct</title></circle>
+<circle class="point" cx="394.7" cy="58.0" r="4"><title>k1 0.955: 5 correct</title></circle>
+<circle class="point" cx="428.3" cy="262.0" r="4"><title>k1 1.155: 0 correct</title></circle>
+<circle class="point" cx="462.0" cy="139.6" r="4"><title>k1 1.355: 3 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">k1</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual k1 value</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-1.20</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">1.20</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-1.045</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">0.155</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">1.355</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">5</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -1.000 to 1.200 coefficient</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line>
+        <line class="default-line" x1="288.0" y1="58" x2="288.0" y2="262"></line>
+        <line class="threshold" x1="58" y1="260.5" x2="462" y2="260.5"></line>
+        <path class="line" d="M 58.0 248.6 L 91.7 262.0 L 125.3 262.0 L 159.0 58.0 L 192.7 260.3 L 226.3 260.3 L 260.0 260.3 L 288.0 262.0 L 293.7 262.0 L 327.3 257.0 L 361.0 248.6 L 394.7 253.6 L 428.3 250.3 L 462.0 260.3"></path>
+        <circle class="point" cx="58.0" cy="248.6" r="4"><title>k2 -2.733: 8 correct</title></circle>
+<circle class="point" cx="91.7" cy="262.0" r="4"><title>k2 -2.333: 0 correct</title></circle>
+<circle class="point" cx="125.3" cy="262.0" r="4"><title>k2 -1.933: 0 correct</title></circle>
+<circle class="point" cx="159.0" cy="58.0" r="4"><title>k2 -1.533: 122 correct</title></circle>
+<circle class="point" cx="192.7" cy="260.3" r="4"><title>k2 -1.133: 1 correct</title></circle>
+<circle class="point" cx="226.3" cy="260.3" r="4"><title>k2 -0.733: 1 correct</title></circle>
+<circle class="point" cx="260.0" cy="260.3" r="4"><title>k2 -0.333: 1 correct</title></circle>
+<circle class="point default-point" cx="288.0" cy="262.0" r="6"><title>k2 Brown-Conrady default 0.000: 0 correct</title></circle>
+<circle class="point" cx="293.7" cy="262.0" r="4"><title>k2 0.067: 0 correct</title></circle>
+<circle class="point" cx="327.3" cy="257.0" r="4"><title>k2 0.467: 3 correct</title></circle>
+<circle class="point" cx="361.0" cy="248.6" r="4"><title>k2 0.867: 8 correct</title></circle>
+<circle class="point" cx="394.7" cy="253.6" r="4"><title>k2 1.267: 5 correct</title></circle>
+<circle class="point" cx="428.3" cy="250.3" r="4"><title>k2 1.667: 7 correct</title></circle>
+<circle class="point" cx="462.0" cy="260.3" r="4"><title>k2 2.067: 1 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">k2</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual k2 value</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-2.40</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">2.40</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-2.733</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">-0.333</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">2.067</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">122</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -2.400 to 2.400 coefficient</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line>
+        <line class="default-line" x1="260.4" y1="58" x2="260.4" y2="262"></line>
+        <line class="threshold" x1="58" y1="225.3" x2="462" y2="225.3"></line>
+        <path class="line" d="M 58.0 180.4 L 91.7 221.2 L 125.3 221.2 L 159.0 221.2 L 192.7 139.6 L 226.3 180.4 L 260.0 221.2 L 260.4 221.2 L 293.7 180.4 L 327.3 58.0 L 361.0 221.2 L 394.7 98.8 L 428.3 139.6 L 462.0 180.4"></path>
+        <circle class="point" cx="58.0" cy="180.4" r="4"><title>p1 -0.160: 2 correct</title></circle>
+<circle class="point" cx="91.7" cy="221.2" r="4"><title>p1 -0.134: 1 correct</title></circle>
+<circle class="point" cx="125.3" cy="221.2" r="4"><title>p1 -0.107: 1 correct</title></circle>
+<circle class="point" cx="159.0" cy="221.2" r="4"><title>p1 -0.080: 1 correct</title></circle>
+<circle class="point" cx="192.7" cy="139.6" r="4"><title>p1 -0.054: 3 correct</title></circle>
+<circle class="point" cx="226.3" cy="180.4" r="4"><title>p1 -0.027: 2 correct</title></circle>
+<circle class="point" cx="260.0" cy="221.2" r="4"><title>p1 -0.000: 1 correct</title></circle>
+<circle class="point default-point" cx="260.4" cy="221.2" r="6"><title>p1 Brown-Conrady default 0.000: 1 correct</title></circle>
+<circle class="point" cx="293.7" cy="180.4" r="4"><title>p1 0.026: 2 correct</title></circle>
+<circle class="point" cx="327.3" cy="58.0" r="4"><title>p1 0.053: 5 correct</title></circle>
+<circle class="point" cx="361.0" cy="221.2" r="4"><title>p1 0.080: 1 correct</title></circle>
+<circle class="point" cx="394.7" cy="98.8" r="4"><title>p1 0.106: 4 correct</title></circle>
+<circle class="point" cx="428.3" cy="139.6" r="4"><title>p1 0.133: 3 correct</title></circle>
+<circle class="point" cx="462.0" cy="180.4" r="4"><title>p1 0.160: 2 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">p1</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual p1 value</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.16</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.16</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-0.160</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">-0.000</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">0.160</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">5</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.160 to 0.160 coefficient</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line>
+        <line class="default-line" x1="258.3" y1="58" x2="258.3" y2="262"></line>
+        <line class="threshold" x1="58" y1="246.7" x2="462" y2="246.7"></line>
+        <path class="line" d="M 58.0 245.0 L 91.7 245.0 L 125.3 245.0 L 159.0 245.0 L 192.7 245.0 L 226.3 228.0 L 258.3 245.0 L 260.0 245.0 L 293.7 245.0 L 327.3 245.0 L 361.0 177.0 L 394.7 194.0 L 428.3 262.0 L 462.0 58.0"></path>
+        <circle class="point" cx="58.0" cy="245.0" r="4"><title>p2 -0.159: 1 correct</title></circle>
+<circle class="point" cx="91.7" cy="245.0" r="4"><title>p2 -0.132: 1 correct</title></circle>
+<circle class="point" cx="125.3" cy="245.0" r="4"><title>p2 -0.105: 1 correct</title></circle>
+<circle class="point" cx="159.0" cy="245.0" r="4"><title>p2 -0.079: 1 correct</title></circle>
+<circle class="point" cx="192.7" cy="245.0" r="4"><title>p2 -0.052: 1 correct</title></circle>
+<circle class="point" cx="226.3" cy="228.0" r="4"><title>p2 -0.025: 2 correct</title></circle>
+<circle class="point default-point" cx="258.3" cy="245.0" r="6"><title>p2 Brown-Conrady default 0.000: 1 correct</title></circle>
+<circle class="point" cx="260.0" cy="245.0" r="4"><title>p2 0.001: 1 correct</title></circle>
+<circle class="point" cx="293.7" cy="245.0" r="4"><title>p2 0.028: 1 correct</title></circle>
+<circle class="point" cx="327.3" cy="245.0" r="4"><title>p2 0.055: 1 correct</title></circle>
+<circle class="point" cx="361.0" cy="177.0" r="4"><title>p2 0.081: 5 correct</title></circle>
+<circle class="point" cx="394.7" cy="194.0" r="4"><title>p2 0.108: 4 correct</title></circle>
+<circle class="point" cx="428.3" cy="262.0" r="4"><title>p2 0.135: 0 correct</title></circle>
+<circle class="point" cx="462.0" cy="58.0" r="4"><title>p2 0.161: 12 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">p2</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual p2 value</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.16</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.16</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-0.159</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">0.001</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">0.161</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">12</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.160 to 0.160 coefficient</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="204.9" y1="58" x2="204.9" y2="262"></line>
+        
+        <line class="threshold" x1="58" y1="225.3" x2="462" y2="225.3"></line>
+        <path class="line" d="M 58.0 98.8 L 91.7 180.4 L 125.3 221.2 L 159.0 180.4 L 192.7 58.0 L 226.3 98.8 L 260.0 58.0 L 293.7 58.0 L 327.3 98.8 L 361.0 262.0 L 394.7 221.2 L 428.3 221.2 L 462.0 262.0"></path>
+        <circle class="point" cx="58.0" cy="98.8" r="4"><title>common f1/f2 zoom 0.200: 4 correct</title></circle>
+<circle class="point" cx="91.7" cy="180.4" r="4"><title>common f1/f2 zoom 0.383: 2 correct</title></circle>
+<circle class="point" cx="125.3" cy="221.2" r="4"><title>common f1/f2 zoom 0.567: 1 correct</title></circle>
+<circle class="point" cx="159.0" cy="180.4" r="4"><title>common f1/f2 zoom 0.750: 2 correct</title></circle>
+<circle class="point" cx="192.7" cy="58.0" r="4"><title>common f1/f2 zoom 0.933: 5 correct</title></circle>
+<circle class="point" cx="226.3" cy="98.8" r="4"><title>common f1/f2 zoom 1.117: 4 correct</title></circle>
+<circle class="point" cx="260.0" cy="58.0" r="4"><title>common f1/f2 zoom 1.300: 5 correct</title></circle>
+<circle class="point" cx="293.7" cy="58.0" r="4"><title>common f1/f2 zoom 1.483: 5 correct</title></circle>
+<circle class="point" cx="327.3" cy="98.8" r="4"><title>common f1/f2 zoom 1.667: 4 correct</title></circle>
+<circle class="point" cx="361.0" cy="262.0" r="4"><title>common f1/f2 zoom 1.850: 0 correct</title></circle>
+<circle class="point" cx="394.7" cy="221.2" r="4"><title>common f1/f2 zoom 2.033: 1 correct</title></circle>
+<circle class="point" cx="428.3" cy="221.2" r="4"><title>common f1/f2 zoom 2.217: 1 correct</title></circle>
+<circle class="point" cx="462.0" cy="262.0" r="4"><title>common f1/f2 zoom 2.400: 0 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">common f1/f2 zoom</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">zoom factor minus one</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual common zoom factor</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.80</text>
+<text class="tick" x="204.9" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">1.40</text>
+        <text class="tick top-tick" x="58.0" y="46" text-anchor="middle">0.200</text>
+<text class="tick top-tick" x="204.9" y="46" text-anchor="middle">1.000</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">2.400</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">5</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.800 to 1.217 scale</p>
+    </section></section>
+<h2>Summary JSON</h2>
+<pre>{
+  &quot;recommendation&quot;: {
+    &quot;baselineCorrect&quot;: 1,
+    &quot;zoomTolerance90Percent&quot;: &quot;0.20x to 2.22x&quot;,
+    &quot;strategy&quot;: [
+      &quot;Use full-resolution star scanning for iPhone/Brown-Conrady images before drawing conclusions about the asterism matcher.&quot;,
+      &quot;For pre-undistortion, search a coarse common focal zoom grid first because triangle ratios are partly scale-invariant but pixel-side gates still matter.&quot;,
+      &quot;Keep f1/f2 aspect ratio close to the EXIF/image-width initialization; sweep common zoom more aggressively than differential f1-vs-f2 changes.&quot;,
+      &quot;Treat principal point offsets and low-order radial terms as the most important pre-flattening parameters after focal scale.&quot;,
+      &quot;Keep tangential coefficients p1 and p2 fixed at zero during blind pre-flattening and early fitting; only release them in the final pixel-space fit after robust star identities exist.&quot;
+    ],
+    &quot;parameterTolerance90Percent&quot;: [
+      {
+        &quot;name&quot;: &quot;f1&quot;,
+        &quot;tolerance&quot;: &quot;-85.0% to 85.0%&quot;
+      },
+      {
+        &quot;name&quot;: &quot;f2&quot;,
+        &quot;tolerance&quot;: &quot;-70.8% to 85.0%&quot;
+      },
+      {
+        &quot;name&quot;: &quot;du&quot;,
+        &quot;tolerance&quot;: &quot;-0.220 to 0.220 normalized image&quot;
+      },
+      {
+        &quot;name&quot;: &quot;dv&quot;,
+        &quot;tolerance&quot;: &quot;-0.220 to 0.220 normalized image&quot;
+      },
+      {
+        &quot;name&quot;: &quot;k1&quot;,
+        &quot;tolerance&quot;: &quot;-1.000 to 1.200 coefficient&quot;
+      },
+      {
+        &quot;name&quot;: &quot;k2&quot;,
+        &quot;tolerance&quot;: &quot;-2.400 to 2.400 coefficient&quot;
+      },
+      {
+        &quot;name&quot;: &quot;p1&quot;,
+        &quot;tolerance&quot;: &quot;-0.160 to 0.160 coefficient&quot;
+      },
+      {
+        &quot;name&quot;: &quot;p2&quot;,
+        &quot;tolerance&quot;: &quot;-0.160 to 0.160 coefficient&quot;
+      }
+    ]
+  },
+  &quot;detectorStatus&quot;: &quot;bright-star detector: bg 73.1, sigma 29.5, thresholds scan/global 87.8/117.4, 161652 local peaks, 2412/8957 star-like candidates after clutter, selected top 650/650, suppression radius 10 px&quot;
+}</pre>
+</main>
+</body>
+</html>

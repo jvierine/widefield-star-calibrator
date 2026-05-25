@@ -1,0 +1,1565 @@
+{
+  "recommendation": {
+    "baselineCorrect": 1,
+    "zoomTolerance90Percent": "0.20x to 2.22x",
+    "strategy": [
+      "Use full-resolution star scanning for iPhone/Brown-Conrady images before drawing conclusions about the asterism matcher.",
+      "For pre-undistortion, search a coarse common focal zoom grid first because triangle ratios are partly scale-invariant but pixel-side gates still matter.",
+      "Keep f1/f2 aspect ratio close to the EXIF/image-width initialization; sweep common zoom more aggressively than differential f1-vs-f2 changes.",
+      "Treat principal point offsets and low-order radial terms as the most important pre-flattening parameters after focal scale.",
+      "Keep tangential coefficients p1 and p2 fixed at zero during blind pre-flattening and early fitting; only release them in the final pixel-space fit after robust star identities exist."
+    ],
+    "parameterTolerance90Percent": [
+      {
+        "name": "f1",
+        "tolerance": "-85.0% to 85.0%"
+      },
+      {
+        "name": "f2",
+        "tolerance": "-70.8% to 85.0%"
+      },
+      {
+        "name": "du",
+        "tolerance": "-0.220 to 0.220 normalized image"
+      },
+      {
+        "name": "dv",
+        "tolerance": "-0.220 to 0.220 normalized image"
+      },
+      {
+        "name": "k1",
+        "tolerance": "-1.000 to 1.200 coefficient"
+      },
+      {
+        "name": "k2",
+        "tolerance": "-2.400 to 2.400 coefficient"
+      },
+      {
+        "name": "p1",
+        "tolerance": "-0.160 to 0.160 coefficient"
+      },
+      {
+        "name": "p2",
+        "tolerance": "-0.160 to 0.160 coefficient"
+      }
+    ]
+  },
+  "testCase": {
+    "id": "IMG_9953",
+    "image": "test_cases/IMG_9953/IMG_9953.png",
+    "width": 4032,
+    "height": 3024,
+    "optmod": 20
+  },
+  "maxMag": 6.5,
+  "detectorOptions": {
+    "maxDetections": 650,
+    "scanStep": 1,
+    "thresholdSigma": 1.5,
+    "localThresholdSigma": 1.5,
+    "requireGlobalThreshold": false,
+    "maxRadiusPx": 5,
+    "maxElongation": 4,
+    "suppressionRadiusPx": 10,
+    "crowdingRadiusPx": 36,
+    "maxCrowding": 7,
+    "crowdingScorePower": 1.25
+  },
+  "matcherOptions": {
+    "maxDistancePx": 35,
+    "minMatches": 8,
+    "maxDetectionTriangleStars": 80,
+    "maxCatalogTriangleStars": 160,
+    "maxDetectionTriangles": 2600,
+    "maxCatalogTriangles": 16000,
+    "triangleSignatureRadius": 0.02,
+    "maxNeighborTriangles": 8,
+    "maxCandidateTransforms": 3000
+  },
+  "detectorStatus": "bright-star detector: bg 73.1, sigma 29.5, thresholds scan/global 87.8/117.4, 161652 local peaks, 2412/8957 star-like candidates after clutter, selected top 650/650, suppression radius 10 px",
+  "rawDetections": 650,
+  "oracleDetectorHits": 158,
+  "baseline": {
+    "total": 123,
+    "correct": 1,
+    "incorrect": 122,
+    "unknown": 0,
+    "medianDistance": 34.93443976573626,
+    "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+  },
+  "brownConradyDefault": {
+    "total": 138,
+    "correct": 5,
+    "incorrect": 133,
+    "unknown": 0,
+    "medianDistance": 25.764576383014223,
+    "status": "auto-identify: asterism matched 138 stars <= mag 6.5, median residual 25.8 px, scored 3000 triangle transforms"
+  },
+  "brownConradyDefaultOptpar": [
+    1,
+    1.3333333333333333,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "sweeps": [
+    {
+      "index": 0,
+      "name": "f1",
+      "label": "f1",
+      "mode": "relative",
+      "span": 0.85,
+      "unit": "fraction",
+      "points": [
+        {
+          "kind": "grid",
+          "delta": -0.85,
+          "value": 0.10339971977578666,
+          "total": 155,
+          "correct": 136,
+          "incorrect": 19,
+          "unknown": 0,
+          "medianDistance": 8.131805354116015,
+          "status": "auto-identify: asterism matched 155 stars <= mag 6.5, median residual 8.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.7083333333333333,
+          "value": 0.20105501067514073,
+          "total": 91,
+          "correct": 0,
+          "incorrect": 91,
+          "unknown": 0,
+          "medianDistance": 40.23647833148585,
+          "status": "auto-identify: asterism matched 91 stars <= mag 6.5, median residual 40.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.5666666666666667,
+          "value": 0.29871030157449474,
+          "total": 103,
+          "correct": 0,
+          "incorrect": 103,
+          "unknown": 0,
+          "medianDistance": 38.78200124027563,
+          "status": "auto-identify: asterism matched 103 stars <= mag 6.5, median residual 38.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.425,
+          "value": 0.3963655924738487,
+          "total": 110,
+          "correct": 8,
+          "incorrect": 102,
+          "unknown": 0,
+          "medianDistance": 32.56596911982504,
+          "status": "auto-identify: asterism matched 110 stars <= mag 6.5, median residual 32.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.2833333333333333,
+          "value": 0.4940208833732028,
+          "total": 114,
+          "correct": 5,
+          "incorrect": 109,
+          "unknown": 0,
+          "medianDistance": 34.73848081758685,
+          "status": "auto-identify: asterism matched 114 stars <= mag 6.5, median residual 34.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.1416666666666666,
+          "value": 0.5916761742725569,
+          "total": 119,
+          "correct": 3,
+          "incorrect": 116,
+          "unknown": 0,
+          "medianDistance": 33.55742474181141,
+          "status": "auto-identify: asterism matched 119 stars <= mag 6.5, median residual 33.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0,
+          "value": 0.6893314651719109,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.93443976573626,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.14166666666666672,
+          "value": 0.7869867560712649,
+          "total": 135,
+          "correct": 21,
+          "incorrect": 114,
+          "unknown": 0,
+          "medianDistance": 34.385297828788545,
+          "status": "auto-identify: asterism matched 135 stars <= mag 6.5, median residual 34.4 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.2833333333333333,
+          "value": 0.8846420469706189,
+          "total": 140,
+          "correct": 27,
+          "incorrect": 113,
+          "unknown": 0,
+          "medianDistance": 31.154128268903868,
+          "status": "auto-identify: asterism matched 140 stars <= mag 6.5, median residual 31.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.42499999999999993,
+          "value": 0.9822973378699729,
+          "total": 132,
+          "correct": 5,
+          "incorrect": 127,
+          "unknown": 0,
+          "medianDistance": 30.67935144064593,
+          "status": "auto-identify: asterism matched 132 stars <= mag 6.5, median residual 30.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "default",
+          "delta": 0.45068091408044486,
+          "value": 1,
+          "total": 133,
+          "correct": 5,
+          "incorrect": 128,
+          "unknown": 0,
+          "medianDistance": 30.541109185549242,
+          "status": "auto-identify: asterism matched 133 stars <= mag 6.5, median residual 30.5 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.5666666666666668,
+          "value": 1.0799526287693273,
+          "total": 135,
+          "correct": 0,
+          "incorrect": 135,
+          "unknown": 0,
+          "medianDistance": 36.306603353150436,
+          "status": "auto-identify: asterism matched 135 stars <= mag 6.5, median residual 36.3 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.7083333333333334,
+          "value": 1.1776079196686813,
+          "total": 131,
+          "correct": 3,
+          "incorrect": 128,
+          "unknown": 0,
+          "medianDistance": 26.269034455353566,
+          "status": "auto-identify: asterism matched 131 stars <= mag 6.5, median residual 26.3 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.85,
+          "value": 1.2752632105680353,
+          "total": 136,
+          "correct": 1,
+          "incorrect": 135,
+          "unknown": 0,
+          "medianDistance": 31.300605770320743,
+          "status": "auto-identify: asterism matched 136 stars <= mag 6.5, median residual 31.3 px, scored 3000 triangle transforms"
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "name": "f2",
+      "label": "f2",
+      "mode": "relative",
+      "span": 0.85,
+      "unit": "fraction",
+      "points": [
+        {
+          "kind": "grid",
+          "delta": -0.85,
+          "value": 0.1376807266667339,
+          "total": 79,
+          "correct": 0,
+          "incorrect": 79,
+          "unknown": 0,
+          "medianDistance": 34.21974937780546,
+          "status": "auto-identify: asterism matched 79 stars <= mag 6.5, median residual 34.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.7083333333333333,
+          "value": 0.2677125240742048,
+          "total": 105,
+          "correct": 2,
+          "incorrect": 103,
+          "unknown": 0,
+          "medianDistance": 42.04271561449714,
+          "status": "auto-identify: asterism matched 105 stars <= mag 6.5, median residual 42.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.5666666666666667,
+          "value": 0.3977443214816756,
+          "total": 98,
+          "correct": 1,
+          "incorrect": 97,
+          "unknown": 0,
+          "medianDistance": 31.954982088905634,
+          "status": "auto-identify: asterism matched 98 stars <= mag 6.5, median residual 32.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.425,
+          "value": 0.5277761188891464,
+          "total": 112,
+          "correct": 0,
+          "incorrect": 112,
+          "unknown": 0,
+          "medianDistance": 34.56559269966226,
+          "status": "auto-identify: asterism matched 112 stars <= mag 6.5, median residual 34.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.2833333333333333,
+          "value": 0.6578079162966174,
+          "total": 113,
+          "correct": 0,
+          "incorrect": 113,
+          "unknown": 0,
+          "medianDistance": 36.208100972930744,
+          "status": "auto-identify: asterism matched 113 stars <= mag 6.5, median residual 36.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.1416666666666666,
+          "value": 0.7878397137040882,
+          "total": 119,
+          "correct": 4,
+          "incorrect": 115,
+          "unknown": 0,
+          "medianDistance": 36.661240059253075,
+          "status": "auto-identify: asterism matched 119 stars <= mag 6.5, median residual 36.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0,
+          "value": 0.9178715111115591,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.93443976573626,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.14166666666666672,
+          "value": 1.04790330851903,
+          "total": 130,
+          "correct": 5,
+          "incorrect": 125,
+          "unknown": 0,
+          "medianDistance": 34.43824528595292,
+          "status": "auto-identify: asterism matched 130 stars <= mag 6.5, median residual 34.4 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.2833333333333333,
+          "value": 1.1779351059265006,
+          "total": 132,
+          "correct": 10,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 33.54422371805891,
+          "status": "auto-identify: asterism matched 132 stars <= mag 6.5, median residual 33.5 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.42499999999999993,
+          "value": 1.3079669033339716,
+          "total": 127,
+          "correct": 1,
+          "incorrect": 126,
+          "unknown": 0,
+          "medianDistance": 34.79746085043332,
+          "status": "auto-identify: asterism matched 127 stars <= mag 6.5, median residual 34.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "default",
+          "delta": 0.4526361448114262,
+          "value": 1.3333333333333333,
+          "total": 129,
+          "correct": 1,
+          "incorrect": 128,
+          "unknown": 0,
+          "medianDistance": 34.67268426800457,
+          "status": "auto-identify: asterism matched 129 stars <= mag 6.5, median residual 34.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.5666666666666668,
+          "value": 1.4379987007414428,
+          "total": 133,
+          "correct": 5,
+          "incorrect": 128,
+          "unknown": 0,
+          "medianDistance": 31.617432312507514,
+          "status": "auto-identify: asterism matched 133 stars <= mag 6.5, median residual 31.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.7083333333333334,
+          "value": 1.5680304981489135,
+          "total": 151,
+          "correct": 21,
+          "incorrect": 130,
+          "unknown": 0,
+          "medianDistance": 35.07526029087212,
+          "status": "auto-identify: asterism matched 151 stars <= mag 6.5, median residual 35.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.85,
+          "value": 1.6980622955563844,
+          "total": 147,
+          "correct": 32,
+          "incorrect": 115,
+          "unknown": 0,
+          "medianDistance": 27.70114552571494,
+          "status": "auto-identify: asterism matched 147 stars <= mag 6.5, median residual 27.7 px, scored 3000 triangle transforms"
+        }
+      ]
+    },
+    {
+      "index": 5,
+      "name": "du",
+      "label": "du",
+      "mode": "absolute",
+      "span": 0.22,
+      "unit": "normalized image",
+      "points": [
+        {
+          "kind": "grid",
+          "delta": -0.22,
+          "value": -0.22031494914639815,
+          "total": 126,
+          "correct": 4,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 35.50834864121285,
+          "status": "auto-identify: asterism matched 126 stars <= mag 6.5, median residual 35.5 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.18333333333333335,
+          "value": -0.1836482824797315,
+          "total": 126,
+          "correct": 4,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 35.873059465598615,
+          "status": "auto-identify: asterism matched 126 stars <= mag 6.5, median residual 35.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.14666666666666667,
+          "value": -0.14698161581306482,
+          "total": 122,
+          "correct": 6,
+          "incorrect": 116,
+          "unknown": 0,
+          "medianDistance": 33.14530274212309,
+          "status": "auto-identify: asterism matched 122 stars <= mag 6.5, median residual 33.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.11,
+          "value": -0.11031494914639815,
+          "total": 121,
+          "correct": 1,
+          "incorrect": 120,
+          "unknown": 0,
+          "medianDistance": 34.7072266258888,
+          "status": "auto-identify: asterism matched 121 stars <= mag 6.5, median residual 34.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.07333333333333333,
+          "value": -0.07364828247973149,
+          "total": 128,
+          "correct": 2,
+          "incorrect": 126,
+          "unknown": 0,
+          "medianDistance": 32.1266953051924,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 32.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.03666666666666665,
+          "value": -0.0369816158130648,
+          "total": 128,
+          "correct": 3,
+          "incorrect": 125,
+          "unknown": 0,
+          "medianDistance": 32.551446393886955,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 32.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0,
+          "value": -0.00031494914639814634,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.93443976573626,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "default",
+          "delta": 0.00031494914639814634,
+          "value": 0,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.932195315427975,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.03666666666666665,
+          "value": 0.03635171752026851,
+          "total": 123,
+          "correct": 3,
+          "incorrect": 120,
+          "unknown": 0,
+          "medianDistance": 34.90540662370465,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.07333333333333333,
+          "value": 0.07301838418693518,
+          "total": 124,
+          "correct": 3,
+          "incorrect": 121,
+          "unknown": 0,
+          "medianDistance": 35.36104174150422,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 35.4 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.11000000000000001,
+          "value": 0.10968505085360186,
+          "total": 124,
+          "correct": 3,
+          "incorrect": 121,
+          "unknown": 0,
+          "medianDistance": 35.32242041602696,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 35.3 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.1466666666666667,
+          "value": 0.14635171752026854,
+          "total": 124,
+          "correct": 3,
+          "incorrect": 121,
+          "unknown": 0,
+          "medianDistance": 35.23342357815387,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 35.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.18333333333333332,
+          "value": 0.18301838418693517,
+          "total": 124,
+          "correct": 3,
+          "incorrect": 121,
+          "unknown": 0,
+          "medianDistance": 35.81505638361443,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 35.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.22,
+          "value": 0.21968505085360185,
+          "total": 126,
+          "correct": 4,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 35.57955614598134,
+          "status": "auto-identify: asterism matched 126 stars <= mag 6.5, median residual 35.6 px, scored 3000 triangle transforms"
+        }
+      ]
+    },
+    {
+      "index": 6,
+      "name": "dv",
+      "label": "dv",
+      "mode": "absolute",
+      "span": 0.22,
+      "unit": "normalized image",
+      "points": [
+        {
+          "kind": "grid",
+          "delta": -0.22,
+          "value": -0.22090800406763206,
+          "total": 124,
+          "correct": 4,
+          "incorrect": 120,
+          "unknown": 0,
+          "medianDistance": 35.33663080085847,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 35.3 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.18333333333333335,
+          "value": -0.1842413374009654,
+          "total": 122,
+          "correct": 4,
+          "incorrect": 118,
+          "unknown": 0,
+          "medianDistance": 35.34056421790402,
+          "status": "auto-identify: asterism matched 122 stars <= mag 6.5, median residual 35.3 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.14666666666666667,
+          "value": -0.14757467073429872,
+          "total": 125,
+          "correct": 2,
+          "incorrect": 123,
+          "unknown": 0,
+          "medianDistance": 33.813333736973185,
+          "status": "auto-identify: asterism matched 125 stars <= mag 6.5, median residual 33.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.11,
+          "value": -0.11090800406763204,
+          "total": 125,
+          "correct": 2,
+          "incorrect": 123,
+          "unknown": 0,
+          "medianDistance": 34.06927980670525,
+          "status": "auto-identify: asterism matched 125 stars <= mag 6.5, median residual 34.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.07333333333333333,
+          "value": -0.07424133740096538,
+          "total": 122,
+          "correct": 3,
+          "incorrect": 119,
+          "unknown": 0,
+          "medianDistance": 34.932235165594236,
+          "status": "auto-identify: asterism matched 122 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.03666666666666665,
+          "value": -0.0375746707342987,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 35.16933979951323,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 35.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0,
+          "value": -0.0009080040676320465,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.93443976573626,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "default",
+          "delta": 0.0009080040676320465,
+          "value": 0,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.94085599870689,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.03666666666666665,
+          "value": 0.0357586625990346,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 35.060431952874275,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 35.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.07333333333333333,
+          "value": 0.07242532926570129,
+          "total": 128,
+          "correct": 2,
+          "incorrect": 126,
+          "unknown": 0,
+          "medianDistance": 32.872152001428546,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 32.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.11000000000000001,
+          "value": 0.10909199593236797,
+          "total": 128,
+          "correct": 2,
+          "incorrect": 126,
+          "unknown": 0,
+          "medianDistance": 32.969998778825044,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 33.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.1466666666666667,
+          "value": 0.14575866259903464,
+          "total": 128,
+          "correct": 3,
+          "incorrect": 125,
+          "unknown": 0,
+          "medianDistance": 33.98126641823872,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 34.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.18333333333333332,
+          "value": 0.18242532926570126,
+          "total": 128,
+          "correct": 3,
+          "incorrect": 125,
+          "unknown": 0,
+          "medianDistance": 34.45173875681559,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 34.5 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.22,
+          "value": 0.21909199593236794,
+          "total": 127,
+          "correct": 2,
+          "incorrect": 125,
+          "unknown": 0,
+          "medianDistance": 32.95515947904893,
+          "status": "auto-identify: asterism matched 127 stars <= mag 6.5, median residual 33.0 px, scored 3000 triangle transforms"
+        }
+      ]
+    },
+    {
+      "index": 7,
+      "name": "k1",
+      "label": "k1",
+      "mode": "absolute",
+      "span": 1.2,
+      "unit": "coefficient",
+      "points": [
+        {
+          "kind": "grid",
+          "delta": -1.2,
+          "value": -1.0450961744572105,
+          "total": 81,
+          "correct": 0,
+          "incorrect": 81,
+          "unknown": 0,
+          "medianDistance": 37.64740820128709,
+          "status": "auto-identify: asterism matched 81 stars <= mag 6.5, median residual 37.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -1,
+          "value": -0.8450961744572105,
+          "total": 77,
+          "correct": 1,
+          "incorrect": 76,
+          "unknown": 0,
+          "medianDistance": 34.702121891962186,
+          "status": "auto-identify: asterism matched 77 stars <= mag 6.5, median residual 34.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.8,
+          "value": -0.6450961744572106,
+          "total": 91,
+          "correct": 1,
+          "incorrect": 90,
+          "unknown": 0,
+          "medianDistance": 35.15150316884477,
+          "status": "auto-identify: asterism matched 91 stars <= mag 6.5, median residual 35.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.6,
+          "value": -0.44509617445721045,
+          "total": 100,
+          "correct": 0,
+          "incorrect": 100,
+          "unknown": 0,
+          "medianDistance": 34.625362169532025,
+          "status": "auto-identify: asterism matched 100 stars <= mag 6.5, median residual 34.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.4,
+          "value": -0.2450961744572105,
+          "total": 115,
+          "correct": 1,
+          "incorrect": 114,
+          "unknown": 0,
+          "medianDistance": 36.09378264028581,
+          "status": "auto-identify: asterism matched 115 stars <= mag 6.5, median residual 36.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.19999999999999996,
+          "value": -0.045096174457210425,
+          "total": 119,
+          "correct": 1,
+          "incorrect": 118,
+          "unknown": 0,
+          "medianDistance": 36.95638315890183,
+          "status": "auto-identify: asterism matched 119 stars <= mag 6.5, median residual 37.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "default",
+          "delta": -0.15490382554278953,
+          "value": 0,
+          "total": 120,
+          "correct": 1,
+          "incorrect": 119,
+          "unknown": 0,
+          "medianDistance": 34.634193764786986,
+          "status": "auto-identify: asterism matched 120 stars <= mag 6.5, median residual 34.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0,
+          "value": 0.15490382554278953,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.93443976573626,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.20000000000000018,
+          "value": 0.3549038255427897,
+          "total": 127,
+          "correct": 1,
+          "incorrect": 126,
+          "unknown": 0,
+          "medianDistance": 36.162521294908956,
+          "status": "auto-identify: asterism matched 127 stars <= mag 6.5, median residual 36.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.3999999999999999,
+          "value": 0.5549038255427894,
+          "total": 128,
+          "correct": 1,
+          "incorrect": 127,
+          "unknown": 0,
+          "medianDistance": 36.75282403491388,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 36.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.5999999999999999,
+          "value": 0.7549038255427893,
+          "total": 131,
+          "correct": 0,
+          "incorrect": 131,
+          "unknown": 0,
+          "medianDistance": 34.07416064205764,
+          "status": "auto-identify: asterism matched 131 stars <= mag 6.5, median residual 34.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.8,
+          "value": 0.9549038255427895,
+          "total": 133,
+          "correct": 5,
+          "incorrect": 128,
+          "unknown": 0,
+          "medianDistance": 34.90933917661062,
+          "status": "auto-identify: asterism matched 133 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.9999999999999998,
+          "value": 1.1549038255427893,
+          "total": 131,
+          "correct": 0,
+          "incorrect": 131,
+          "unknown": 0,
+          "medianDistance": 30.37058498361977,
+          "status": "auto-identify: asterism matched 131 stars <= mag 6.5, median residual 30.4 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 1.2,
+          "value": 1.3549038255427894,
+          "total": 133,
+          "correct": 3,
+          "incorrect": 130,
+          "unknown": 0,
+          "medianDistance": 33.66153811922904,
+          "status": "auto-identify: asterism matched 133 stars <= mag 6.5, median residual 33.7 px, scored 3000 triangle transforms"
+        }
+      ]
+    },
+    {
+      "index": 8,
+      "name": "k2",
+      "label": "k2",
+      "mode": "absolute",
+      "span": 2.4,
+      "unit": "coefficient",
+      "points": [
+        {
+          "kind": "grid",
+          "delta": -2.4,
+          "value": -2.7325162459395207,
+          "total": 105,
+          "correct": 8,
+          "incorrect": 97,
+          "unknown": 0,
+          "medianDistance": 36.65984125725424,
+          "status": "auto-identify: asterism matched 105 stars <= mag 6.5, median residual 36.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -2,
+          "value": -2.3325162459395212,
+          "total": 108,
+          "correct": 0,
+          "incorrect": 108,
+          "unknown": 0,
+          "medianDistance": 35.46481246048808,
+          "status": "auto-identify: asterism matched 108 stars <= mag 6.5, median residual 35.5 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -1.6,
+          "value": -1.932516245939521,
+          "total": 111,
+          "correct": 0,
+          "incorrect": 111,
+          "unknown": 0,
+          "medianDistance": 35.321836185001295,
+          "status": "auto-identify: asterism matched 111 stars <= mag 6.5, median residual 35.3 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -1.2,
+          "value": -1.532516245939521,
+          "total": 145,
+          "correct": 122,
+          "incorrect": 23,
+          "unknown": 0,
+          "medianDistance": 0.7830223533877761,
+          "status": "auto-identify: asterism matched 145 stars <= mag 6.5, median residual 0.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.8,
+          "value": -1.132516245939521,
+          "total": 114,
+          "correct": 1,
+          "incorrect": 113,
+          "unknown": 0,
+          "medianDistance": 36.562868441970394,
+          "status": "auto-identify: asterism matched 114 stars <= mag 6.5, median residual 36.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.3999999999999999,
+          "value": -0.7325162459395209,
+          "total": 116,
+          "correct": 1,
+          "incorrect": 115,
+          "unknown": 0,
+          "medianDistance": 36.10102871773202,
+          "status": "auto-identify: asterism matched 116 stars <= mag 6.5, median residual 36.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0,
+          "value": -0.332516245939521,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.93443976573626,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "default",
+          "delta": 0.332516245939521,
+          "value": 0,
+          "total": 128,
+          "correct": 0,
+          "incorrect": 128,
+          "unknown": 0,
+          "medianDistance": 36.37247147063668,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 36.4 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.40000000000000036,
+          "value": 0.06748375406047935,
+          "total": 128,
+          "correct": 0,
+          "incorrect": 128,
+          "unknown": 0,
+          "medianDistance": 35.84292591562274,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 35.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.7999999999999998,
+          "value": 0.4674837540604788,
+          "total": 127,
+          "correct": 3,
+          "incorrect": 124,
+          "unknown": 0,
+          "medianDistance": 36.79380260879649,
+          "status": "auto-identify: asterism matched 127 stars <= mag 6.5, median residual 36.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 1.1999999999999997,
+          "value": 0.8674837540604787,
+          "total": 129,
+          "correct": 8,
+          "incorrect": 121,
+          "unknown": 0,
+          "medianDistance": 37.68996923761023,
+          "status": "auto-identify: asterism matched 129 stars <= mag 6.5, median residual 37.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 1.6,
+          "value": 1.267483754060479,
+          "total": 130,
+          "correct": 5,
+          "incorrect": 125,
+          "unknown": 0,
+          "medianDistance": 33.6479534382014,
+          "status": "auto-identify: asterism matched 130 stars <= mag 6.5, median residual 33.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 1.9999999999999996,
+          "value": 1.6674837540604786,
+          "total": 131,
+          "correct": 7,
+          "incorrect": 124,
+          "unknown": 0,
+          "medianDistance": 35.99432481587892,
+          "status": "auto-identify: asterism matched 131 stars <= mag 6.5, median residual 36.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 2.4,
+          "value": 2.067483754060479,
+          "total": 129,
+          "correct": 1,
+          "incorrect": 128,
+          "unknown": 0,
+          "medianDistance": 35.29234487055148,
+          "status": "auto-identify: asterism matched 129 stars <= mag 6.5, median residual 35.3 px, scored 3000 triangle transforms"
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "name": "p1",
+      "label": "p1",
+      "mode": "absolute",
+      "span": 0.16,
+      "unit": "coefficient",
+      "points": [
+        {
+          "kind": "grid",
+          "delta": -0.16,
+          "value": -0.1603300096677137,
+          "total": 121,
+          "correct": 2,
+          "incorrect": 119,
+          "unknown": 0,
+          "medianDistance": 34.76576316671579,
+          "status": "auto-identify: asterism matched 121 stars <= mag 6.5, median residual 34.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.13333333333333333,
+          "value": -0.13366334300104704,
+          "total": 119,
+          "correct": 1,
+          "incorrect": 118,
+          "unknown": 0,
+          "medianDistance": 29.769308899911977,
+          "status": "auto-identify: asterism matched 119 stars <= mag 6.5, median residual 29.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.10666666666666666,
+          "value": -0.10699667633438036,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 36.590168995272236,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 36.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.08,
+          "value": -0.0803300096677137,
+          "total": 127,
+          "correct": 1,
+          "incorrect": 126,
+          "unknown": 0,
+          "medianDistance": 33.538478299834686,
+          "status": "auto-identify: asterism matched 127 stars <= mag 6.5, median residual 33.5 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.05333333333333333,
+          "value": -0.053663343001047026,
+          "total": 123,
+          "correct": 3,
+          "incorrect": 120,
+          "unknown": 0,
+          "medianDistance": 32.07227675461526,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 32.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.026666666666666672,
+          "value": -0.02699667633438037,
+          "total": 126,
+          "correct": 2,
+          "incorrect": 124,
+          "unknown": 0,
+          "medianDistance": 34.75291545052718,
+          "status": "auto-identify: asterism matched 126 stars <= mag 6.5, median residual 34.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0,
+          "value": -0.0003300096677136981,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.93443976573626,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "default",
+          "delta": 0.0003300096677136981,
+          "value": 0,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.9446554335049,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.026666666666666672,
+          "value": 0.026336656998952972,
+          "total": 124,
+          "correct": 2,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.27485187602093,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 34.3 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.053333333333333344,
+          "value": 0.05300332366561965,
+          "total": 124,
+          "correct": 5,
+          "incorrect": 119,
+          "unknown": 0,
+          "medianDistance": 36.110524316205016,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 36.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.07999999999999999,
+          "value": 0.07966999033228629,
+          "total": 125,
+          "correct": 1,
+          "incorrect": 124,
+          "unknown": 0,
+          "medianDistance": 33.971995695571344,
+          "status": "auto-identify: asterism matched 125 stars <= mag 6.5, median residual 34.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.10666666666666666,
+          "value": 0.10633665699895296,
+          "total": 124,
+          "correct": 4,
+          "incorrect": 120,
+          "unknown": 0,
+          "medianDistance": 32.642124957834554,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 32.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.13333333333333333,
+          "value": 0.13300332366561962,
+          "total": 121,
+          "correct": 3,
+          "incorrect": 118,
+          "unknown": 0,
+          "medianDistance": 37.632213896131645,
+          "status": "auto-identify: asterism matched 121 stars <= mag 6.5, median residual 37.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.16,
+          "value": 0.1596699903322863,
+          "total": 120,
+          "correct": 2,
+          "incorrect": 118,
+          "unknown": 0,
+          "medianDistance": 38.3346426729545,
+          "status": "auto-identify: asterism matched 120 stars <= mag 6.5, median residual 38.3 px, scored 3000 triangle transforms"
+        }
+      ]
+    },
+    {
+      "index": 11,
+      "name": "p2",
+      "label": "p2",
+      "mode": "absolute",
+      "span": 0.16,
+      "unit": "coefficient",
+      "points": [
+        {
+          "kind": "grid",
+          "delta": -0.16,
+          "value": -0.1586380364707571,
+          "total": 121,
+          "correct": 1,
+          "incorrect": 120,
+          "unknown": 0,
+          "medianDistance": 33.12295553061596,
+          "status": "auto-identify: asterism matched 121 stars <= mag 6.5, median residual 33.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.13333333333333333,
+          "value": -0.13197136980409044,
+          "total": 121,
+          "correct": 1,
+          "incorrect": 120,
+          "unknown": 0,
+          "medianDistance": 31.143524052110525,
+          "status": "auto-identify: asterism matched 121 stars <= mag 6.5, median residual 31.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.10666666666666666,
+          "value": -0.10530470313742377,
+          "total": 125,
+          "correct": 1,
+          "incorrect": 124,
+          "unknown": 0,
+          "medianDistance": 33.14102648571403,
+          "status": "auto-identify: asterism matched 125 stars <= mag 6.5, median residual 33.1 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.08,
+          "value": -0.07863803647075711,
+          "total": 127,
+          "correct": 1,
+          "incorrect": 126,
+          "unknown": 0,
+          "medianDistance": 34.353903357497124,
+          "status": "auto-identify: asterism matched 127 stars <= mag 6.5, median residual 34.4 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.05333333333333333,
+          "value": -0.051971369804090436,
+          "total": 127,
+          "correct": 1,
+          "incorrect": 126,
+          "unknown": 0,
+          "medianDistance": 34.63144050871696,
+          "status": "auto-identify: asterism matched 127 stars <= mag 6.5, median residual 34.6 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": -0.026666666666666672,
+          "value": -0.02530470313742378,
+          "total": 125,
+          "correct": 2,
+          "incorrect": 123,
+          "unknown": 0,
+          "medianDistance": 33.720488600226616,
+          "status": "auto-identify: asterism matched 125 stars <= mag 6.5, median residual 33.7 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "default",
+          "delta": -0.0013619635292428944,
+          "value": 0,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.79701011443179,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0,
+          "value": 0.0013619635292428944,
+          "total": 123,
+          "correct": 1,
+          "incorrect": 122,
+          "unknown": 0,
+          "medianDistance": 34.93443976573626,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.9 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.026666666666666672,
+          "value": 0.028028630195909565,
+          "total": 124,
+          "correct": 1,
+          "incorrect": 123,
+          "unknown": 0,
+          "medianDistance": 30.78276198206641,
+          "status": "auto-identify: asterism matched 124 stars <= mag 6.5, median residual 30.8 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.053333333333333344,
+          "value": 0.05469529686257624,
+          "total": 120,
+          "correct": 1,
+          "incorrect": 119,
+          "unknown": 0,
+          "medianDistance": 33.440959089534786,
+          "status": "auto-identify: asterism matched 120 stars <= mag 6.5, median residual 33.4 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.07999999999999999,
+          "value": 0.08136196352924288,
+          "total": 123,
+          "correct": 5,
+          "incorrect": 118,
+          "unknown": 0,
+          "medianDistance": 34.17859939399196,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 34.2 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.10666666666666666,
+          "value": 0.10802863019590955,
+          "total": 123,
+          "correct": 4,
+          "incorrect": 119,
+          "unknown": 0,
+          "medianDistance": 35.97443882198956,
+          "status": "auto-identify: asterism matched 123 stars <= mag 6.5, median residual 36.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.13333333333333333,
+          "value": 0.13469529686257622,
+          "total": 121,
+          "correct": 0,
+          "incorrect": 121,
+          "unknown": 0,
+          "medianDistance": 38.037933112776805,
+          "status": "auto-identify: asterism matched 121 stars <= mag 6.5, median residual 38.0 px, scored 3000 triangle transforms"
+        },
+        {
+          "kind": "grid",
+          "delta": 0.16,
+          "value": 0.1613619635292429,
+          "total": 128,
+          "correct": 12,
+          "incorrect": 116,
+          "unknown": 0,
+          "medianDistance": 36.70537153800914,
+          "status": "auto-identify: asterism matched 128 stars <= mag 6.5, median residual 36.7 px, scored 3000 triangle transforms"
+        }
+      ]
+    }
+  ],
+  "zoomSweep": {
+    "name": "zoom",
+    "label": "common f1/f2 zoom",
+    "unit": "scale",
+    "mode": "absolute",
+    "points": [
+      {
+        "delta": -0.8,
+        "value": 0.2,
+        "total": 63,
+        "correct": 4,
+        "incorrect": 59,
+        "unknown": 0,
+        "medianDistance": 40.93599094311027,
+        "status": "auto-identify: asterism matched 63 stars <= mag 6.5, median residual 40.9 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": -0.6166666666666667,
+        "value": 0.3833333333333333,
+        "total": 71,
+        "correct": 2,
+        "incorrect": 69,
+        "unknown": 0,
+        "medianDistance": 34.05145685780308,
+        "status": "auto-identify: asterism matched 71 stars <= mag 6.5, median residual 34.1 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": -0.43333333333333335,
+        "value": 0.5666666666666667,
+        "total": 94,
+        "correct": 1,
+        "incorrect": 93,
+        "unknown": 0,
+        "medianDistance": 39.58502353327589,
+        "status": "auto-identify: asterism matched 94 stars <= mag 6.5, median residual 39.6 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": -0.25,
+        "value": 0.75,
+        "total": 112,
+        "correct": 2,
+        "incorrect": 110,
+        "unknown": 0,
+        "medianDistance": 34.53401078051646,
+        "status": "auto-identify: asterism matched 112 stars <= mag 6.5, median residual 34.5 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": -0.06666666666666665,
+        "value": 0.9333333333333333,
+        "total": 121,
+        "correct": 5,
+        "incorrect": 116,
+        "unknown": 0,
+        "medianDistance": 36.28333295176441,
+        "status": "auto-identify: asterism matched 121 stars <= mag 6.5, median residual 36.3 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": 0.11666666666666647,
+        "value": 1.1166666666666665,
+        "total": 132,
+        "correct": 4,
+        "incorrect": 128,
+        "unknown": 0,
+        "medianDistance": 29.987641579239053,
+        "status": "auto-identify: asterism matched 132 stars <= mag 6.5, median residual 30.0 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": 0.2999999999999998,
+        "value": 1.2999999999999998,
+        "total": 135,
+        "correct": 5,
+        "incorrect": 130,
+        "unknown": 0,
+        "medianDistance": 27.950193272312443,
+        "status": "auto-identify: asterism matched 135 stars <= mag 6.5, median residual 28.0 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": 0.48333333333333317,
+        "value": 1.4833333333333332,
+        "total": 137,
+        "correct": 5,
+        "incorrect": 132,
+        "unknown": 0,
+        "medianDistance": 24.95937926762034,
+        "status": "auto-identify: asterism matched 137 stars <= mag 6.5, median residual 25.0 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": 0.6666666666666665,
+        "value": 1.6666666666666665,
+        "total": 142,
+        "correct": 4,
+        "incorrect": 138,
+        "unknown": 0,
+        "medianDistance": 26.230719850346105,
+        "status": "auto-identify: asterism matched 142 stars <= mag 6.5, median residual 26.2 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": 0.8499999999999996,
+        "value": 1.8499999999999996,
+        "total": 145,
+        "correct": 0,
+        "incorrect": 145,
+        "unknown": 0,
+        "medianDistance": 28.723253652093245,
+        "status": "auto-identify: asterism matched 145 stars <= mag 6.5, median residual 28.7 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": 1.0333333333333332,
+        "value": 2.033333333333333,
+        "total": 151,
+        "correct": 1,
+        "incorrect": 150,
+        "unknown": 0,
+        "medianDistance": 26.368473258686812,
+        "status": "auto-identify: asterism matched 151 stars <= mag 6.5, median residual 26.4 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": 1.2166666666666663,
+        "value": 2.2166666666666663,
+        "total": 152,
+        "correct": 1,
+        "incorrect": 151,
+        "unknown": 0,
+        "medianDistance": 24.62506540742087,
+        "status": "auto-identify: asterism matched 152 stars <= mag 6.5, median residual 24.6 px, scored 3000 triangle transforms"
+      },
+      {
+        "delta": 1.4,
+        "value": 2.4,
+        "total": 152,
+        "correct": 0,
+        "incorrect": 152,
+        "unknown": 0,
+        "medianDistance": 23.955103106073615,
+        "status": "auto-identify: asterism matched 152 stars <= mag 6.5, median residual 24.0 px, scored 3000 triangle transforms"
+      }
+    ]
+  },
+  "generatedUtc": "2026-05-25T22:01:44.855Z"
+}

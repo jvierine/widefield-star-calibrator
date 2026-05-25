@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Allsky 010031 AMS0221 Optmod 2 Sensitivity</title>
+<style>
+body { margin: 0; background: #f5f7fa; color: #17202a; font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+h1 { margin: 0 0 8px; font-size: 24px; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 18px 0; }
+.metric, .card, .note { background: white; border: 1px solid #d9e1ea; border-radius: 8px; padding: 12px; }
+.metric b { display: block; font-size: 24px; }
+.plots { display: grid; grid-template-columns: repeat(auto-fit, minmax(470px, 1fr)); gap: 14px; }
+.plot { width: 100%; height: auto; }
+.plot-bg { fill: #fff; }
+.frame { fill: none; stroke: #cbd5df; }
+.line { fill: none; stroke: #1565c0; stroke-width: 3; }
+.point { fill: #1565c0; stroke: white; stroke-width: 1; }
+.default-point { fill: #f9a825; stroke: #3c2a00; stroke-width: 1.5; }
+.zero { stroke: #8794a3; stroke-dasharray: 4 4; }
+.default-line { stroke: #f9a825; stroke-dasharray: 3 5; }
+.threshold { stroke: #c62828; stroke-dasharray: 5 5; }
+.title { font-weight: 700; font-size: 16px; }
+.axis, .tick { fill: #46515f; font-size: 12px; }
+.top-tick { fill: #6a4a00; }
+pre { background: #eef2f7; border-radius: 6px; padding: 12px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<main>
+<h1>Allsky 010031 AMS0221 Optmod 2 Pre-Undistortion Sensitivity</h1>
+<p>This report perturbs the supplied optmod 2 calibration, reruns sky-plane asterism matching on oracle-validated automatic detections, and marks the app default optmod 2 value in gold.</p>
+<section class="note">
+<h2>Repeat From Command Line</h2>
+<pre><code>cd /Users/j/src/AIDA_tools/aida_js_calibrator &amp;&amp; npm run report:allsky010031-sensitivity</code></pre>
+</section>
+<div class="metrics">
+<div class="metric"><span>Baseline correct matches</span><b>45</b></div>
+<div class="metric"><span>Default optmod 2 matches</span><b>44</b></div>
+<div class="metric"><span>Oracle detector hits</span><b>53</b></div>
+<div class="metric"><span>Raw detections</span><b>120</b></div>
+</div>
+<section class="note">
+<h2>Recommendation</h2>
+<p><b>Common zoom 90% basin:</b> 0.57x to 1.12x.</p>
+<p>Gold markers show the app's default optmod 2 parameter value for each one-parameter sweep.</p>
+<ul><li>For allsky7/optmod 2, pixel pre-undistortion is mainly sensitive to focal scale, principal point, and the radial alpha parameter.</li><li>The three attitude angles are shown for completeness, but this pre-undistortion diagnostic does not use attitude; those plots should be flat.</li><li>Use the default optmod 2 vector as a plausible first flattening candidate, but keep the calibrated f1/f2 aspect and radial alpha in the search grid.</li><li>A common f1/f2 zoom sweep is useful because triangle ratios are partly scale-invariant while pixel-side gates still introduce scale dependence.</li></ul>
+</section>
+<section class="note">
+<h2>Processing Steps Per Point</h2>
+<p><b>Important:</b> this is a sensitivity diagnostic, not a full blind lucky run. It intentionally removes most false detections before the sweep so that the plot isolates how the asterism matcher responds to pre-undistortion errors.</p>
+<ol>
+<li>Load the allsky7 PNG image and run the automatic star detector once with the detector options below.</li>
+<li>Project the Yale catalogue through the supplied calibrated optmod 2 optpar. This creates the reference catalogue positions for the test case.</li>
+<li>Build an oracle validation map by matching automatic detections to those saved-calibration catalogue positions within the case match radius.</li>
+<li>For every sweep point, keep only automatic detections that were oracle-validated in step 3. This means the sweep is not measuring false-positive rejection.</li>
+<li>Pre-undistort both the oracle-validated detections and the catalogue positions with the perturbed optmod 2 vector for that sweep point.</li>
+<li>Run <code>identifyStarsByAsterisms</code> on those pre-undistorted positions using the matcher options below.</li>
+<li>Score the returned matches against the oracle validation map as correct, incorrect, or unknown.</li>
+</ol>
+<p>The plots can therefore look better than a real GUI run if the live star finder produces many false positives, misses the useful stars, or if the initial blind optpar is much worse than the tested perturbation grid.</p>
+<h3>Detector options</h3>
+<pre>{
+  &quot;maxDetections&quot;: 120,
+  &quot;thresholdSigma&quot;: 3.1,
+  &quot;localThresholdSigma&quot;: 3.2,
+  &quot;requireGlobalThreshold&quot;: false,
+  &quot;maxElongation&quot;: 3.1
+}</pre>
+<h3>Asterism matcher options</h3>
+<pre>{
+  &quot;maxDistancePx&quot;: 35,
+  &quot;minMatches&quot;: 8,
+  &quot;maxDetectionTriangleStars&quot;: 80,
+  &quot;maxCatalogTriangleStars&quot;: 160,
+  &quot;maxDetectionTriangles&quot;: 2600,
+  &quot;maxCatalogTriangles&quot;: 16000,
+  &quot;triangleSignatureRadius&quot;: 0.02,
+  &quot;maxNeighborTriangles&quot;: 8,
+  &quot;maxCandidateTransforms&quot;: 3000,
+  &quot;maxMagnitude&quot;: 6.5,
+  &quot;maxDetections&quot;: 120,
+  &quot;maxCatalogStars&quot;: &quot;clamped to 200..420 from the perturbed catalog&quot;
+}</pre>
+</section>
+<section class="plots"><section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line><line class="default-line" x1="323.2" y1="58" x2="323.2" y2="262"></line>
+        <line class="threshold" x1="58" y1="82.4" x2="462" y2="82.4"></line>
+        <path class="line" d="M 58.0 191.0 L 91.7 146.7 L 125.3 97.9 L 159.0 84.6 L 192.7 62.4 L 226.3 58.0 L 260.0 62.4 L 293.7 71.3 L 323.2 71.3 L 327.3 71.3 L 361.0 66.9 L 394.7 66.9 L 428.3 66.9 L 462.0 66.9"></path>
+        <circle class="point" cx="58.0" cy="191.0" r="4"><title>f1 0.118: 16 correct</title></circle>
+<circle class="point" cx="91.7" cy="146.7" r="4"><title>f1 0.230: 26 correct</title></circle>
+<circle class="point" cx="125.3" cy="97.9" r="4"><title>f1 0.342: 37 correct</title></circle>
+<circle class="point" cx="159.0" cy="84.6" r="4"><title>f1 0.454: 40 correct</title></circle>
+<circle class="point" cx="192.7" cy="62.4" r="4"><title>f1 0.566: 45 correct</title></circle>
+<circle class="point" cx="226.3" cy="58.0" r="4"><title>f1 0.678: 46 correct</title></circle>
+<circle class="point" cx="260.0" cy="62.4" r="4"><title>f1 0.790: 45 correct</title></circle>
+<circle class="point" cx="293.7" cy="71.3" r="4"><title>f1 0.902: 43 correct</title></circle>
+<circle class="point default-point" cx="323.2" cy="71.3" r="6"><title>f1 default 1.000: 43 correct</title></circle>
+<circle class="point" cx="327.3" cy="71.3" r="4"><title>f1 1.014: 43 correct</title></circle>
+<circle class="point" cx="361.0" cy="66.9" r="4"><title>f1 1.125: 44 correct</title></circle>
+<circle class="point" cx="394.7" cy="66.9" r="4"><title>f1 1.237: 44 correct</title></circle>
+<circle class="point" cx="428.3" cy="66.9" r="4"><title>f1 1.349: 44 correct</title></circle>
+<circle class="point" cx="462.0" cy="66.9" r="4"><title>f1 1.461: 44 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">f1</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual f1 value</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">relative perturbation</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.85</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.85</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">0.118</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">0.790</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">1.461</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">46</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -28.3% to 85.0%</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line><line class="default-line" x1="324.1" y1="58" x2="324.1" y2="262"></line>
+        <line class="threshold" x1="58" y1="89.9" x2="462" y2="89.9"></line>
+        <path class="line" d="M 58.0 198.3 L 91.7 130.3 L 125.3 70.8 L 159.0 58.0 L 192.7 62.3 L 226.3 70.8 L 260.0 70.8 L 293.7 70.8 L 324.1 79.3 L 327.3 79.3 L 361.0 83.5 L 394.7 83.5 L 428.3 83.5 L 462.0 83.5"></path>
+        <circle class="point" cx="58.0" cy="198.3" r="4"><title>f2 0.210: 15 correct</title></circle>
+<circle class="point" cx="91.7" cy="130.3" r="4"><title>f2 0.408: 31 correct</title></circle>
+<circle class="point" cx="125.3" cy="70.8" r="4"><title>f2 0.607: 45 correct</title></circle>
+<circle class="point" cx="159.0" cy="58.0" r="4"><title>f2 0.805: 48 correct</title></circle>
+<circle class="point" cx="192.7" cy="62.3" r="4"><title>f2 1.003: 47 correct</title></circle>
+<circle class="point" cx="226.3" cy="70.8" r="4"><title>f2 1.202: 45 correct</title></circle>
+<circle class="point" cx="260.0" cy="70.8" r="4"><title>f2 1.400: 45 correct</title></circle>
+<circle class="point" cx="293.7" cy="70.8" r="4"><title>f2 1.599: 45 correct</title></circle>
+<circle class="point default-point" cx="324.1" cy="79.3" r="6"><title>f2 default 1.778: 43 correct</title></circle>
+<circle class="point" cx="327.3" cy="79.3" r="4"><title>f2 1.797: 43 correct</title></circle>
+<circle class="point" cx="361.0" cy="83.5" r="4"><title>f2 1.995: 42 correct</title></circle>
+<circle class="point" cx="394.7" cy="83.5" r="4"><title>f2 2.194: 42 correct</title></circle>
+<circle class="point" cx="428.3" cy="83.5" r="4"><title>f2 2.392: 42 correct</title></circle>
+<circle class="point" cx="462.0" cy="83.5" r="4"><title>f2 2.590: 42 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">f2</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual f2 value</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">relative perturbation</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.85</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.85</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">0.210</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">1.400</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">2.590</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">48</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -56.7% to 85.0%</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line><line class="default-line" x1="430.0" y1="58" x2="430.0" y2="262"></line>
+        <line class="threshold" x1="58" y1="78.4" x2="462" y2="78.4"></line>
+        <path class="line" d="M 58.0 58.0 L 91.7 58.0 L 125.3 58.0 L 159.0 58.0 L 192.7 58.0 L 226.3 58.0 L 260.0 58.0 L 293.7 58.0 L 327.3 58.0 L 361.0 58.0 L 394.7 58.0 L 428.3 58.0 L 430.0 58.0 L 462.0 58.0"></path>
+        <circle class="point" cx="58.0" cy="58.0" r="4"><title>alpha angle -147.343: 45 correct</title></circle>
+<circle class="point" cx="91.7" cy="58.0" r="4"><title>alpha angle -134.009: 45 correct</title></circle>
+<circle class="point" cx="125.3" cy="58.0" r="4"><title>alpha angle -120.676: 45 correct</title></circle>
+<circle class="point" cx="159.0" cy="58.0" r="4"><title>alpha angle -107.343: 45 correct</title></circle>
+<circle class="point" cx="192.7" cy="58.0" r="4"><title>alpha angle -94.009: 45 correct</title></circle>
+<circle class="point" cx="226.3" cy="58.0" r="4"><title>alpha angle -80.676: 45 correct</title></circle>
+<circle class="point" cx="260.0" cy="58.0" r="4"><title>alpha angle -67.343: 45 correct</title></circle>
+<circle class="point" cx="293.7" cy="58.0" r="4"><title>alpha angle -54.009: 45 correct</title></circle>
+<circle class="point" cx="327.3" cy="58.0" r="4"><title>alpha angle -40.676: 45 correct</title></circle>
+<circle class="point" cx="361.0" cy="58.0" r="4"><title>alpha angle -27.343: 45 correct</title></circle>
+<circle class="point" cx="394.7" cy="58.0" r="4"><title>alpha angle -14.009: 45 correct</title></circle>
+<circle class="point" cx="428.3" cy="58.0" r="4"><title>alpha angle -0.676: 45 correct</title></circle>
+<circle class="point default-point" cx="430.0" cy="58.0" r="6"><title>alpha angle default 0.000: 45 correct</title></circle>
+<circle class="point" cx="462.0" cy="58.0" r="4"><title>alpha angle 12.657: 45 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">alpha angle</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual alpha angle value</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-80.00</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">80.00</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-147.343</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">-67.343</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">12.657</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">45</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -80.000 to 80.000 deg</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line><line class="default-line" x1="232.3" y1="58" x2="232.3" y2="262"></line>
+        <line class="threshold" x1="58" y1="78.4" x2="462" y2="78.4"></line>
+        <path class="line" d="M 58.0 58.0 L 91.7 58.0 L 125.3 58.0 L 159.0 58.0 L 192.7 58.0 L 226.3 58.0 L 232.3 58.0 L 260.0 58.0 L 293.7 58.0 L 327.3 58.0 L 361.0 58.0 L 394.7 58.0 L 428.3 58.0 L 462.0 58.0"></path>
+        <circle class="point" cx="58.0" cy="58.0" r="4"><title>beta angle -69.012: 45 correct</title></circle>
+<circle class="point" cx="91.7" cy="58.0" r="4"><title>beta angle -55.678: 45 correct</title></circle>
+<circle class="point" cx="125.3" cy="58.0" r="4"><title>beta angle -42.345: 45 correct</title></circle>
+<circle class="point" cx="159.0" cy="58.0" r="4"><title>beta angle -29.012: 45 correct</title></circle>
+<circle class="point" cx="192.7" cy="58.0" r="4"><title>beta angle -15.678: 45 correct</title></circle>
+<circle class="point" cx="226.3" cy="58.0" r="4"><title>beta angle -2.345: 45 correct</title></circle>
+<circle class="point default-point" cx="232.3" cy="58.0" r="6"><title>beta angle default 0.000: 45 correct</title></circle>
+<circle class="point" cx="260.0" cy="58.0" r="4"><title>beta angle 10.988: 45 correct</title></circle>
+<circle class="point" cx="293.7" cy="58.0" r="4"><title>beta angle 24.322: 45 correct</title></circle>
+<circle class="point" cx="327.3" cy="58.0" r="4"><title>beta angle 37.655: 45 correct</title></circle>
+<circle class="point" cx="361.0" cy="58.0" r="4"><title>beta angle 50.988: 45 correct</title></circle>
+<circle class="point" cx="394.7" cy="58.0" r="4"><title>beta angle 64.322: 45 correct</title></circle>
+<circle class="point" cx="428.3" cy="58.0" r="4"><title>beta angle 77.655: 45 correct</title></circle>
+<circle class="point" cx="462.0" cy="58.0" r="4"><title>beta angle 90.988: 45 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">beta angle</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual beta angle value</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-80.00</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">80.00</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-69.012</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">10.988</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">90.988</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">45</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -80.000 to 80.000 deg</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="265.9" y1="58" x2="265.9" y2="262"></line><line class="default-line" x1="58.0" y1="58" x2="58.0" y2="262"></line>
+        <line class="threshold" x1="58" y1="78.4" x2="462" y2="78.4"></line>
+        <path class="line" d="M 58.0 58.0 L 69.8 58.0 L 102.5 58.0 L 135.2 58.0 L 167.9 58.0 L 200.6 58.0 L 233.2 58.0 L 265.9 58.0 L 298.6 58.0 L 331.3 58.0 L 364.0 58.0 L 396.6 58.0 L 429.3 58.0 L 462.0 58.0"></path>
+        <circle class="point default-point" cx="58.0" cy="58.0" r="6"><title>gamma angle default 0.000: 45 correct</title></circle>
+<circle class="point" cx="69.8" cy="58.0" r="4"><title>gamma angle 4.828: 45 correct</title></circle>
+<circle class="point" cx="102.5" cy="58.0" r="4"><title>gamma angle 18.161: 45 correct</title></circle>
+<circle class="point" cx="135.2" cy="58.0" r="4"><title>gamma angle 31.495: 45 correct</title></circle>
+<circle class="point" cx="167.9" cy="58.0" r="4"><title>gamma angle 44.828: 45 correct</title></circle>
+<circle class="point" cx="200.6" cy="58.0" r="4"><title>gamma angle 58.161: 45 correct</title></circle>
+<circle class="point" cx="233.2" cy="58.0" r="4"><title>gamma angle 71.495: 45 correct</title></circle>
+<circle class="point" cx="265.9" cy="58.0" r="4"><title>gamma angle 84.828: 45 correct</title></circle>
+<circle class="point" cx="298.6" cy="58.0" r="4"><title>gamma angle 98.161: 45 correct</title></circle>
+<circle class="point" cx="331.3" cy="58.0" r="4"><title>gamma angle 111.495: 45 correct</title></circle>
+<circle class="point" cx="364.0" cy="58.0" r="4"><title>gamma angle 124.828: 45 correct</title></circle>
+<circle class="point" cx="396.6" cy="58.0" r="4"><title>gamma angle 138.161: 45 correct</title></circle>
+<circle class="point" cx="429.3" cy="58.0" r="4"><title>gamma angle 151.495: 45 correct</title></circle>
+<circle class="point" cx="462.0" cy="58.0" r="4"><title>gamma angle 164.828: 45 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">gamma angle</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual gamma angle value</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-84.83</text>
+<text class="tick" x="265.9" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">80.00</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">0.000</text>
+<text class="tick top-tick" x="265.9" y="46" text-anchor="middle">84.828</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">164.828</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">45</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -84.828 to 80.000 deg</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line><line class="default-line" x1="243.4" y1="58" x2="243.4" y2="262"></line>
+        <line class="threshold" x1="58" y1="82.4" x2="462" y2="82.4"></line>
+        <path class="line" d="M 58.0 66.9 L 91.7 66.9 L 125.3 66.9 L 159.0 71.3 L 192.7 71.3 L 226.3 62.4 L 243.4 62.4 L 260.0 62.4 L 293.7 62.4 L 327.3 62.4 L 361.0 58.0 L 394.7 58.0 L 428.3 58.0 L 462.0 66.9"></path>
+        <circle class="point" cx="58.0" cy="66.9" r="4"><title>du -0.202: 44 correct</title></circle>
+<circle class="point" cx="91.7" cy="66.9" r="4"><title>du -0.165: 44 correct</title></circle>
+<circle class="point" cx="125.3" cy="66.9" r="4"><title>du -0.129: 44 correct</title></circle>
+<circle class="point" cx="159.0" cy="71.3" r="4"><title>du -0.092: 43 correct</title></circle>
+<circle class="point" cx="192.7" cy="71.3" r="4"><title>du -0.055: 43 correct</title></circle>
+<circle class="point" cx="226.3" cy="62.4" r="4"><title>du -0.019: 45 correct</title></circle>
+<circle class="point default-point" cx="243.4" cy="62.4" r="6"><title>du default 0.000: 45 correct</title></circle>
+<circle class="point" cx="260.0" cy="62.4" r="4"><title>du 0.018: 45 correct</title></circle>
+<circle class="point" cx="293.7" cy="62.4" r="4"><title>du 0.055: 45 correct</title></circle>
+<circle class="point" cx="327.3" cy="62.4" r="4"><title>du 0.091: 45 correct</title></circle>
+<circle class="point" cx="361.0" cy="58.0" r="4"><title>du 0.128: 46 correct</title></circle>
+<circle class="point" cx="394.7" cy="58.0" r="4"><title>du 0.165: 46 correct</title></circle>
+<circle class="point" cx="428.3" cy="58.0" r="4"><title>du 0.201: 46 correct</title></circle>
+<circle class="point" cx="462.0" cy="66.9" r="4"><title>du 0.238: 44 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">du</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual du value</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.22</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.22</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-0.202</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">0.018</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">0.238</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">46</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.220 to 0.220 normalized image</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line><line class="default-line" x1="265.1" y1="58" x2="265.1" y2="262"></line>
+        <line class="threshold" x1="58" y1="78.4" x2="462" y2="78.4"></line>
+        <path class="line" d="M 58.0 67.1 L 91.7 67.1 L 125.3 67.1 L 159.0 62.5 L 192.7 58.0 L 226.3 58.0 L 260.0 58.0 L 265.1 58.0 L 293.7 58.0 L 327.3 58.0 L 361.0 58.0 L 394.7 58.0 L 428.3 58.0 L 462.0 58.0"></path>
+        <circle class="point" cx="58.0" cy="67.1" r="4"><title>dv -0.226: 43 correct</title></circle>
+<circle class="point" cx="91.7" cy="67.1" r="4"><title>dv -0.189: 43 correct</title></circle>
+<circle class="point" cx="125.3" cy="67.1" r="4"><title>dv -0.152: 43 correct</title></circle>
+<circle class="point" cx="159.0" cy="62.5" r="4"><title>dv -0.116: 44 correct</title></circle>
+<circle class="point" cx="192.7" cy="58.0" r="4"><title>dv -0.079: 45 correct</title></circle>
+<circle class="point" cx="226.3" cy="58.0" r="4"><title>dv -0.042: 45 correct</title></circle>
+<circle class="point" cx="260.0" cy="58.0" r="4"><title>dv -0.006: 45 correct</title></circle>
+<circle class="point default-point" cx="265.1" cy="58.0" r="6"><title>dv default 0.000: 45 correct</title></circle>
+<circle class="point" cx="293.7" cy="58.0" r="4"><title>dv 0.031: 45 correct</title></circle>
+<circle class="point" cx="327.3" cy="58.0" r="4"><title>dv 0.068: 45 correct</title></circle>
+<circle class="point" cx="361.0" cy="58.0" r="4"><title>dv 0.104: 45 correct</title></circle>
+<circle class="point" cx="394.7" cy="58.0" r="4"><title>dv 0.141: 45 correct</title></circle>
+<circle class="point" cx="428.3" cy="58.0" r="4"><title>dv 0.178: 45 correct</title></circle>
+<circle class="point" cx="462.0" cy="58.0" r="4"><title>dv 0.214: 45 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">dv</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual dv value</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.22</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.22</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">-0.226</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">-0.006</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">0.214</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">45</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.220 to 0.220 normalized image</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="260.0" y1="58" x2="260.0" y2="262"></line><line class="default-line" x1="215.0" y1="58" x2="215.0" y2="262"></line>
+        <line class="threshold" x1="58" y1="89.9" x2="462" y2="89.9"></line>
+        <path class="line" d="M 58.0 121.8 L 91.7 147.3 L 125.3 104.8 L 159.0 87.8 L 192.7 58.0 L 215.0 66.5 L 226.3 66.5 L 260.0 70.8 L 293.7 79.3 L 327.3 92.0 L 361.0 92.0 L 394.7 92.0 L 428.3 92.0 L 462.0 117.5"></path>
+        <circle class="point" cx="58.0" cy="121.8" r="4"><title>optmod 2 radial alpha 0.040: 33 correct</title></circle>
+<circle class="point" cx="91.7" cy="147.3" r="4"><title>optmod 2 radial alpha 0.181: 27 correct</title></circle>
+<circle class="point" cx="125.3" cy="104.8" r="4"><title>optmod 2 radial alpha 0.323: 37 correct</title></circle>
+<circle class="point" cx="159.0" cy="87.8" r="4"><title>optmod 2 radial alpha 0.465: 41 correct</title></circle>
+<circle class="point" cx="192.7" cy="58.0" r="4"><title>optmod 2 radial alpha 0.606: 48 correct</title></circle>
+<circle class="point default-point" cx="215.0" cy="66.5" r="6"><title>optmod 2 radial alpha default 0.700: 46 correct</title></circle>
+<circle class="point" cx="226.3" cy="66.5" r="4"><title>optmod 2 radial alpha 0.748: 46 correct</title></circle>
+<circle class="point" cx="260.0" cy="70.8" r="4"><title>optmod 2 radial alpha 0.890: 45 correct</title></circle>
+<circle class="point" cx="293.7" cy="79.3" r="4"><title>optmod 2 radial alpha 1.031: 43 correct</title></circle>
+<circle class="point" cx="327.3" cy="92.0" r="4"><title>optmod 2 radial alpha 1.173: 40 correct</title></circle>
+<circle class="point" cx="361.0" cy="92.0" r="4"><title>optmod 2 radial alpha 1.315: 40 correct</title></circle>
+<circle class="point" cx="394.7" cy="92.0" r="4"><title>optmod 2 radial alpha 1.456: 40 correct</title></circle>
+<circle class="point" cx="428.3" cy="92.0" r="4"><title>optmod 2 radial alpha 1.598: 40 correct</title></circle>
+<circle class="point" cx="462.0" cy="117.5" r="4"><title>optmod 2 radial alpha 1.740: 34 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">optmod 2 radial alpha</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual optmod 2 radial alpha value</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">absolute perturbation</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.85</text>
+<text class="tick" x="260.0" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">0.85</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">0.040</text>
+<text class="tick top-tick" x="260.0" y="46" text-anchor="middle">0.890</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">1.740</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">48</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.425 to 0.142 coefficient</p>
+    </section>
+<section class="card"><svg class="plot" viewBox="0 0 520 320">
+        <rect class="plot-bg" x="0" y="0" width="520" height="320"></rect>
+        <rect class="frame" x="58" y="58" width="404" height="204"></rect>
+        <line class="zero" x1="204.9" y1="58" x2="204.9" y2="262"></line>
+        <line class="threshold" x1="58" y1="89.9" x2="462" y2="89.9"></line>
+        <path class="line" d="M 58.0 236.5 L 91.7 143.0 L 125.3 87.8 L 159.0 58.0 L 192.7 70.8 L 226.3 79.3 L 260.0 92.0 L 293.7 92.0 L 327.3 92.0 L 361.0 104.8 L 394.7 100.5 L 428.3 100.5 L 462.0 104.8"></path>
+        <circle class="point" cx="58.0" cy="236.5" r="4"><title>common f1/f2 zoom 0.200: 6 correct</title></circle>
+<circle class="point" cx="91.7" cy="143.0" r="4"><title>common f1/f2 zoom 0.383: 28 correct</title></circle>
+<circle class="point" cx="125.3" cy="87.8" r="4"><title>common f1/f2 zoom 0.567: 41 correct</title></circle>
+<circle class="point" cx="159.0" cy="58.0" r="4"><title>common f1/f2 zoom 0.750: 48 correct</title></circle>
+<circle class="point" cx="192.7" cy="70.8" r="4"><title>common f1/f2 zoom 0.933: 45 correct</title></circle>
+<circle class="point" cx="226.3" cy="79.3" r="4"><title>common f1/f2 zoom 1.117: 43 correct</title></circle>
+<circle class="point" cx="260.0" cy="92.0" r="4"><title>common f1/f2 zoom 1.300: 40 correct</title></circle>
+<circle class="point" cx="293.7" cy="92.0" r="4"><title>common f1/f2 zoom 1.483: 40 correct</title></circle>
+<circle class="point" cx="327.3" cy="92.0" r="4"><title>common f1/f2 zoom 1.667: 40 correct</title></circle>
+<circle class="point" cx="361.0" cy="104.8" r="4"><title>common f1/f2 zoom 1.850: 37 correct</title></circle>
+<circle class="point" cx="394.7" cy="100.5" r="4"><title>common f1/f2 zoom 2.033: 38 correct</title></circle>
+<circle class="point" cx="428.3" cy="100.5" r="4"><title>common f1/f2 zoom 2.217: 38 correct</title></circle>
+<circle class="point" cx="462.0" cy="104.8" r="4"><title>common f1/f2 zoom 2.400: 37 correct</title></circle>
+        <text class="title" x="260" y="20" text-anchor="middle">common f1/f2 zoom</text>
+        <text class="axis" x="260" y="30" text-anchor="middle">actual common zoom factor</text>
+        <text class="axis" x="260" y="310" text-anchor="middle">zoom factor minus one</text>
+        <text class="axis" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">correct matches</text>
+        <text class="tick" x="58.0" y="278" text-anchor="middle">-0.80</text>
+<text class="tick" x="204.9" y="278" text-anchor="middle">0.00</text>
+<text class="tick" x="462.0" y="278" text-anchor="middle">1.40</text><text class="tick top-tick" x="58.0" y="46" text-anchor="middle">0.200</text>
+<text class="tick top-tick" x="204.9" y="46" text-anchor="middle">1.000</text>
+<text class="tick top-tick" x="462.0" y="46" text-anchor="middle">2.400</text>
+        <text class="tick" x="50" y="58.0" text-anchor="end">48</text>
+        <text class="tick" x="50" y="262.0" text-anchor="end">0</text>
+    </svg>
+        <p><b>90% basin:</b> -0.433 to 0.117 scale</p>
+    </section></section>
+<h2>Summary JSON</h2>
+<pre>{
+  &quot;recommendation&quot;: {
+    &quot;baselineCorrect&quot;: 45,
+    &quot;defaultCorrect&quot;: 44,
+    &quot;zoomTolerance90Percent&quot;: &quot;0.57x to 1.12x&quot;,
+    &quot;strategy&quot;: [
+      &quot;For allsky7/optmod 2, pixel pre-undistortion is mainly sensitive to focal scale, principal point, and the radial alpha parameter.&quot;,
+      &quot;The three attitude angles are shown for completeness, but this pre-undistortion diagnostic does not use attitude; those plots should be flat.&quot;,
+      &quot;Use the default optmod 2 vector as a plausible first flattening candidate, but keep the calibrated f1/f2 aspect and radial alpha in the search grid.&quot;,
+      &quot;A common f1/f2 zoom sweep is useful because triangle ratios are partly scale-invariant while pixel-side gates still introduce scale dependence.&quot;
+    ],
+    &quot;parameterTolerance90Percent&quot;: [
+      {
+        &quot;name&quot;: &quot;f1&quot;,
+        &quot;tolerance&quot;: &quot;-28.3% to 85.0%&quot;
+      },
+      {
+        &quot;name&quot;: &quot;f2&quot;,
+        &quot;tolerance&quot;: &quot;-56.7% to 85.0%&quot;
+      },
+      {
+        &quot;name&quot;: &quot;alpha angle&quot;,
+        &quot;tolerance&quot;: &quot;-80.000 to 80.000 deg&quot;
+      },
+      {
+        &quot;name&quot;: &quot;beta angle&quot;,
+        &quot;tolerance&quot;: &quot;-80.000 to 80.000 deg&quot;
+      },
+      {
+        &quot;name&quot;: &quot;gamma angle&quot;,
+        &quot;tolerance&quot;: &quot;-84.828 to 80.000 deg&quot;
+      },
+      {
+        &quot;name&quot;: &quot;du&quot;,
+        &quot;tolerance&quot;: &quot;-0.220 to 0.220 normalized image&quot;
+      },
+      {
+        &quot;name&quot;: &quot;dv&quot;,
+        &quot;tolerance&quot;: &quot;-0.220 to 0.220 normalized image&quot;
+      },
+      {
+        &quot;name&quot;: &quot;optmod 2 radial alpha&quot;,
+        &quot;tolerance&quot;: &quot;-0.425 to 0.142 coefficient&quot;
+      }
+    ]
+  },
+  &quot;detectorStatus&quot;: &quot;bright-star detector: bg 57.1, sigma 7.8, thresholds scan/global 61.1/81.4, 16926 local peaks, 260/260 star-like candidates after clutter, selected top 120/120, suppression radius 22 px&quot;
+}</pre>
+</main>
+</body>
+</html>

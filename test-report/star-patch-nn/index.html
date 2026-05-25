@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AIDA Star Patch NN Report</title>
+<style>
+body { margin: 0; background: #f5f7fa; color: #17202a; font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+h1 { margin: 0 0 8px; font-size: 24px; }
+.card { background: white; border: 1px solid #d9e1ea; border-radius: 8px; padding: 14px; margin: 14px 0; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { border-bottom: 1px solid #e2e8f0; padding: 6px 8px; text-align: right; }
+th:first-child, td:first-child { text-align: left; }
+pre { background: #eef2f7; border-radius: 6px; padding: 10px; overflow-x: auto; }
+.good { color: #087f3f; font-weight: 800; }
+.bad { color: #b42318; font-weight: 800; }
+.metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.metric { background: #f8fafc; border: 1px solid #d9e1ea; border-radius: 8px; padding: 10px; }
+.metric b { display: block; font-size: 24px; }
+.loss-plot { width: 100%; height: auto; display: block; }
+.plot-bg { fill: #ffffff; }
+.plot-frame { fill: none; stroke: #94a3b8; }
+.plot-grid { stroke: #e2e8f0; stroke-width: 1; }
+.plot-tick, .axis-label, .legend-label { fill: #475569; font-size: 12px; }
+.loss-line, .component-line { fill: none; stroke-width: 3; }
+.loss-line.training { stroke: #2563eb; }
+.loss-line.validation { stroke: #dc2626; }
+.training-label { fill: #2563eb; font-weight: 800; }
+.validation-label { fill: #dc2626; font-weight: 800; }
+</style>
+</head>
+<body>
+<main>
+<h1>AIDA Star Patch Neural Network Report</h1>
+<p>This is an offline validation report only. The GUI workflow does not use this neural network yet.</p>
+<section class="card">
+<h2>Repeat From Command Line</h2>
+<pre><code>cd /Users/j/src/AIDA_tools/aida_js_calibrator &amp;&amp; npm run train:star-nn</code></pre>
+</section>
+<section class="card">
+<h2>Model</h2>
+<p>Input: 93 features from a 9x9 normalized patch plus detector shape statistics. Hidden units: 24. The model has two heads: star/no-star probability, and magnitude regression trained only on positive star samples.</p>
+<p>Model JSON: <code>star_patch_nn_model.json</code></p>
+</section>
+<section class="card metrics">
+<div class="metric"><span>Training samples</span><b>45156</b></div>
+<div class="metric"><span>Validation samples</span><b>12463</b></div>
+<div class="metric"><span>Validation baseline stars</span><b>587</b></div>
+<div class="metric"><span>Validation NN stars</span><b>571</b></div>
+<div class="metric"><span>Validation blend stars</span><b>598</b></div>
+</section>
+<section class="card">
+<h2>Validation Cases</h2>
+<table>
+<thead><tr><th>case</th><th>split</th><th>catalog</th><th>candidates</th><th>top N</th><th>baseline correct</th><th>NN correct</th><th>blend correct</th><th>NN delta</th><th>blend delta</th><th>baseline F1</th><th>NN F1</th><th>blend F1</th></tr></thead>
+<tbody><tr>
+<td>2025_02_19_03_44_00_000_010760_first1s</td>
+<td>validation</td>
+<td>315</td>
+<td>5649</td>
+<td>700</td>
+<td>143</td>
+<td>138</td>
+<td>142</td>
+<td class="bad">-5</td>
+<td class="bad">-1</td>
+<td>0.282</td>
+<td>0.272</td>
+<td>0.280</td>
+</tr><tr>
+<td>2025_02_19_03_46_00_000_010880_ams0881_first1s</td>
+<td>validation</td>
+<td>299</td>
+<td>2619</td>
+<td>700</td>
+<td>162</td>
+<td>154</td>
+<td>166</td>
+<td class="bad">-8</td>
+<td class="good">+4</td>
+<td>0.324</td>
+<td>0.308</td>
+<td>0.332</td>
+</tr><tr>
+<td>2025_02_19_03_47_01_000_010881_ams0882_first1s</td>
+<td>validation</td>
+<td>385</td>
+<td>5655</td>
+<td>700</td>
+<td>195</td>
+<td>192</td>
+<td>203</td>
+<td class="bad">-3</td>
+<td class="good">+8</td>
+<td>0.359</td>
+<td>0.354</td>
+<td>0.374</td>
+</tr><tr>
+<td>IMG_9945</td>
+<td>validation</td>
+<td>394</td>
+<td>613</td>
+<td>700</td>
+<td>43</td>
+<td>43</td>
+<td>43</td>
+<td class="good">+0</td>
+<td class="good">+0</td>
+<td>0.085</td>
+<td>0.085</td>
+<td>0.085</td>
+</tr><tr>
+<td>IMG_9970</td>
+<td>validation</td>
+<td>402</td>
+<td>181</td>
+<td>700</td>
+<td>44</td>
+<td>44</td>
+<td>44</td>
+<td class="good">+0</td>
+<td class="good">+0</td>
+<td>0.151</td>
+<td>0.151</td>
+<td>0.151</td>
+</tr></tbody>
+</table>
+</section>
+<section class="card">
+<h2>Training Cases</h2>
+<table>
+<thead><tr><th>case</th><th>split</th><th>catalog</th><th>candidates</th><th>top N</th><th>baseline correct</th><th>NN correct</th><th>blend correct</th><th>NN delta</th><th>blend delta</th><th>baseline F1</th><th>NN F1</th><th>blend F1</th></tr></thead>
+<tbody><tr>
+<td>2025_02_19_03_44_00_000_012165_first1s</td>
+<td>train</td>
+<td>358</td>
+<td>3461</td>
+<td>700</td>
+<td>162</td>
+<td>152</td>
+<td>164</td>
+<td class="bad">-10</td>
+<td class="good">+2</td>
+<td>0.306</td>
+<td>0.287</td>
+<td>0.310</td>
+</tr><tr>
+<td>2025_02_19_03_45_00_000_010095_first1s</td>
+<td>train</td>
+<td>335</td>
+<td>5303</td>
+<td>700</td>
+<td>157</td>
+<td>172</td>
+<td>165</td>
+<td class="good">+15</td>
+<td class="good">+8</td>
+<td>0.303</td>
+<td>0.332</td>
+<td>0.319</td>
+</tr><tr>
+<td>2025_02_19_03_45_00_000_010125_first1s</td>
+<td>train</td>
+<td>335</td>
+<td>1189</td>
+<td>700</td>
+<td>114</td>
+<td>131</td>
+<td>116</td>
+<td class="good">+17</td>
+<td class="good">+2</td>
+<td>0.220</td>
+<td>0.253</td>
+<td>0.224</td>
+</tr><tr>
+<td>2025_02_19_03_46_00_000_010095_first1s</td>
+<td>train</td>
+<td>336</td>
+<td>4964</td>
+<td>700</td>
+<td>154</td>
+<td>168</td>
+<td>159</td>
+<td class="good">+14</td>
+<td class="good">+5</td>
+<td>0.297</td>
+<td>0.324</td>
+<td>0.307</td>
+</tr><tr>
+<td>2025_02_19_03_46_00_000_010880_first1s</td>
+<td>train</td>
+<td>304</td>
+<td>2619</td>
+<td>700</td>
+<td>162</td>
+<td>154</td>
+<td>166</td>
+<td class="bad">-8</td>
+<td class="good">+4</td>
+<td>0.323</td>
+<td>0.307</td>
+<td>0.331</td>
+</tr><tr>
+<td>2025_02_19_03_46_01_000_010028_first1s</td>
+<td>train</td>
+<td>371</td>
+<td>2766</td>
+<td>700</td>
+<td>169</td>
+<td>179</td>
+<td>165</td>
+<td class="good">+10</td>
+<td class="bad">-4</td>
+<td>0.316</td>
+<td>0.334</td>
+<td>0.308</td>
+</tr><tr>
+<td>2025_02_19_03_46_01_000_010031_first1s</td>
+<td>train</td>
+<td>342</td>
+<td>919</td>
+<td>700</td>
+<td>128</td>
+<td>134</td>
+<td>130</td>
+<td class="good">+6</td>
+<td class="good">+2</td>
+<td>0.246</td>
+<td>0.257</td>
+<td>0.250</td>
+</tr><tr>
+<td>2025_02_19_03_47_01_000_010028_ams0228_first1s</td>
+<td>train</td>
+<td>373</td>
+<td>2654</td>
+<td>700</td>
+<td>162</td>
+<td>168</td>
+<td>162</td>
+<td class="good">+6</td>
+<td class="good">+0</td>
+<td>0.302</td>
+<td>0.313</td>
+<td>0.302</td>
+</tr><tr>
+<td>2025_02_19_03_47_01_000_010881_ams0882_first1s_1</td>
+<td>train</td>
+<td>385</td>
+<td>5655</td>
+<td>700</td>
+<td>195</td>
+<td>192</td>
+<td>203</td>
+<td class="bad">-3</td>
+<td class="good">+8</td>
+<td>0.359</td>
+<td>0.354</td>
+<td>0.374</td>
+</tr><tr>
+<td>2025_02_19_03_47_01_000_010881_ams0882_first1s_2</td>
+<td>train</td>
+<td>385</td>
+<td>5655</td>
+<td>700</td>
+<td>195</td>
+<td>192</td>
+<td>203</td>
+<td class="bad">-3</td>
+<td class="good">+8</td>
+<td>0.359</td>
+<td>0.354</td>
+<td>0.374</td>
+</tr><tr>
+<td>IMG_0172</td>
+<td>train</td>
+<td>398</td>
+<td>771</td>
+<td>700</td>
+<td>30</td>
+<td>31</td>
+<td>30</td>
+<td class="good">+1</td>
+<td class="good">+0</td>
+<td>0.055</td>
+<td>0.056</td>
+<td>0.055</td>
+</tr><tr>
+<td>IMG_0537</td>
+<td>train</td>
+<td>310</td>
+<td>10629</td>
+<td>700</td>
+<td>21</td>
+<td>29</td>
+<td>22</td>
+<td class="good">+8</td>
+<td class="good">+1</td>
+<td>0.042</td>
+<td>0.057</td>
+<td>0.044</td>
+</tr><tr>
+<td>IMG_9948</td>
+<td>train</td>
+<td>305</td>
+<td>4086</td>
+<td>700</td>
+<td>39</td>
+<td>50</td>
+<td>43</td>
+<td class="good">+11</td>
+<td class="good">+4</td>
+<td>0.078</td>
+<td>0.100</td>
+<td>0.086</td>
+</tr><tr>
+<td>IMG_9953</td>
+<td>train</td>
+<td>296</td>
+<td>4102</td>
+<td>700</td>
+<td>46</td>
+<td>42</td>
+<td>49</td>
+<td class="bad">-4</td>
+<td class="good">+3</td>
+<td>0.092</td>
+<td>0.084</td>
+<td>0.098</td>
+</tr><tr>
+<td>IMG_9954</td>
+<td>train</td>
+<td>274</td>
+<td>2901</td>
+<td>700</td>
+<td>46</td>
+<td>43</td>
+<td>47</td>
+<td class="bad">-3</td>
+<td class="good">+1</td>
+<td>0.094</td>
+<td>0.088</td>
+<td>0.097</td>
+</tr><tr>
+<td>IMG_9958</td>
+<td>train</td>
+<td>290</td>
+<td>6249</td>
+<td>700</td>
+<td>43</td>
+<td>65</td>
+<td>50</td>
+<td class="good">+22</td>
+<td class="good">+7</td>
+<td>0.087</td>
+<td>0.131</td>
+<td>0.101</td>
+</tr></tbody>
+</table>
+</section>
+<section class="card">
+<h2>Epoch Loss</h2>
+<svg class="loss-plot" viewBox="0 0 760 320" role="img" aria-label="Training and validation loss by epoch">
+<rect class="plot-bg" x="0" y="0" width="760" height="320"></rect>
+<line class="plot-grid" x1="54" y1="278.00" x2="742" y2="278.00"></line>
+<text class="plot-tick" x="46" y="282.00" text-anchor="end">1.186</text>
+<line class="plot-grid" x1="54" y1="214.00" x2="742" y2="214.00"></line>
+<text class="plot-tick" x="46" y="218.00" text-anchor="end">1.277</text>
+<line class="plot-grid" x1="54" y1="150.00" x2="742" y2="150.00"></line>
+<text class="plot-tick" x="46" y="154.00" text-anchor="end">1.369</text>
+<line class="plot-grid" x1="54" y1="86.00" x2="742" y2="86.00"></line>
+<text class="plot-tick" x="46" y="90.00" text-anchor="end">1.460</text>
+<line class="plot-grid" x1="54" y1="22.00" x2="742" y2="22.00"></line>
+<text class="plot-tick" x="46" y="26.00" text-anchor="end">1.552</text>
+<line class="plot-grid" x1="54.00" y1="22" x2="54.00" y2="278"></line>
+<text class="plot-tick" x="54.00" y="304" text-anchor="middle">1</text>
+<line class="plot-grid" x1="226.00" y1="22" x2="226.00" y2="278"></line>
+<text class="plot-tick" x="226.00" y="304" text-anchor="middle">8</text>
+<line class="plot-grid" x1="398.00" y1="22" x2="398.00" y2="278"></line>
+<text class="plot-tick" x="398.00" y="304" text-anchor="middle">15</text>
+<line class="plot-grid" x1="570.00" y1="22" x2="570.00" y2="278"></line>
+<text class="plot-tick" x="570.00" y="304" text-anchor="middle">21</text>
+<line class="plot-grid" x1="742.00" y1="22" x2="742.00" y2="278"></line>
+<text class="plot-tick" x="742.00" y="304" text-anchor="middle">28</text>
+<rect class="plot-frame" x="54" y="22" width="688" height="256"></rect>
+<path class="loss-line training" d="M 54.00 197.35 L 79.48 217.45 L 104.96 228.19 L 130.44 233.23 L 155.93 237.15 L 181.41 243.10 L 206.89 246.57 L 232.37 245.69 L 257.85 247.33 L 283.33 246.64 L 308.81 249.64 L 334.30 248.97 L 359.78 250.81 L 385.26 250.18 L 410.74 253.03 L 436.22 251.91 L 461.70 251.78 L 487.19 253.28 L 512.67 254.63 L 538.15 254.03 L 563.63 256.42 L 589.11 255.18 L 614.59 257.86 L 640.07 258.58 L 665.56 259.01 L 691.04 258.58 L 716.52 260.34 L 742.00 258.99"></path>
+<path class="loss-line validation" d="M 54.00 104.89 L 79.48 52.16 L 104.96 118.35 L 130.44 110.10 L 155.93 100.58 L 181.41 86.24 L 206.89 109.81 L 232.37 117.52 L 257.85 112.27 L 283.33 135.24 L 308.81 127.72 L 334.30 111.73 L 359.78 134.55 L 385.26 97.37 L 410.74 114.67 L 436.22 81.17 L 461.70 110.02 L 487.19 104.11 L 512.67 123.11 L 538.15 109.71 L 563.63 131.30 L 589.11 115.79 L 614.59 113.03 L 640.07 120.54 L 665.56 115.72 L 691.04 39.66 L 716.52 109.01 L 742.00 132.11"></path>
+<text class="axis-label" x="380" y="316" text-anchor="middle">epoch</text>
+<text class="axis-label" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">weighted cross-entropy loss</text>
+<text class="legend-label training-label" x="540" y="28">training</text>
+<text class="legend-label validation-label" x="640" y="28">validation</text>
+</svg>
+<h3>Validation Component Loss</h3>
+<svg class="loss-plot" viewBox="0 0 760 320" role="img" aria-label="Validation class and magnitude loss by epoch">
+<rect class="plot-bg" x="0" y="0" width="760" height="320"></rect>
+<line class="plot-grid" x1="54" y1="278.00" x2="742" y2="278.00"></line>
+<text class="plot-tick" x="46" y="282.00" text-anchor="end">0.000</text>
+<line class="plot-grid" x1="54" y1="214.00" x2="742" y2="214.00"></line>
+<text class="plot-tick" x="46" y="218.00" text-anchor="end">0.410</text>
+<line class="plot-grid" x1="54" y1="150.00" x2="742" y2="150.00"></line>
+<text class="plot-tick" x="46" y="154.00" text-anchor="end">0.819</text>
+<line class="plot-grid" x1="54" y1="86.00" x2="742" y2="86.00"></line>
+<text class="plot-tick" x="46" y="90.00" text-anchor="end">1.229</text>
+<line class="plot-grid" x1="54" y1="22.00" x2="742" y2="22.00"></line>
+<text class="plot-tick" x="46" y="26.00" text-anchor="end">1.638</text>
+<rect class="plot-frame" x="54" y="22" width="688" height="256"></rect>
+<path class="component-line" style="stroke:#7c3aed" d="M 54.00 55.67 L 79.48 43.83 L 104.96 58.71 L 130.44 56.85 L 155.93 54.65 L 181.41 51.48 L 206.89 56.72 L 232.37 58.49 L 257.85 57.38 L 283.33 62.38 L 308.81 60.77 L 334.30 57.18 L 359.78 62.22 L 385.26 53.90 L 410.74 57.78 L 436.22 50.29 L 461.70 56.68 L 487.19 55.39 L 512.67 59.66 L 538.15 56.65 L 563.63 61.49 L 589.11 58.02 L 614.59 57.40 L 640.07 59.20 L 665.56 58.04 L 691.04 40.96 L 716.52 56.60 L 742.00 61.68"></path><text class="legend-label" style="fill:#7c3aed" x="530" y="28">class</text>
+<path class="component-line" style="stroke:#ea580c" d="M 54.00 276.36 L 79.48 276.40 L 104.96 276.33 L 130.44 276.34 L 155.93 276.41 L 181.41 276.37 L 206.89 276.40 L 232.37 276.37 L 257.85 276.30 L 283.33 276.44 L 308.81 276.37 L 334.30 276.37 L 359.78 276.45 L 385.26 276.44 L 410.74 276.43 L 436.22 276.43 L 461.70 276.49 L 487.19 276.46 L 512.67 276.45 L 538.15 276.45 L 563.63 276.45 L 589.11 276.44 L 614.59 276.44 L 640.07 276.32 L 665.56 276.41 L 691.04 276.47 L 716.52 276.35 L 742.00 276.43"></path><text class="legend-label" style="fill:#ea580c" x="635" y="28">magnitude</text>
+<text class="axis-label" x="380" y="316" text-anchor="middle">epoch</text>
+<text class="axis-label" x="14" y="160" text-anchor="middle" transform="rotate(-90 14 160)">validation component loss</text>
+</svg>
+<pre>[
+  {
+    &quot;epoch&quot;: 1,
+    &quot;trainingLoss&quot;: 1.3010051580911217,
+    &quot;validationLoss&quot;: 1.4333914069272986,
+    &quot;trainingClassLoss&quot;: 1.3738763155337141,
+    &quot;validationClassLoss&quot;: 1.422888818165183,
+    &quot;trainingMagnitudeLoss&quot;: 0.009612155631430154,
+    &quot;validationMagnitudeLoss&quot;: 0.010502588762113577
+  },
+  {
+    &quot;epoch&quot;: 2,
+    &quot;trainingLoss&quot;: 1.2722296714434653,
+    &quot;validationLoss&quot;: 1.5088785497760135,
+    &quot;trainingClassLoss&quot;: 1.4099312118797012,
+    &quot;validationClassLoss&quot;: 1.4986569287088312,
+    &quot;trainingMagnitudeLoss&quot;: 0.00953811515060097,
+    &quot;validationMagnitudeLoss&quot;: 0.01022162106718538
+  },
+  {
+    &quot;epoch&quot;: 3,
+    &quot;trainingLoss&quot;: 1.2568421852747422,
+    &quot;validationLoss&quot;: 1.414121745630461,
+    &quot;trainingClassLoss&quot;: 1.3389273953429048,
+    &quot;validationClassLoss&quot;: 1.4034300038643437,
+    &quot;trainingMagnitudeLoss&quot;: 0.00946582528905661,
+    &quot;validationMagnitudeLoss&quot;: 0.010691741766115277
+  },
+  {
+    &quot;epoch&quot;: 4,
+    &quot;trainingLoss&quot;: 1.2496388874682318,
+    &quot;validationLoss&quot;: 1.425926666012634,
+    &quot;trainingClassLoss&quot;: 1.3772095927046353,
+    &quot;validationClassLoss&quot;: 1.4153098781844964,
+    &quot;trainingMagnitudeLoss&quot;: 0.009560711377235596,
+    &quot;validationMagnitudeLoss&quot;: 0.010616787828137766
+  },
+  {
+    &quot;epoch&quot;: 5,
+    &quot;trainingLoss&quot;: 1.2440158445264542,
+    &quot;validationLoss&quot;: 1.4395580478813268,
+    &quot;trainingClassLoss&quot;: 1.3428722456407518,
+    &quot;validationClassLoss&quot;: 1.429364205013366,
+    &quot;trainingMagnitudeLoss&quot;: 0.009314784272385733,
+    &quot;validationMagnitudeLoss&quot;: 0.010193842867960573
+  },
+  {
+    &quot;epoch&quot;: 6,
+    &quot;trainingLoss&quot;: 1.235496973082065,
+    &quot;validationLoss&quot;: 1.4600853306264976,
+    &quot;trainingClassLoss&quot;: 1.352754967374521,
+    &quot;validationClassLoss&quot;: 1.4496619226803982,
+    &quot;trainingMagnitudeLoss&quot;: 0.009404715725630277,
+    &quot;validationMagnitudeLoss&quot;: 0.010423407946098395
+  },
+  {
+    &quot;epoch&quot;: 7,
+    &quot;trainingLoss&quot;: 1.2305390020803018,
+    &quot;validationLoss&quot;: 1.4263424694602966,
+    &quot;trainingClassLoss&quot;: 1.3426236778528868,
+    &quot;validationClassLoss&quot;: 1.416131707408441,
+    &quot;trainingMagnitudeLoss&quot;: 0.009226804498307557,
+    &quot;validationMagnitudeLoss&quot;: 0.010210762051859544
+  },
+  {
+    &quot;epoch&quot;: 8,
+    &quot;trainingLoss&quot;: 1.2317986520413844,
+    &quot;validationLoss&quot;: 1.415306457044351,
+    &quot;trainingClassLoss&quot;: 1.340863348949184,
+    &quot;validationClassLoss&quot;: 1.404845931702626,
+    &quot;trainingMagnitudeLoss&quot;: 0.009245378917550602,
+    &quot;validationMagnitudeLoss&quot;: 0.0104605253417171
+  },
+  {
+    &quot;epoch&quot;: 9,
+    &quot;trainingLoss&quot;: 1.229448811242793,
+    &quot;validationLoss&quot;: 1.4228244367785867,
+    &quot;trainingClassLoss&quot;: 1.3342473019004821,
+    &quot;validationClassLoss&quot;: 1.4119389916203262,
+    &quot;trainingMagnitudeLoss&quot;: 0.009373058504924016,
+    &quot;validationMagnitudeLoss&quot;: 0.01088544515825795
+  },
+  {
+    &quot;epoch&quot;: 10,
+    &quot;trainingLoss&quot;: 1.2304343789281198,
+    &quot;validationLoss&quot;: 1.389925692833445,
+    &quot;trainingClassLoss&quot;: 1.3137688723073069,
+    &quot;validationClassLoss&quot;: 1.3799253101691915,
+    &quot;trainingMagnitudeLoss&quot;: 0.009114733254819216,
+    &quot;validationMagnitudeLoss&quot;: 0.010000382664257451
+  },
+  {
+    &quot;epoch&quot;: 11,
+    &quot;trainingLoss&quot;: 1.226140547993483,
+    &quot;validationLoss&quot;: 1.4006984132158606,
+    &quot;trainingClassLoss&quot;: 1.3178421165749459,
+    &quot;validationClassLoss&quot;: 1.3902519539993101,
+    &quot;trainingMagnitudeLoss&quot;: 0.009206659528451734,
+    &quot;validationMagnitudeLoss&quot;: 0.010446459216554767
+  },
+  {
+    &quot;epoch&quot;: 12,
+    &quot;trainingLoss&quot;: 1.2270993950921052,
+    &quot;validationLoss&quot;: 1.4235984211599657,
+    &quot;trainingClassLoss&quot;: 1.34826429659539,
+    &quot;validationClassLoss&quot;: 1.4131725217333018,
+    &quot;trainingMagnitudeLoss&quot;: 0.009285956647571585,
+    &quot;validationMagnitudeLoss&quot;: 0.010425899426662845
+  },
+  {
+    &quot;epoch&quot;: 13,
+    &quot;trainingLoss&quot;: 1.2244567298313038,
+    &quot;validationLoss&quot;: 1.3909169354568272,
+    &quot;trainingClassLoss&quot;: 1.311312652143545,
+    &quot;validationClassLoss&quot;: 1.3809693219724821,
+    &quot;trainingMagnitudeLoss&quot;: 0.009096791045169172,
+    &quot;validationMagnitudeLoss&quot;: 0.00994761348434402
+  },
+  {
+    &quot;epoch&quot;: 14,
+    &quot;trainingLoss&quot;: 1.2253697732093862,
+    &quot;validationLoss&quot;: 1.4441470837782737,
+    &quot;trainingClassLoss&quot;: 1.350556462714402,
+    &quot;validationClassLoss&quot;: 1.4341813333835385,
+    &quot;trainingMagnitudeLoss&quot;: 0.009298462250144081,
+    &quot;validationMagnitudeLoss&quot;: 0.009965750394732246
+  },
+  {
+    &quot;epoch&quot;: 15,
+    &quot;trainingLoss&quot;: 1.2212809705448178,
+    &quot;validationLoss&quot;: 1.4193772127607214,
+    &quot;trainingClassLoss&quot;: 1.3260347640886374,
+    &quot;validationClassLoss&quot;: 1.4093290779189869,
+    &quot;trainingMagnitudeLoss&quot;: 0.009096016564091706,
+    &quot;validationMagnitudeLoss&quot;: 0.010048134841735992
+  },
+  {
+    &quot;epoch&quot;: 16,
+    &quot;trainingLoss&quot;: 1.222889137234538,
+    &quot;validationLoss&quot;: 1.4673482478595112,
+    &quot;trainingClassLoss&quot;: 1.3664817222600876,
+    &quot;validationClassLoss&quot;: 1.457321842820299,
+    &quot;trainingMagnitudeLoss&quot;: 0.009125029285322904,
+    &quot;validationMagnitudeLoss&quot;: 0.010026405039213256
+  },
+  {
+    &quot;epoch&quot;: 17,
+    &quot;trainingLoss&quot;: 1.2230794040525008,
+    &quot;validationLoss&quot;: 1.4260409036201445,
+    &quot;trainingClassLoss&quot;: 1.318735686541638,
+    &quot;validationClassLoss&quot;: 1.4163776172563947,
+    &quot;trainingMagnitudeLoss&quot;: 0.009109556886511697,
+    &quot;validationMagnitudeLoss&quot;: 0.009663286363748478
+  },
+  {
+    &quot;epoch&quot;: 18,
+    &quot;trainingLoss&quot;: 1.2209328953136107,
+    &quot;validationLoss&quot;: 1.4344965459995513,
+    &quot;trainingClassLoss&quot;: 1.3520822636658552,
+    &quot;validationClassLoss&quot;: 1.4246589478333698,
+    &quot;trainingMagnitudeLoss&quot;: 0.00920486572645225,
+    &quot;validationMagnitudeLoss&quot;: 0.009837598166177406
+  },
+  {
+    &quot;epoch&quot;: 19,
+    &quot;trainingLoss&quot;: 1.2189946147179929,
+    &quot;validationLoss&quot;: 1.4072935643919795,
+    &quot;trainingClassLoss&quot;: 1.3086185428051722,
+    &quot;validationClassLoss&quot;: 1.3973544776760096,
+    &quot;trainingMagnitudeLoss&quot;: 0.009076040264465004,
+    &quot;validationMagnitudeLoss&quot;: 0.009939086715973535
+  },
+  {
+    &quot;epoch&quot;: 20,
+    &quot;trainingLoss&quot;: 1.2198527895670452,
+    &quot;validationLoss&quot;: 1.4264901452824919,
+    &quot;trainingClassLoss&quot;: 1.3484003484801386,
+    &quot;validationClassLoss&quot;: 1.4165771466663497,
+    &quot;trainingMagnitudeLoss&quot;: 0.009409760203347077,
+    &quot;validationMagnitudeLoss&quot;: 0.009912998616136346
+  },
+  {
+    &quot;epoch&quot;: 21,
+    &quot;trainingLoss&quot;: 1.216428575916345,
+    &quot;validationLoss&quot;: 1.3955695722220438,
+    &quot;trainingClassLoss&quot;: 1.30523096806013,
+    &quot;validationClassLoss&quot;: 1.3856469304224335,
+    &quot;trainingMagnitudeLoss&quot;: 0.009197101665984074,
+    &quot;validationMagnitudeLoss&quot;: 0.009922641799604675
+  },
+  {
+    &quot;epoch&quot;: 22,
+    &quot;trainingLoss&quot;: 1.218211203702986,
+    &quot;validationLoss&quot;: 1.4177767221064608,
+    &quot;trainingClassLoss&quot;: 1.3060890812928687,
+    &quot;validationClassLoss&quot;: 1.4078131081812275,
+    &quot;trainingMagnitudeLoss&quot;: 0.00935882577698229,
+    &quot;validationMagnitudeLoss&quot;: 0.009963613925229379
+  },
+  {
+    &quot;epoch&quot;: 23,
+    &quot;trainingLoss&quot;: 1.2143626078510505,
+    &quot;validationLoss&quot;: 1.421733170681826,
+    &quot;trainingClassLoss&quot;: 1.3259298106401485,
+    &quot;validationClassLoss&quot;: 1.4117690733907982,
+    &quot;trainingMagnitudeLoss&quot;: 0.009155998195626144,
+    &quot;validationMagnitudeLoss&quot;: 0.0099640972910248
+  },
+  {
+    &quot;epoch&quot;: 24,
+    &quot;trainingLoss&quot;: 1.2133356176880028,
+    &quot;validationLoss&quot;: 1.4109813010208112,
+    &quot;trainingClassLoss&quot;: 1.3180031821816516,
+    &quot;validationClassLoss&quot;: 1.4002438511114694,
+    &quot;trainingMagnitudeLoss&quot;: 0.009509693276744849,
+    &quot;validationMagnitudeLoss&quot;: 0.010737449909343132
+  },
+  {
+    &quot;epoch&quot;: 25,
+    &quot;trainingLoss&quot;: 1.2127257167792336,
+    &quot;validationLoss&quot;: 1.4178756421387797,
+    &quot;trainingClassLoss&quot;: 1.3294508384017445,
+    &quot;validationClassLoss&quot;: 1.4076790596380684,
+    &quot;trainingMagnitudeLoss&quot;: 0.009098349193553072,
+    &quot;validationMagnitudeLoss&quot;: 0.010196582500709546
+  },
+  {
+    &quot;epoch&quot;: 26,
+    &quot;trainingLoss&quot;: 1.2133425604781618,
+    &quot;validationLoss&quot;: 1.5267873657542752,
+    &quot;trainingClassLoss&quot;: 1.4230357946215888,
+    &quot;validationClassLoss&quot;: 1.5169840306664057,
+    &quot;trainingMagnitudeLoss&quot;: 0.009254364447716252,
+    &quot;validationMagnitudeLoss&quot;: 0.009803335087868603
+  },
+  {
+    &quot;epoch&quot;: 27,
+    &quot;trainingLoss&quot;: 1.2108110148082543,
+    &quot;validationLoss&quot;: 1.4274832057988156,
+    &quot;trainingClassLoss&quot;: 1.3149578219772118,
+    &quot;validationClassLoss&quot;: 1.4169026645866232,
+    &quot;trainingMagnitudeLoss&quot;: 0.00950822586079052,
+    &quot;validationMagnitudeLoss&quot;: 0.010580541212190936
+  },
+  {
+    &quot;epoch&quot;: 28,
+    &quot;trainingLoss&quot;: 1.2127456731200978,
+    &quot;validationLoss&quot;: 1.3944075341912745,
+    &quot;trainingClassLoss&quot;: 1.3027362702575915,
+    &quot;validationClassLoss&quot;: 1.3843750801495873,
+    &quot;trainingMagnitudeLoss&quot;: 0.008994135201015933,
+    &quot;validationMagnitudeLoss&quot;: 0.010032454041686442
+  }
+]</pre>
+</section>
+</main>
+</body>
+</html>

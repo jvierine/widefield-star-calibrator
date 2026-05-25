@@ -1,0 +1,19 @@
+{
+  "scripts": {
+    "test": "node --test --test-timeout=1000 tests/*.test.js",
+    "test:full": "AIDA_FULL_TESTS=1 node --test --test-timeout=1000 tests/*.test.js",
+    "test:img9953-sensitivity": "AIDA_SENSITIVITY_TESTS=1 node --test --test-name-pattern 'IMG_9953 pre-undistortion sensitivity' tests/auto_identifier.test.js",
+    "test:allsky010031-sensitivity": "AIDA_SENSITIVITY_TESTS=1 node --test --test-name-pattern 'allsky 010031 AMS0221 optmod 2 pre-undistortion sensitivity' tests/auto_identifier.test.js",
+    "report": "node tools/generate_test_report.js",
+    "report:saved-overlays": "node tools/generate_saved_case_overlay_report.js",
+    "report:img9953-asterisms": "node tools/img9953_undistorted_asterism_report.js",
+    "report:img9953-sensitivity": "node tools/img9953_preundistortion_sensitivity.js",
+    "report:allsky010031-sensitivity": "node tools/allsky010031_ams0221_preundistortion_sensitivity.js",
+    "report:star-detector-oracle": "node tools/star_detector_oracle_report.js",
+    "train:star-nn": "node tools/train_star_patch_nn.js",
+    "report:case": "node tools/generate_test_report.js",
+    "lucky:report": "node tools/run_lucky_report.js",
+    "serve": "node tools/serve_calibrator.js",
+    "review:overlays": "node tools/review_star_overlays.js"
+  }
+}

@@ -1,0 +1,17 @@
+.DS_Store
+.venv/
+node_modules/
+npm-debug.log*
+
+# Local raw image drops. Curated PNG fixtures live in calibration_images/ and test_cases/.
+calibration_images/*.HEIC
+calibration_images/*.heic
+calibration_images/*.JPG
+calibration_images/*.jpg
+calibration_images/*.JPEG
+calibration_images/*.jpeg
+
+# Local Python/test byproducts used by optional reports.
+__pycache__/
+*.pyc
+.pytest_cache/

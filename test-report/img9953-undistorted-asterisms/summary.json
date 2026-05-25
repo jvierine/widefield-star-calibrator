@@ -1,0 +1,97 @@
+{
+  "image": "test_cases/IMG_9953/IMG_9953.png",
+  "maxMag": 6.5,
+  "detectorStatus": "bright-star detector: bg 73.1, sigma 29.5, thresholds scan/global 87.8/117.4, 161652 local peaks, 2412/8957 star-like candidates after clutter, selected top 650/650, suppression radius 10 px",
+  "detectorOptions": {
+    "maxDetections": 650,
+    "scanStep": 1,
+    "thresholdSigma": 1.5,
+    "localThresholdSigma": 1.5,
+    "requireGlobalThreshold": false,
+    "maxRadiusPx": 5,
+    "maxElongation": 4,
+    "suppressionRadiusPx": 10,
+    "crowdingRadiusPx": 36,
+    "maxCrowding": 7,
+    "crowdingScorePower": 1.25
+  },
+  "detectedStars": 650,
+  "oracleDetectorHits": 158,
+  "asterismInputDetections": 158,
+  "asterismInput": "oracle-validated automatic detections",
+  "asterismIdentifiedStars": 158,
+  "correctIdentifiedStars": 145,
+  "incorrectIdentifiedStars": 13,
+  "unknownIdentifiedStars": 0,
+  "wrong": [
+    {
+      "detectionId": 17,
+      "identified": "Vega|18.6156389|38.7836111",
+      "truth": "Lyr Epsilo2-5|18.7396944|39.6130556"
+    },
+    {
+      "detectionId": 108,
+      "identified": "Cyg Chi|19.8427500|32.9141667",
+      "truth": "Cyg 17|19.7737778|33.7277778"
+    },
+    {
+      "detectionId": 43,
+      "identified": "Del Gamma2-12|20.7776389|16.1241667",
+      "truth": "Del Gamma1-12|20.7774167|16.1244444"
+    },
+    {
+      "detectionId": 18,
+      "identified": "Lyr Zeta1-6|18.7462222|37.6050000",
+      "truth": "Lyr Zeta2-7|18.7467222|37.5944444"
+    },
+    {
+      "detectionId": 46,
+      "identified": "Her Rho-75|17.3947222|37.1458333",
+      "truth": "Her Rho-75|17.3946389|37.1466667"
+    },
+    {
+      "detectionId": 174,
+      "identified": "Her 106|18.3383056|21.9613889",
+      "truth": "Her 105|18.3196389|24.4461111"
+    },
+    {
+      "detectionId": 134,
+      "identified": "Sge Eta-16|20.0859722|19.9911111",
+      "truth": "Sge 13|20.0009167|17.5166667"
+    },
+    {
+      "detectionId": 213,
+      "identified": "Aql Omicro-54|19.8504444|10.4155556",
+      "truth": "Aql Phi-61|19.9373056|11.4238889"
+    },
+    {
+      "detectionId": 93,
+      "identified": "Cyg Beta2-6|19.5125833|27.9652778",
+      "truth": "Cyg 9|19.5808056|29.4630556"
+    },
+    {
+      "detectionId": 474,
+      "identified": "Her 95|18.0249722|21.5952778",
+      "truth": "Her 96|18.0397500|20.8336111"
+    },
+    {
+      "detectionId": 133,
+      "identified": "Her 105|18.3196389|24.4461111",
+      "truth": "Her 100|18.1304167|26.1013889"
+    },
+    {
+      "detectionId": 171,
+      "identified": "Sge 10|19.9336944|16.6347222",
+      "truth": "Sge 11|19.9626111|16.7891667"
+    },
+    {
+      "detectionId": 170,
+      "identified": "Sge 13|20.0009167|17.5166667",
+      "truth": "Sge 15|20.0683889|17.0700000"
+    }
+  ],
+  "status": "auto-identify: asterism matched 158 stars <= mag 6.5, median residual 0.6 px, scored 7000 triangle transforms",
+  "catalogTriangleCount": 30000,
+  "detectionTriangleCount": 4000,
+  "scoredTransforms": 7000
+}

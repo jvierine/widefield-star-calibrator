@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AIDA Browser Star Calibration Prototype</title>
+<link rel="stylesheet" href="style.css?v=20260526a">
+</head>
+<body>
+<header class="topbar">
+    <div>
+        <h1>AIDA Browser Star Calibration</h1>
+        <div class="version-line">Version <span id="appVersion">loading...</span></div>
+        <div class="copyright-line">
+            Copyright &copy; Juha Vierinen, Bj&ouml;rn Gustavsson, and Codex.
+        </div>
+        <div class="subtle">
+            Shortcuts:
+            <kbd>S</kbd> star picking,
+            <kbd>L</kbd> lucky auto fit,
+            <kbd>F</kbd> Nelder-Mead fit,
+            <kbd>G</kbd> Levenberg-Marquardt fit,
+            <kbd>D</kbd> delete pairing,
+            <kbd>M</kbd> mark bad detections,
+            <kbd>Z</kbd> zoom,
+            <kbd>C</kbd> pairing/Stellarium view,
+            <kbd>X</kbd> pure image/Stellarium,
+            <kbd>N</kbd> star names,
+            <kbd>H</kbd> detected stars,
+            <kbd>K</kbd> KDE dots,
+            <kbd>T</kbd> asterism lines,
+            <kbd>A</kbd> az/el grid,
+            <kbd>R</kbd> residuals,
+            <kbd>Cmd/Ctrl Z</kbd> undo,
+            <kbd>Left drag</kbd> move view,
+            <kbd>Right drag</kbd> rotate view,
+            <kbd>Wheel</kbd> scale view,
+            <kbd>Esc</kbd> cancel.
+        </div>
+    </div>
+    <div class="top-actions">
+        <a class="top-link" href="help.html" target="_blank" rel="noopener">Help</a>
+        <button id="toggleAmbientMusic" class="audio-button" type="button" aria-label="Play ambient sky music">
+            <span class="audio-icon" aria-hidden="true"></span>
+        </button>
+        <label class="file-button">
+            Load image
+            <input id="imageFile" type="file" accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,.heic,.heif">
+        </label>
+    </div>
+</header>
+
+<main class="layout">
+    <section class="viewer-panel">
+        <canvas id="glCanvas" tabindex="0"></canvas>
+        <div class="cardinal-layer" id="cardinalLayer" aria-hidden="true"></div>
+        <div class="residual-histogram" id="residualHistogram" aria-hidden="true"></div>
+        <canvas id="zoomCanvas" class="zoom-canvas" width="100" height="100" aria-hidden="true"></canvas>
+        <div id="densityPopup" class="density-popup" aria-hidden="true">
+            <div class="density-popup-header">
+                <div>
+                    <div class="density-popup-title">Interpolated Star Density Estimate</div>
+                    <div id="densityPopupSubtitle" class="density-popup-subtitle"></div>
+                </div>
+                <button id="densityPopupClose" type="button" aria-label="Close density estimate">Close</button>
+            </div>
+            <canvas id="densityCanvas" width="560" height="460"></canvas>
+        </div>
+        <div class="hint" id="canvasHint">Drop or load a PNG/JPEG/HEIC calibration frame.</div>
+        <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+            <div class="loading-box">
+                <div id="loadingText">Loading image...</div>
+                <div class="loading-track"><div class="loading-bar" id="loadingBar"></div></div>
+            </div>
+        </div>
+    </section>
+
+    <aside class="controls">
+        <section>
+            <h2>Observation</h2>
+            <label>UTC timestamp
+                <input id="timestampUtc" type="datetime-local" step="0.001">
+            </label>
+            <div class="grid2">
+                <label>Latitude deg
+                    <input id="latDeg" type="number" step="0.0001" value="69.348">
+                </label>
+                <label>Longitude deg
+                    <input id="lonDeg" type="number" step="0.0001" value="20.363">
+                </label>
+            </div>
+            <label>Altitude m
+                <input id="altM" type="number" step="1" value="0">
+            </label>
+            <button id="luckyFit" class="primary-action" type="button">I'm feeling lucky... (L)</button>
+        </section>
+
+        <section>
+            <h2>Stars</h2>
+            <label>Image brightness <span id="brightnessValue">0.06</span>
+                <input id="brightness" type="range" min="-1" max="1" value="0.06" step="0.01">
+            </label>
+            <label>Image contrast <span id="contrastValue">1.00</span>
+                <input id="contrast" type="range" min="0.1" max="4" value="1" step="0.01">
+            </label>
+            <label class="checkbox-label">
+                <input id="highPassImage" type="checkbox" checked>
+                High-pass image
+            </label>
+            <label>High-pass Gaussian width <span id="highPassWidthValue">100</span> px
+                <input id="highPassWidth" type="range" min="10" max="300" value="100" step="5">
+            </label>
+            <label>Limiting magnitude <span id="magValue">4.0</span>
+                <input id="maxMag" type="range" min="2" max="7" value="4" step="0.1">
+            </label>
+            <div class="button-row">
+                <button id="flipX" type="button">Flip X</button>
+                <button id="flipY" type="button">Flip Y</button>
+                <button id="resetOffset" type="button">Reset pointing</button>
+            </div>
+            <div class="button-row button-row-2">
+                <button id="flipImageX" type="button">Flip image horizontally</button>
+                <button id="flipImageY" type="button">Flip image vertically</button>
+            </div>
+            <button id="toggleRaDecGrid" type="button">Show RA/Dec grid</button>
+            <button id="toggleAzElGrid" type="button">Hide az/el grid</button>
+            <button id="toggleDetectionCircles" type="button">Stellarium view (C)</button>
+            <button id="toggleStarNames" type="button">Hide star names (N)</button>
+        </section>
+
+        <section>
+            <h2>Camera</h2>
+            <div class="grid2">
+                <label>Optical model
+                    <select id="optmod">
+                        <option value="1">AIDA rectilinear/pinhole (optmod 1)</option>
+                        <option value="2" selected>AIDA sinusoidal radial (optmod 2)</option>
+                        <option value="3">AIDA hybrid tan/theta radial (optmod 3)</option>
+                        <option value="4">AIDA power equidistant (optmod 4)</option>
+                        <option value="5">AIDA scaled rectilinear (optmod 5)</option>
+                        <option value="12">AIDA unified radial (optmod 12)</option>
+                        <option value="20">Brown-Conrady</option>
+                    </select>
+                </label>
+                <label>Horizontal focal f1
+                    <input id="fScaleX" type="number" value="1.0" step="0.01">
+                </label>
+                <label>Vertical focal f2
+                    <input id="fScaleY" type="number" value="1.0" step="0.01">
+                </label>
+            </div>
+            <label>Alpha deg
+            <input id="rotAlpha" type="range" min="-90" max="90" value="0" step="0.001">
+            </label>
+            <label>Beta deg
+            <input id="rotBeta" type="range" min="-90" max="90" value="0" step="0.001">
+            </label>
+            <label>Gamma deg
+            <input id="rotGamma" type="range" min="-180" max="180" value="0" step="0.001">
+            </label>
+            <div class="rotation-widget">
+                <canvas id="rotationCanvas" width="280" height="180" aria-label="3D camera rotation visualization"></canvas>
+            </div>
+            <div class="grid2">
+                <label>du
+                    <input id="du" type="number" value="0" step="0.001">
+                </label>
+                <label>dv
+                    <input id="dv" type="number" value="0" step="0.001">
+                </label>
+            </div>
+            <label>Radial alpha / Brown k1
+                <input id="radialAlpha" type="number" value="0.35" step="0.01">
+            </label>
+            <div id="brownConradyParams" class="grid2" hidden>
+                <label>Brown k2
+                    <input id="brownK2" type="number" value="0" step="0.001">
+                </label>
+                <label>Brown k3
+                    <input id="brownK3" type="number" value="0" step="0.001">
+                </label>
+                <label>Brown p1
+                    <input id="brownP1" type="number" value="0" step="0.0001">
+                </label>
+                <label>Brown p2
+                    <input id="brownP2" type="number" value="0" step="0.0001">
+                </label>
+            </div>
+            <div id="lensEquation" class="lens-equation"></div>
+            <button id="fitLens" type="button">Fit lens with Nelder-Mead (F)</button>
+            <button id="fitLensLm" type="button">Fit lens with Levenberg-Marquardt (G)</button>
+            <button id="undoFit" type="button" disabled>Undo</button>
+            <label>Export language
+                <select id="exportLanguage">
+                    <option value="python" selected>Python</option>
+                    <option value="julia">Julia</option>
+                    <option value="c">C</option>
+                    <option value="matlab">MATLAB</option>
+                </select>
+            </label>
+            <div class="button-row button-row-2">
+                <button id="copyOptpar" type="button">Copy optpar</button>
+                <button id="copyPythonMapper" type="button">Copy mapper code</button>
+            </div>
+            <div id="localTestCaseTools" hidden>
+                <button id="submitTestCase" type="button">Submit as test case</button>
+                <div id="saveFeedback" class="save-feedback" aria-live="polite" hidden></div>
+                <label>Load test case
+                    <select id="testCaseSelect">
+                        <option value="">Select saved test case...</option>
+                    </select>
+                </label>
+                <button id="loadTestCase" type="button">Load selected test case</button>
+            </div>
+            <button id="toggleFitResiduals" type="button">Show fit residual view (R)</button>
+            <button id="clearMatches" type="button">Remove star pairings</button>
+        </section>
+
+        <section>
+            <h2>Status</h2>
+            <div id="matchInstructions" class="match-instructions">
+                Hold s and click an image star to start a matched pair.
+            </div>
+            <pre id="status">No image loaded.</pre>
+        </section>
+    </aside>
+</main>
+
+<script src="js/star_catalog.js?v=20260523b"></script>
+<script>
+window.MathJax = {
+    tex: {inlineMath: [["\\(", "\\)"], ["$", "$"]]},
+    startup: {typeset: false}
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic-to@1.3.0/dist/iife/heic-to.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="js/aidatools.js?v=20260524a"></script>
+<script src="js/centroid.js?v=20260523a"></script>
+<script src="js/export_generators.js?v=20260524b"></script>
+<script src="js/star_detector.js?v=20260525b"></script>
+<script src="js/auto_identifier.js?v=20260525c"></script>
+<script src="js/app.js?v=0.2.6a"></script>
+</body>
+</html>

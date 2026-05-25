@@ -1,0 +1,2056 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>IMG_9953 undistorted asterism report</title>
+<style>
+body { margin: 0; font: 15px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17202a; background: #f5f7fa; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+h1 { margin: 0 0 8px; font-size: 24px; }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin: 18px 0; }
+.metric { background: white; border: 1px solid #d9e1ea; border-radius: 8px; padding: 10px 12px; }
+.metric b { display: block; font-size: 22px; }
+.image-wrap { position: relative; background: #111; border: 1px solid #26313d; }
+.image-wrap img { display: block; width: 100%; height: auto; }
+.overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.plane { width: 100%; max-width: 720px; background: white; border: 1px solid #d9e1ea; border-radius: 8px; }
+.asterism { fill: rgba(0, 170, 255, 0.04); stroke: rgba(0, 170, 255, 0.55); stroke-width: 2; }
+.catalog { fill: none; stroke: rgba(255, 60, 60, 0.75); stroke-width: 2; }
+.detection { fill: none; stroke: rgba(255, 218, 67, 0.95); stroke-width: 4; }
+.identified { fill: none; stroke-width: 4; }
+.correct { stroke: #00c46a; }
+.wrong { stroke: #ff3158; }
+.unknown { stroke: #b04cff; }
+code, pre { background: #eef2f7; border-radius: 5px; padding: 2px 4px; }
+pre { padding: 12px; overflow-x: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 12px 0 18px; }
+.swatch { display: inline-block; width: 14px; height: 14px; border-radius: 50%; vertical-align: -2px; margin-right: 5px; }
+</style>
+</head>
+<body>
+<main>
+<h1>IMG_9953 Undistorted Asterism Report</h1>
+<p>Generated 2026-05-25T22:04:11.534Z. The automatic star detections were pre-undistorted with the saved Brown-Conrady optpar before running the sky-plane asterism matcher.</p>
+<section class="metric">
+<h2>Repeat From Command Line</h2>
+<pre><code>cd /Users/j/src/AIDA_tools/aida_js_calibrator &amp;&amp; npm run report:img9953-asterisms</code></pre>
+</section>
+<div class="summary">
+<div class="metric"><span>Detected stars</span><b>650</b></div>
+<div class="metric"><span>Oracle detector hits</span><b>158</b></div>
+<div class="metric"><span>Asterism inputs</span><b>158</b></div>
+<div class="metric"><span>Asterism IDs</span><b>158</b></div>
+<div class="metric"><span>Correct IDs</span><b>145</b></div>
+<div class="metric"><span>Incorrect IDs</span><b>13</b></div>
+<div class="metric"><span>Unknown IDs</span><b>0</b></div>
+</div>
+<p><b>Status:</b> auto-identify: asterism matched 158 stars &lt;= mag 6.5, median residual 0.6 px, scored 7000 triangle transforms</p>
+<p><b>Triangle counts:</b> catalogue 30000, image 4000, scored transforms 7000.</p>
+<div class="legend">
+<span><span class="swatch" style="background:#ffda43"></span>raw detections</span>
+<span><span class="swatch" style="border:2px solid #ff3c3c"></span>catalogue stars</span>
+<span><span class="swatch" style="border:3px solid #00c46a"></span>correct asterism IDs</span>
+<span><span class="swatch" style="border:3px solid #ff3158"></span>wrong IDs</span>
+<span><span class="swatch" style="border:3px solid #00aaff"></span>sampled matched-star asterisms</span>
+</div>
+<section class="image-wrap">
+<img src="IMG_9953.png" alt="IMG_9953">
+<svg class="overlay" viewBox="0 0 4032 3024" preserveAspectRatio="none"><path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 2727.41 1375.55 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 2101.89 721.13 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 2101.89 721.13 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 849.19 1023.85 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2727.41 1375.55 L 2101.89 721.13 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 2721.52 1423.62 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 849.19 1023.85 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2727.41 1375.55 L 849.19 1023.85 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2101.89 721.13 L 849.19 1023.85 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 2721.52 1423.62 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 2101.89 721.13 L 849.19 1023.85 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 849.19 1023.85 L 2721.52 1423.62 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2727.41 1375.55 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2101.89 721.13 L 2721.52 1423.62 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 849.19 1023.85 L 2721.52 1423.62 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2101.89 721.13 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 849.19 1023.85 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2727.41 1375.55 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 849.19 1023.85 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2721.52 1423.62 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 2101.89 721.13 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 849.19 1023.85 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2101.89 721.13 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2101.89 721.13 L 849.19 1023.85 L 2721.52 1423.62 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 849.19 1023.85 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 849.19 1023.85 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2721.52 1423.62 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2721.52 1423.62 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 849.19 1023.85 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2727.41 1375.55 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 2101.89 721.13 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2101.89 721.13 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 849.19 1023.85 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 849.19 1023.85 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 1264.25 1355.37 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 1287.74 880.01 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 2101.89 721.13 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2101.89 721.13 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2721.52 1423.62 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2721.52 1423.62 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 1448.77 531.33 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 849.19 1023.85 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 1287.74 880.01 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 1264.25 1355.37 Z"></path>
+<path class="asterism" d="M 2101.89 721.13 L 2721.52 1423.62 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 2101.89 721.13 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2721.52 1423.62 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2727.41 1375.55 L 1448.77 531.33 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2727.41 1375.55 L 1264.25 1355.37 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 849.19 1023.85 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 1287.74 880.01 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 3358.76 192.98 Z"></path>
+<path class="asterism" d="M 2101.89 721.13 L 849.19 1023.85 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2101.89 721.13 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 849.19 1023.85 L 1264.25 1355.37 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 1287.74 880.01 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2101.89 721.13 L 1264.25 1355.37 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 1287.74 880.01 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 1664.35 665.50 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2721.52 1423.62 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 849.19 1023.85 L 2721.52 1423.62 L 1287.74 880.01 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 2727.41 1375.55 L 1448.77 531.33 Z"></path>
+<path class="asterism" d="M 2596.20 1025.82 L 849.19 1023.85 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 849.19 1023.85 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 2101.89 721.13 L 2721.52 1423.62 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 2101.89 721.13 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2101.89 721.13 L 849.19 1023.85 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2721.52 1423.62 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 1287.74 880.01 L 1439.50 973.39 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2596.20 1025.82 L 2606.86 1417.09 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 1287.74 880.01 L 2416.21 505.93 Z"></path>
+<path class="asterism" d="M 849.19 1023.85 L 2721.52 1423.62 L 1664.35 665.50 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 849.19 1023.85 L 1448.77 531.33 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 849.19 1023.85 L 2614.30 838.66 Z"></path>
+<path class="asterism" d="M 2727.41 1375.55 L 2101.89 721.13 L 1264.25 1355.37 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2101.89 721.13 L 3358.76 192.98 Z"></path>
+<path class="asterism" d="M 2859.41 1026.19 L 2721.52 1423.62 L 1264.25 1355.37 Z"></path>
+<circle class="catalog" cx="2479.17" cy="837.16" r="8.00"><title>Vega mag 0.0</title></circle>
+<circle class="catalog" cx="3008.39" cy="2671.72" r="8.00"><title>Rigel mag 0.1</title></circle>
+<circle class="catalog" cx="858.04" cy="2693.30" r="8.00"><title>Procyon mag 0.4</title></circle>
+<circle class="catalog" cx="1093.61" cy="1888.41" r="8.00"><title>Altair mag 0.8</title></circle>
+<circle class="catalog" cx="2606.80" cy="2969.17" r="8.00"><title>Alnilam mag 1.7</title></circle>
+<circle class="catalog" cx="2554.39" cy="2899.70" r="8.00"><title>Ori Zeta-50 mag 2.0</title></circle>
+<circle class="catalog" cx="2777.03" cy="2336.08" r="8.00"><title>Ras Alhague mag 2.1</title></circle>
+<circle class="catalog" cx="1563.01" cy="255.12" r="8.00"><title>Cyg Gamma-37 mag 2.2</title></circle>
+<circle class="catalog" cx="3096.56" cy="217.90" r="8.00"><title>Rastaban mag 2.2</title></circle>
+<circle class="catalog" cx="1145.66" cy="381.44" r="8.00"><title>Cyg Epsilo-53 mag 2.5</title></circle>
+<circle class="catalog" cx="1192.04" cy="1829.33" r="8.00"><title>Tarazed mag 2.7</title></circle>
+<circle class="catalog" cx="3811.53" cy="2072.48" r="8.00"><title>Kornephoros mag 2.8</title></circle>
+<circle class="catalog" cx="2683.92" cy="2698.19" r="8.00"><title>Ori Iota-44 mag 2.8</title></circle>
+<circle class="catalog" cx="3359.29" cy="192.45" r="8.00"><title>Alwaid mag 2.8</title></circle>
+<circle class="catalog" cx="3072.45" cy="2891.58" r="8.00"><title>Cursa mag 2.8</title></circle>
+<circle class="catalog" cx="3711.67" cy="1462.72" r="8.00"><title>Her Zeta-40 mag 2.8</title></circle>
+<circle class="catalog" cx="2019.79" cy="228.24" r="8.00"><title>Cyg Delta-18 mag 2.9</title></circle>
+<circle class="catalog" cx="934.94" cy="2941.28" r="8.00"><title>Gomeisa mag 2.9</title></circle>
+<circle class="catalog" cx="1730.12" cy="1878.49" r="8.00"><title>Aql Zeta-17 mag 3.0</title></circle>
+<circle class="catalog" cx="1749.64" cy="1127.82" r="5.00"><title>Albireo mag 3.1</title></circle>
+<circle class="catalog" cx="3182.63" cy="1764.62" r="5.00"><title>Her Delta-65 mag 3.1</title></circle>
+<circle class="catalog" cx="3317.43" cy="1126.43" r="5.00"><title>Her Pi-67 mag 3.2</title></circle>
+<circle class="catalog" cx="732.84" cy="328.67" r="5.00"><title>Cyg Zeta-64 mag 3.2</title></circle>
+<circle class="catalog" cx="548.05" cy="2272.77" r="5.00"><title>Aql Theta-65 mag 3.2</title></circle>
+<circle class="catalog" cx="2153.75" cy="1053.21" r="5.00"><title>Sulaphat mag 3.2</title></circle>
+<circle class="catalog" cx="1260.16" cy="2304.59" r="5.00"><title>Aql Delta-30 mag 3.4</title></circle>
+<circle class="catalog" cx="2791.37" cy="2963.03" r="5.00"><title>Ori Eta-28 mag 3.4</title></circle>
+<circle class="catalog" cx="2828.57" cy="1530.62" r="5.00"><title>Her Mu-86 mag 3.4</title></circle>
+<circle class="catalog" cx="2251.85" cy="1055.80" r="5.00"><title>Sheliak mag 3.5</title></circle>
+<circle class="catalog" cx="1264.49" cy="1355.53" r="5.00"><title>Sge Gamma-12 mag 3.5</title></circle>
+<circle class="catalog" cx="3075.70" cy="2322.99" r="5.00"><title>Her Alpha1-64 mag 3.5</title></circle>
+<circle class="catalog" cx="183.29" cy="2742.52" r="5.00"><title>Cnc Beta-17 mag 3.5</title></circle>
+<circle class="catalog" cx="3747.16" cy="1034.39" r="5.00"><title>Her Eta-44 mag 3.5</title></circle>
+<circle class="catalog" cx="2947.70" cy="2735.28" r="5.00"><title>Ori Tau-20 mag 3.6</title></circle>
+<circle class="catalog" cx="665.36" cy="1335.36" r="5.00"><title>Rotanev mag 3.6</title></circle>
+<circle class="catalog" cx="2721.69" cy="1423.23" r="5.00"><title>Her Xi-92 mag 3.7</title></circle>
+<circle class="catalog" cx="972.60" cy="1984.11" r="5.00"><title>Aql Beta-60 mag 3.7</title></circle>
+<circle class="catalog" cx="2323.60" cy="2347.61" r="5.00"><title>Oph 72 mag 3.7</title></circle>
+<circle class="catalog" cx="3938.33" cy="2238.22" r="5.00"><title>Her Gamma-20 mag 3.8</title></circle>
+<circle class="catalog" cx="678.45" cy="1259.24" r="5.00"><title>Svalocin mag 3.8</title></circle>
+<circle class="catalog" cx="3170.39" cy="574.25" r="5.00"><title>Her Iota-85 mag 3.8</title></circle>
+<circle class="catalog" cx="2591.86" cy="2871.95" r="5.00"><title>Ori Sigma-48 mag 3.8</title></circle>
+<circle class="catalog" cx="1367.89" cy="1461.05" r="5.00"><title>Sge Delta-7 mag 3.8</title></circle>
+<circle class="catalog" cx="2607.27" cy="1417.30" r="5.00"><title>Her Omicr-103 mag 3.8</title></circle>
+<circle class="catalog" cx="2323.84" cy="1689.99" r="5.00"><title>Her 109 mag 3.8</title></circle>
+<circle class="catalog" cx="2858.33" cy="1026.71" r="5.00"><title>Her Theta-91 mag 3.9</title></circle>
+<circle class="catalog" cx="1664.44" cy="666.09" r="5.00"><title>Cyg Eta-21 mag 3.9</title></circle>
+<circle class="catalog" cx="860.15" cy="2276.39" r="5.00"><title>Aql Eta-55 mag 3.9</title></circle>
+<circle class="catalog" cx="3442.00" cy="1471.82" r="5.00"><title>Her Epsilo-58 mag 3.9</title></circle>
+<circle class="catalog" cx="1214.22" cy="673.23" r="5.00"><title>Cyg 41 mag 4.0</title></circle>
+<circle class="catalog" cx="1817.29" cy="1849.16" r="5.00"><title>Aql Epsilo-13 mag 4.0</title></circle>
+<circle class="catalog" cx="621.99" cy="1520.79" r="5.00"><title>Del Epsilon-2 mag 4.0</title></circle>
+<circle class="catalog" cx="2415.51" cy="507.19" r="5.00"><title>Lyr 13 mag 4.0</title></circle>
+<circle class="catalog" cx="241.25" cy="730.71" r="5.00"><title>Peg 1 mag 4.1</title></circle>
+<circle class="catalog" cx="153.70" cy="217.89" r="5.00"><title>Peg Kappa-10 mag 4.1</title></circle>
+<circle class="catalog" cx="2868.45" cy="2647.91" r="5.00"><title>Ori 29 mag 4.1</title></circle>
+<circle class="catalog" cx="2067.53" cy="1659.51" r="5.00"><title>Her 110 mag 4.2</title></circle>
+<circle class="catalog" cx="3891.59" cy="820.30" r="5.00"><title>Her Sigma-35 mag 4.2</title></circle>
+<circle class="catalog" cx="2554.37" cy="2899.69" r="5.00"><title>Ori Zeta-50 mag 4.2</title></circle>
+<circle class="catalog" cx="1052.08" cy="536.70" r="5.00"><title>Cyg 52 mag 4.2</title></circle>
+<circle class="catalog" cx="1666.78" cy="799.51" r="5.00"><title>Cyg Chi mag 4.2</title></circle>
+<circle class="catalog" cx="593.97" cy="1198.80" r="5.00"><title>Del Gamma2-12 mag 4.3</title></circle>
+<circle class="catalog" cx="3094.15" cy="2666.05" r="5.00"><title>Eri Lambda-69 mag 4.3</title></circle>
+<circle class="catalog" cx="2277.64" cy="869.62" r="5.00"><title>Lyr Delta2-12 mag 4.3</title></circle>
+<circle class="catalog" cx="138.57" cy="2130.25" r="5.00"><title>Aql 71 mag 4.3</title></circle>
+<circle class="catalog" cx="902.30" cy="2975.85" r="5.00"><title>CMi Gamma-4 mag 4.3</title></circle>
+<circle class="catalog" cx="2596.47" cy="1025.45" r="5.00"><title>Lyr Kappa-1 mag 4.3</title></circle>
+<circle class="catalog" cx="2475.30" cy="1790.43" r="5.00"><title>Her 102 mag 4.4</title></circle>
+<circle class="catalog" cx="2011.42" cy="1761.47" r="5.00"><title>Her 111 mag 4.4</title></circle>
+<circle class="catalog" cx="2101.90" cy="720.92" r="5.00"><title>Lyr Theta-21 mag 4.4</title></circle>
+<circle class="catalog" cx="2382.71" cy="869.97" r="5.00"><title>Lyr Zeta1-6 mag 4.4</title></circle>
+<circle class="catalog" cx="1436.27" cy="1522.65" r="5.00"><title>Sge Alpha-5 mag 4.4</title></circle>
+<circle class="catalog" cx="1413.65" cy="1541.82" r="5.00"><title>Sge Beta-6 mag 4.4</title></circle>
+<circle class="catalog" cx="3312.02" cy="2951.26" r="5.00"><title>Eri Omega-61 mag 4.4</title></circle>
+<circle class="catalog" cx="2147.44" cy="682.25" r="5.00"><title>Lyr Eta-20 mag 4.4</title></circle>
+<circle class="catalog" cx="2996.24" cy="1655.53" r="5.00"><title>Her Lambda-76 mag 4.4</title></circle>
+<circle class="catalog" cx="2727.29" cy="1375.17" r="5.00"><title>Her Nu-94 mag 4.4</title></circle>
+<circle class="catalog" cx="1321.39" cy="627.91" r="5.00"><title>Cyg 39 mag 4.4</title></circle>
+<circle class="catalog" cx="844.20" cy="62.97" r="5.00"><title>Cyg Upsilo-66 mag 4.4</title></circle>
+<circle class="catalog" cx="603.00" cy="1271.28" r="5.00"><title>Del Delta-11 mag 4.4</title></circle>
+<circle class="catalog" cx="1700.56" cy="1284.50" r="5.00"><title>Vul Alpha-6 mag 4.4</title></circle>
+<circle class="catalog" cx="1258.89" cy="2047.21" r="5.00"><title>Aql Mu-38 mag 4.5</title></circle>
+<circle class="catalog" cx="1600.65" cy="2794.52" r="5.00"><title>Mon 18 mag 4.5</title></circle>
+<circle class="catalog" cx="3218.73" cy="1095.19" r="5.00"><title>Her Rho-75 mag 4.5</title></circle>
+<circle class="catalog" cx="1288.37" cy="880.89" r="5.00"><title>Vul 23 mag 4.5</title></circle>
+<circle class="catalog" cx="1212.16" cy="252.98" r="5.00"><title>Cyg Lambda-54 mag 4.5</title></circle>
+<circle class="catalog" cx="278.23" cy="472.32" r="5.00"><title>Peg 2 mag 4.6</title></circle>
+<circle class="catalog" cx="1431.28" cy="1181.37" r="5.00"><title>Vul 13 mag 4.6</title></circle>
+<circle class="catalog" cx="2009.45" cy="1527.16" r="5.00"><title>Her 113 mag 4.6</title></circle>
+<circle class="catalog" cx="2669.95" cy="2759.69" r="5.00"><title>Ori 42 mag 4.6</title></circle>
+<circle class="catalog" cx="868.81" cy="651.91" r="5.00"><title>Vul 31 mag 4.6</title></circle>
+<circle class="catalog" cx="1307.69" cy="414.34" r="5.00"><title>Cyg 47 mag 4.6</title></circle>
+<circle class="catalog" cx="1640.34" cy="2392.16" r="5.00"><title>Ser Theta1-63 mag 4.6</title></circle>
+<circle class="catalog" cx="2311.26" cy="2390.64" r="5.00"><title>Oph 71 mag 4.6</title></circle>
+<circle class="catalog" cx="1439.18" cy="973.79" r="5.00"><title>Vul 15 mag 4.6</title></circle>
+<circle class="catalog" cx="3291.65" cy="1096.19" r="5.00"><title>Her 69 mag 4.7</title></circle>
+<circle class="catalog" cx="2517.70" cy="2019.26" r="5.00"><title>Her 93 mag 4.7</title></circle>
+<circle class="catalog" cx="696.73" cy="1347.05" r="5.00"><title>Del Zeta-4 mag 4.7</title></circle>
+<circle class="catalog" cx="1711.98" cy="985.49" r="5.00"><title>Cyg Phi-12 mag 4.7</title></circle>
+<circle class="catalog" cx="53.55" cy="1306.22" r="5.00"><title>Equ Gamma-5 mag 4.7</title></circle>
+<circle class="catalog" cx="1040.45" cy="1889.38" r="5.00"><title>Aql Xi-59 mag 4.7</title></circle>
+<circle class="catalog" cx="2697.36" cy="3012.63" r="5.00"><title>Ori 31 mag 4.7</title></circle>
+<circle class="catalog" cx="291.00" cy="77.07" r="5.00"><title>Cyg Mu1-78 mag 4.7</title></circle>
+<circle class="catalog" cx="1879.70" cy="825.83" r="5.00"><title>Cyg 8 mag 4.7</title></circle>
+<circle class="catalog" cx="1762.58" cy="1488.96" r="5.00"><title>Vul 1 mag 4.8</title></circle>
+<circle class="catalog" cx="1540.67" cy="393.32" r="5.00"><title>Cyg 34 mag 4.8</title></circle>
+<circle class="catalog" cx="3194.15" cy="2798.74" r="5.00"><title>Eri Psi-65 mag 4.8</title></circle>
+<circle class="catalog" cx="3728.59" cy="602.84" r="5.00"><title>Her 52 mag 4.8</title></circle>
+<circle class="catalog" cx="3245.94" cy="1323.74" r="5.00"><title>Her 68 mag 4.8</title></circle>
+<circle class="catalog" cx="850.49" cy="1024.08" r="5.00"><title>Vul 29 mag 4.8</title></circle>
+<circle class="catalog" cx="3995.94" cy="1525.87" r="5.00"><title>CrB Xi-19 mag 4.8</title></circle>
+<circle class="catalog" cx="111.15" cy="2222.78" r="5.00"><title>Aql 70 mag 4.9</title></circle>
+<circle class="catalog" cx="1830.81" cy="624.41" r="5.00"><title>Cyg 15 mag 4.9</title></circle>
+<circle class="catalog" cx="3883.09" cy="405.39" r="5.00"><title>Her 42 mag 4.9</title></circle>
+<circle class="catalog" cx="209.17" cy="2284.15" r="5.00"><title>Aql 69 mag 4.9</title></circle>
+<circle class="catalog" cx="896.50" cy="791.97" r="5.00"><title>Vul 30 mag 4.9</title></circle>
+<circle class="catalog" cx="1586.17" cy="504.27" r="5.00"><title>Cyg 28 mag 4.9</title></circle>
+<circle class="catalog" cx="2132.98" cy="1074.26" r="5.00"><title>Lyr Lambda-15 mag 4.9</title></circle>
+<circle class="catalog" cx="1753.39" cy="505.91" r="5.00"><title>Cyg 22 mag 4.9</title></circle>
+<circle class="catalog" cx="974.13" cy="1458.35" r="5.00"><title>Aql Rho-67 mag 5.0</title></circle>
+<circle class="catalog" cx="2364.02" cy="1693.83" r="5.00"><title>Her 106 mag 5.0</title></circle>
+<circle class="catalog" cx="1422.43" cy="1259.84" r="5.00"><title>Vul 12 mag 5.0</title></circle>
+<circle class="catalog" cx="2569.55" cy="1779.42" r="5.00"><title>Her 95 mag 5.0</title></circle>
+<circle class="catalog" cx="1849.37" cy="1084.72" r="5.00"><title>Cyg 2 mag 5.0</title></circle>
+<circle class="catalog" cx="1537.47" cy="473.45" r="5.00"><title>Cyg 29 mag 5.0</title></circle>
+<circle class="catalog" cx="2601.61" cy="1276.97" r="5.00"><title>Her 104 mag 5.0</title></circle>
+<circle class="catalog" cx="1640.03" cy="2392.13" r="5.00"><title>Ser Theta2-63 mag 5.0</title></circle>
+<circle class="catalog" cx="926.71" cy="3011.07" r="5.00"><title>CMi Epsilon-2 mag 5.0</title></circle>
+<circle class="catalog" cx="1725.33" cy="784.41" r="5.00"><title>Cyg 17 mag 5.0</title></circle>
+<circle class="catalog" cx="1364.50" cy="1425.35" r="5.00"><title>Sge Zeta-8 mag 5.0</title></circle>
+<circle class="catalog" cx="1534.98" cy="1472.32" r="5.00"><title>Vul 9 mag 5.0</title></circle>
+<circle class="catalog" cx="2429.75" cy="322.05" r="3.00"><title>Lyr 16 mag 5.0</title></circle>
+<circle class="catalog" cx="871.18" cy="588.20" r="3.00"><title>Vul 32 mag 5.0</title></circle>
+<circle class="catalog" cx="3154.32" cy="272.55" r="3.00"><title>Dra 30 mag 5.0</title></circle>
+<circle class="catalog" cx="3962.05" cy="852.72" r="3.00"><title>Her 30 mag 5.0</title></circle>
+<circle class="catalog" cx="3503.58" cy="1835.17" r="3.00"><title>Her 51 mag 5.0</title></circle>
+<circle class="catalog" cx="2640.31" cy="1332.29" r="3.00"><title>Her 99 mag 5.0</title></circle>
+<circle class="catalog" cx="935.75" cy="891.69" r="3.00"><title>Vul 28 mag 5.0</title></circle>
+<circle class="catalog" cx="504.07" cy="1540.13" r="3.00"><title>Del Kappa-7 mag 5.0</title></circle>
+<circle class="catalog" cx="2526.85" cy="1733.59" r="3.00"><title>Her 98 mag 5.1</title></circle>
+<circle class="catalog" cx="2426.82" cy="767.93" r="3.00"><title>Lyr Epsilo1-4 mag 5.1</title></circle>
+<circle class="catalog" cx="1276.46" cy="1124.18" r="3.00"><title>Vul 17 mag 5.1</title></circle>
+<circle class="catalog" cx="3951.47" cy="124.10" r="3.00"><title>Dra 17 mag 5.1</title></circle>
+<circle class="catalog" cx="2677.92" cy="2726.59" r="3.00"><title>Ori Theta2-43 mag 5.1</title></circle>
+<circle class="catalog" cx="39.56" cy="101.05" r="3.00"><title>Peg 16 mag 5.1</title></circle>
+<circle class="catalog" cx="1656.61" cy="2001.83" r="3.00"><title>Aql 18 mag 5.1</title></circle>
+<circle class="catalog" cx="2462.53" cy="1826.51" r="3.00"><title>Her 101 mag 5.1</title></circle>
+<circle class="catalog" cx="1205.09" cy="1296.14" r="3.00"><title>Sge Eta-16 mag 5.1</title></circle>
+<circle class="catalog" cx="1130.01" cy="1813.33" r="3.00"><title>Aql Omicro-54 mag 5.1</title></circle>
+<circle class="catalog" cx="1749.43" cy="1127.41" r="3.00"><title>Cyg Beta2-6 mag 5.1</title></circle>
+<circle class="catalog" cx="3653.68" cy="2875.90" r="3.00"><title>Eri 47 mag 5.1</title></circle>
+<circle class="catalog" cx="1807.12" cy="524.11" r="3.00"><title>Cyg 19 mag 5.1</title></circle>
+<circle class="catalog" cx="3084.16" cy="2923.99" r="3.00"><title>Eri 66 mag 5.1</title></circle>
+<circle class="catalog" cx="3051.75" cy="2925.35" r="3.00"><title>Eri 68 mag 5.1</title></circle>
+<circle class="catalog" cx="2465.51" cy="1368.94" r="3.00"><title>Her 107 mag 5.1</title></circle>
+<circle class="catalog" cx="3101.93" cy="1765.89" r="3.00"><title>Her 70 mag 5.1</title></circle>
+<circle class="catalog" cx="2772.62" cy="1626.70" r="3.00"><title>Her 87 mag 5.1</title></circle>
+<circle class="catalog" cx="2614.13" cy="838.72" r="3.00"><title>Lyr Mu-2 mag 5.1</title></circle>
+<circle class="catalog" cx="2679.03" cy="2728.65" r="3.00"><title>Ori Theta1-41 mag 5.1</title></circle>
+<circle class="catalog" cx="594.15" cy="1198.88" r="3.00"><title>Del Gamma1-12 mag 5.1</title></circle>
+<circle class="catalog" cx="2425.31" cy="770.68" r="3.00"><title>Lyr Epsilo2-5 mag 5.1</title></circle>
+<circle class="catalog" cx="1972.93" cy="764.51" r="3.00"><title>Cyg 4 mag 5.2</title></circle>
+<circle class="catalog" cx="1179.44" cy="1075.68" r="3.00"><title>Vul 22 mag 5.2</title></circle>
+<circle class="catalog" cx="1470.71" cy="1874.91" r="3.00"><title>Aql 31 mag 5.2</title></circle>
+<circle class="catalog" cx="178.90" cy="2034.62" r="3.00"><title>Aqr 1 mag 5.2</title></circle>
+<circle class="catalog" cx="2932.64" cy="887.88" r="3.00"><title>Her 90 mag 5.2</title></circle>
+<circle class="catalog" cx="1632.68" cy="1516.06" r="3.00"><title>Vul 4 mag 5.2</title></circle>
+<circle class="catalog" cx="1147.73" cy="2119.16" r="3.00"><title>Aql Sigma-44 mag 5.2</title></circle>
+<circle class="catalog" cx="1448.89" cy="532.92" r="3.00"><title>Cyg 35 mag 5.2</title></circle>
+<circle class="catalog" cx="395.31" cy="1245.64" r="3.00"><title>Del 17 mag 5.2</title></circle>
+<circle class="catalog" cx="2569.64" cy="1779.46" r="3.00"><title>Her 95 mag 5.2</title></circle>
+<circle class="catalog" cx="1327.12" cy="850.93" r="3.00"><title>Vul 21 mag 5.2</title></circle>
+<circle class="catalog" cx="1792.86" cy="1241.49" r="3.00"><title>Vul 3 mag 5.2</title></circle>
+<circle class="catalog" cx="1679.67" cy="552.12" r="3.00"><title>Cyg 25 mag 5.2</title></circle>
+<circle class="catalog" cx="4006.95" cy="1349.78" r="3.00"><title>CrB Nu1-20 mag 5.2</title></circle>
+<circle class="catalog" cx="1527.97" cy="2235.27" r="3.00"><title>Aql 19 mag 5.2</title></circle>
+<circle class="catalog" cx="2269.58" cy="2947.73" r="3.00"><title>Ori 60 mag 5.2</title></circle>
+<circle class="catalog" cx="1361.25" cy="1094.18" r="3.00"><title>Vul 16 mag 5.2</title></circle>
+<circle class="catalog" cx="1795.49" cy="1918.43" r="3.00"><title>Aql 11 mag 5.2</title></circle>
+<circle class="catalog" cx="11.22" cy="1695.74" r="3.00"><title>Equ Epsilon-1 mag 5.2</title></circle>
+<circle class="catalog" cx="2068.80" cy="1027.24" r="3.00"><title>Lyr 17 mag 5.2</title></circle>
+<circle class="catalog" cx="961.73" cy="2853.93" r="3.00"><title>CMi Eta-5 mag 5.3</title></circle>
+<circle class="catalog" cx="3450.86" cy="1324.22" r="3.00"><title>Her 59 mag 5.3</title></circle>
+<circle class="catalog" cx="2238.65" cy="1094.77" r="3.00"><title>Lyr Nu2-9 mag 5.3</title></circle>
+<circle class="catalog" cx="2666.44" cy="2757.26" r="3.00"><title>Ori 45 mag 5.3</title></circle>
+<circle class="catalog" cx="1265.07" cy="1791.76" r="3.00"><title>Aql Chi-47 mag 5.3</title></circle>
+<circle class="catalog" cx="2415.00" cy="1582.19" r="3.00"><title>Her 105 mag 5.3</title></circle>
+<circle class="catalog" cx="1544.52" cy="1925.85" r="3.00"><title>Aql Omega1-25 mag 5.3</title></circle>
+<circle class="catalog" cx="1092.82" cy="1737.52" r="3.00"><title>Aql Phi-61 mag 5.3</title></circle>
+<circle class="catalog" cx="2548.53" cy="1812.80" r="3.00"><title>Her 96 mag 5.3</title></circle>
+<circle class="catalog" cx="2142.37" cy="857.92" r="3.00"><title>Lyr Iota-18 mag 5.3</title></circle>
+<circle class="catalog" cx="16.99" cy="329.60" r="3.00"><title>Peg 12 mag 5.3</title></circle>
+<circle class="catalog" cx="587.07" cy="3001.18" r="3.00"><title>CMi 11 mag 5.3</title></circle>
+<circle class="catalog" cx="643.38" cy="821.10" r="3.00"><title>Vul 33 mag 5.3</title></circle>
+<circle class="catalog" cx="3548.56" cy="1440.84" r="3.00"><title>Her 53 mag 5.3</title></circle>
+<circle class="catalog" cx="1195.64" cy="1015.48" r="3.00"><title>Vul 24 mag 5.3</title></circle>
+<circle class="catalog" cx="3395.56" cy="2171.70" r="3.00"><title>Her 54 mag 5.3</title></circle>
+<circle class="catalog" cx="1592.21" cy="564.48" r="3.00"><title>Cyg 27 mag 5.4</title></circle>
+<circle class="catalog" cx="1225.66" cy="1499.22" r="3.00"><title>Sge 10 mag 5.4</title></circle>
+<circle class="catalog" cx="3239.56" cy="422.68" r="3.00"><title>Her 82 mag 5.4</title></circle>
+<circle class="catalog" cx="2425.31" cy="770.69" r="3.00"><title>Lyr Epsilo2-5 mag 5.4</title></circle>
+<circle class="catalog" cx="1201.28" cy="1436.73" r="3.00"><title>Sge 13 mag 5.4</title></circle>
+<circle class="catalog" cx="1741.18" cy="1039.74" r="3.00"><title>Cyg 9 mag 5.4</title></circle>
+<circle class="catalog" cx="664.70" cy="1433.73" r="3.00"><title>Del Eta-3 mag 5.4</title></circle>
+<circle class="catalog" cx="4004.45" cy="1355.52" r="3.00"><title>CrB Nu2-21 mag 5.4</title></circle>
+<circle class="catalog" cx="3197.35" cy="1351.01" r="3.00"><title>Her 72 mag 5.4</title></circle>
+<circle class="catalog" cx="3075.63" cy="2322.98" r="3.00"><title>Her Alpha2-64 mag 5.4</title></circle>
+<circle class="catalog" cx="2007.08" cy="377.51" r="3.00"><title>Cyg 14 mag 5.4</title></circle>
+<circle class="catalog" cx="460.07" cy="308.93" r="3.00"><title>Vul 35 mag 5.4</title></circle>
+<circle class="catalog" cx="562.63" cy="1486.38" r="3.00"><title>Del Iota-5 mag 5.4</title></circle>
+<circle class="catalog" cx="1779.54" cy="1409.31" r="3.00"><title>Vul 2 mag 5.4</title></circle>
+<circle class="catalog" cx="2702.36" cy="1585.45" r="3.00"><title>Her 89 mag 5.5</title></circle>
+<circle class="catalog" cx="514.75" cy="2272.36" r="3.00"><title>Aql 66 mag 5.5</title></circle>
+<circle class="catalog" cx="3218.80" cy="1095.15" r="3.00"><title>Her Rho-75 mag 5.5</title></circle>
+<circle class="catalog" cx="256.91" cy="1364.61" r="3.00"><title>Del 18 mag 5.5</title></circle>
+<circle class="catalog" cx="2013.28" cy="1592.38" r="3.00"><title>Her 112 mag 5.5</title></circle>
+<circle class="catalog" cx="1571.19" cy="1159.19" r="3.00"><title>Vul 10 mag 5.5</title></circle>
+<circle class="catalog" cx="1304.34" cy="951.27" r="3.00"><title>Vul 19 mag 5.5</title></circle>
+<circle class="catalog" cx="1148.63" cy="498.82" r="3.00"><title>Cyg 49 mag 5.5</title></circle>
+<circle class="catalog" cx="3252.43" cy="2949.40" r="3.00"><title>Eri 62 mag 5.5</title></circle>
+<circle class="catalog" cx="884.09" cy="1892.51" r="3.00"><title>Aql Tau-63 mag 5.5</title></circle>
+<circle class="catalog" cx="2833.68" cy="1698.39" r="3.00"><title>Her 83 mag 5.5</title></circle>
+<circle class="catalog" cx="1319.86" cy="954.73" r="3.00"><title>Vul 18 mag 5.5</title></circle>
+<circle class="catalog" cx="1540.33" cy="1880.62" r="3.00"><title>Aql 28 mag 5.5</title></circle>
+<circle class="catalog" cx="3951.66" cy="125.79" r="3.00"><title>Dra 16 mag 5.5</title></circle>
+<circle class="catalog" cx="1209.59" cy="1482.54" r="3.00"><title>Sge 11 mag 5.5</title></circle>
+<circle class="catalog" cx="3980.89" cy="1129.96" r="3.00"><title>Her 25 mag 5.5</title></circle>
+<circle class="catalog" cx="1131.62" cy="991.26" r="3.00"><title>Vul 25 mag 5.5</title></circle>
+<circle class="catalog" cx="1505.68" cy="438.43" r="3.00"><title>Cyg 36 mag 5.6</title></circle>
+<circle class="catalog" cx="245.41" cy="1685.23" r="3.00"><title>Del 13 mag 5.6</title></circle>
+<circle class="catalog" cx="356.06" cy="1301.07" r="3.00"><title>Del 16 mag 5.6</title></circle>
+<circle class="catalog" cx="2286.34" cy="868.96" r="3.00"><title>Lyr Delta1-11 mag 5.6</title></circle>
+<circle class="catalog" cx="1410.46" cy="2261.05" r="3.00"><title>Aql 22 mag 5.6</title></circle>
+<circle class="catalog" cx="3375.51" cy="579.28" r="3.00"><title>Her 74 mag 5.6</title></circle>
+<circle class="catalog" cx="1020.35" cy="795.95" r="3.00"><title>Vul 27 mag 5.6</title></circle>
+<circle class="catalog" cx="808.90" cy="2303.49" r="3.00"><title>Aql 58 mag 5.6</title></circle>
+<circle class="catalog" cx="1461.29" cy="307.18" r="3.00"><title>Cyg 40 mag 5.6</title></circle>
+<circle class="catalog" cx="3011.27" cy="1535.98" r="3.00"><title>Her 78 mag 5.6</title></circle>
+<circle class="catalog" cx="2482.17" cy="1322.49" r="3.00"><title>Her 108 mag 5.6</title></circle>
+<circle class="catalog" cx="1631.03" cy="1499.16" r="3.00"><title>Vul 5 mag 5.6</title></circle>
+<circle class="catalog" cx="1769.12" cy="1500.26" r="3.00"><title>Sge 1 mag 5.6</title></circle>
+<circle class="catalog" cx="1432.41" cy="1606.70" r="3.00"><title>Sge Epsilon-4 mag 5.7</title></circle>
+<circle class="catalog" cx="1347.23" cy="1192.44" r="3.00"><title>Vul 14 mag 5.7</title></circle>
+<circle class="catalog" cx="648.35" cy="2304.84" r="3.00"><title>Aql 62 mag 5.7</title></circle>
+<circle class="catalog" cx="2819.97" cy="1707.32" r="3.00"><title>Her 84 mag 5.7</title></circle>
+<circle class="catalog" cx="1192.67" cy="1759.97" r="3.00"><title>Aql Pi-52 mag 5.7</title></circle>
+<circle class="catalog" cx="610.63" cy="1387.58" r="3.00"><title>Del Theta-8 mag 5.7</title></circle>
+<circle class="catalog" cx="3647.77" cy="2976.11" r="3.00"><title>Eri 46 mag 5.7</title></circle>
+<circle class="catalog" cx="3563.93" cy="1550.57" r="3.00"><title>Her 50 mag 5.7</title></circle>
+<circle class="catalog" cx="2382.22" cy="870.38" r="3.00"><title>Lyr Zeta2-7 mag 5.7</title></circle>
+<circle class="catalog" cx="3042.81" cy="1835.88" r="3.00"><title>Her 73 mag 5.7</title></circle>
+<circle class="catalog" cx="2890.45" cy="1726.30" r="3.00"><title>Her 79 mag 5.8</title></circle>
+<circle class="catalog" cx="1187.40" cy="2347.63" r="3.00"><title>Aql 35 mag 5.8</title></circle>
+<circle class="catalog" cx="3643.81" cy="46.28" r="3.00"><title>Dra Mu-21 mag 5.8</title></circle>
+<circle class="catalog" cx="1143.53" cy="1433.59" r="3.00"><title>Sge 15 mag 5.8</title></circle>
+<circle class="catalog" cx="1700.23" cy="1278.71" r="3.00"><title>Vul 8 mag 5.8</title></circle>
+<circle class="catalog" cx="3643.80" cy="46.28" r="3.00"><title>Dra Mu-21 mag 5.8</title></circle>
+<circle class="catalog" cx="1746.85" cy="3021.18" r="3.00"><title>Mon 12 mag 5.8</title></circle>
+<circle class="catalog" cx="3335.86" cy="451.45" r="3.00"><title>Her 77 mag 5.8</title></circle>
+<circle class="catalog" cx="2564.14" cy="1543.22" r="3.00"><title>Her 100 mag 5.9</title></circle>
+<circle class="catalog" cx="1387.03" cy="390.07" r="3.00"><title>Cyg 42 mag 5.9</title></circle>
+<circle class="catalog" cx="1804.41" cy="1906.64" r="3.00"><title>Aql 10 mag 5.9</title></circle>
+<circle class="catalog" cx="3485.78" cy="2806.20" r="3.00"><title>Eri 56 mag 5.9</title></circle>
+<circle class="catalog" cx="2564.08" cy="1543.41" r="3.00"><title>Her 100 mag 5.9</title></circle>
+<circle class="catalog" cx="1124.23" cy="1976.23" r="3.00"><title>Aql Upsilo-49 mag 5.9</title></circle>
+<circle class="catalog" cx="2244.64" cy="1082.90" r="3.00"><title>Lyr Nu1-8 mag 5.9</title></circle>
+<circle class="catalog" cx="3671.22" cy="1730.34" r="3.00"><title>Her 39 mag 5.9</title></circle>
+<circle class="catalog" cx="1293.70" cy="964.74" r="3.00"><title>Vul 20 mag 5.9</title></circle>
+<circle class="catalog" cx="439.01" cy="1346.96" r="3.00"><title>Del 15 mag 6.0</title></circle>
+<circle class="catalog" cx="2002.93" cy="1064.93" r="3.00"><title>Lyr 19 mag 6.0</title></circle>
+<circle class="catalog" cx="598.58" cy="2283.11" r="3.00"><title>Aql 64 mag 6.0</title></circle>
+<circle class="catalog" cx="616.44" cy="1309.96" r="3.00"><title>Del 10 mag 6.0</title></circle>
+<circle class="catalog" cx="1519.72" cy="1918.74" r="3.00"><title>Aql Omega2-29 mag 6.0</title></circle>
+<circle class="catalog" cx="2426.86" cy="767.88" r="3.00"><title>Lyr Epsilo1-4 mag 6.0</title></circle>
+<circle class="catalog" cx="1898.54" cy="687.71" r="3.00"><title>Cyg 11 mag 6.0</title></circle>
+<circle class="catalog" cx="47.70" cy="1308.95" r="3.00"><title>Equ 6 mag 6.1</title></circle>
+<circle class="catalog" cx="1.77" cy="2802.77" r="3.00"><title>Cnc 21 mag 6.1</title></circle>
+<circle class="catalog" cx="291.08" cy="77.12" r="3.00"><title>Cyg Mu2-78 mag 6.1</title></circle>
+<circle class="catalog" cx="648.26" cy="1559.44" r="3.00"><title>Del 1 mag 6.1</title></circle>
+<circle class="catalog" cx="3465.89" cy="1767.80" r="3.00"><title>Her 56 mag 6.1</title></circle>
+<circle class="catalog" cx="211.38" cy="2318.73" r="3.00"><title>Aql 68 mag 6.1</title></circle>
+<circle class="catalog" cx="1120.28" cy="1155.96" r="3.00"><title>Sge 18 mag 6.1</title></circle>
+<circle class="catalog" cx="1385.20" cy="355.40" r="3.00"><title>Cyg 44 mag 6.2</title></circle>
+<circle class="catalog" cx="3229.39" cy="1807.32" r="3.00"><title>Her 63 mag 6.2</title></circle>
+<circle class="catalog" cx="2577.17" cy="1712.41" r="3.00"><title>Her 97 mag 6.2</title></circle>
+<circle class="catalog" cx="1315.99" cy="1427.92" r="3.00"><title>Sge 9 mag 6.2</title></circle>
+<circle class="catalog" cx="1584.70" cy="1649.40" r="3.00"><title>Sge 2 mag 6.3</title></circle>
+<circle class="catalog" cx="1277.00" cy="1712.91" r="3.00"><title>Aql Psi-48 mag 6.3</title></circle>
+<circle class="catalog" cx="3427.26" cy="1782.60" r="3.00"><title>Her 57 mag 6.3</title></circle>
+<circle class="catalog" cx="1163.58" cy="559.15" r="3.00"><title>Cyg 48 mag 6.3</title></circle>
+<circle class="catalog" cx="279.80" cy="1576.56" r="3.00"><title>Del 14 mag 6.3</title></circle>
+<circle class="catalog" cx="1601.66" cy="1475.82" r="3.00"><title>Vul 7 mag 6.3</title></circle>
+<circle class="catalog" cx="1277.94" cy="1776.53" r="3.00"><title>Aql 46 mag 6.3</title></circle>
+<circle class="catalog" cx="1014.20" cy="829.05" r="3.00"><title>Vul 26 mag 6.4</title></circle>
+<circle class="catalog" cx="3992.26" cy="392.64" r="3.00"><title>Her 34 mag 6.5</title></circle>
+<circle class="catalog" cx="1174.64" cy="1226.15" r="3.00"><title>Sge Theta-17 mag 6.5</title></circle>
+<circle class="detection" cx="2859.41" cy="1026.19" r="11.00"></circle>
+<circle class="detection" cx="2596.20" cy="1025.82" r="11.00"></circle>
+<circle class="detection" cx="2727.41" cy="1375.55" r="11.00"></circle>
+<circle class="detection" cx="2101.89" cy="721.13" r="11.00"></circle>
+<circle class="detection" cx="1235.47" cy="983.19" r="11.00"></circle>
+<circle class="detection" cx="849.19" cy="1023.85" r="11.00"></circle>
+<circle class="detection" cx="2721.52" cy="1423.62" r="11.00"></circle>
+<circle class="detection" cx="1287.74" cy="880.01" r="11.00"></circle>
+<circle class="detection" cx="1664.35" cy="665.50" r="11.00"></circle>
+<circle class="detection" cx="2416.21" cy="505.93" r="11.00"></circle>
+<circle class="detection" cx="1439.50" cy="973.39" r="11.00"></circle>
+<circle class="detection" cx="2614.30" cy="838.66" r="11.00"></circle>
+<circle class="detection" cx="1264.25" cy="1355.37" r="11.00"></circle>
+<circle class="detection" cx="1448.77" cy="531.33" r="11.00"></circle>
+<circle class="detection" cx="3358.76" cy="192.98" r="11.00"></circle>
+<circle class="detection" cx="2606.86" cy="1417.09" r="11.00"></circle>
+<circle class="detection" cx="2426.08" cy="769.64" r="11.00"></circle>
+<circle class="detection" cx="2382.63" cy="870.70" r="11.00"></circle>
+<circle class="detection" cx="2147.48" cy="682.59" r="11.00"></circle>
+<circle class="detection" cx="2997.42" cy="1655.13" r="11.00"></circle>
+<circle class="detection" cx="1830.80" cy="624.08" r="11.00"></circle>
+<circle class="detection" cx="1586.46" cy="502.99" r="11.00"></circle>
+<circle class="detection" cx="2601.35" cy="1277.17" r="11.00"></circle>
+<circle class="detection" cx="3169.58" cy="575.16" r="11.00"></circle>
+<circle class="detection" cx="1213.61" cy="671.90" r="11.00"></circle>
+<circle class="detection" cx="1276.13" cy="1124.03" r="11.00"></circle>
+<circle class="detection" cx="1178.72" cy="1075.17" r="11.00"></circle>
+<circle class="detection" cx="1052.05" cy="536.96" r="11.00"></circle>
+<circle class="detection" cx="2078.82" cy="292.90" r="11.00"></circle>
+<circle class="detection" cx="869.00" cy="652.69" r="11.00"></circle>
+<circle class="detection" cx="1749.71" cy="1128.80" r="11.00"></circle>
+<circle class="detection" cx="1880.14" cy="826.22" r="11.00"></circle>
+<circle class="detection" cx="1540.74" cy="392.30" r="11.00"></circle>
+<circle class="detection" cx="1321.02" cy="626.59" r="11.00"></circle>
+<circle class="detection" cx="1422.93" cy="1259.97" r="11.00"></circle>
+<circle class="detection" cx="935.11" cy="891.00" r="11.00"></circle>
+<circle class="detection" cx="622.47" cy="1520.18" r="11.00"></circle>
+<circle class="detection" cx="2064.79" cy="228.01" r="11.00"></circle>
+<circle class="detection" cx="1679.72" cy="550.97" r="11.00"></circle>
+<circle class="detection" cx="1326.60" cy="850.20" r="11.00"></circle>
+<circle class="detection" cx="1212.74" cy="254.09" r="11.00"></circle>
+<circle class="detection" cx="3441.30" cy="1471.46" r="11.00"></circle>
+<circle class="detection" cx="594.74" cy="1199.40" r="11.00"></circle>
+<circle class="detection" cx="2934.42" cy="887.44" r="11.00"></circle>
+<circle class="detection" cx="1807.11" cy="522.94" r="11.00"></circle>
+<circle class="detection" cx="3219.40" cy="1094.99" r="11.00"></circle>
+<circle class="detection" cx="2848.68" cy="670.04" r="11.00"></circle>
+<circle class="detection" cx="1307.25" cy="414.12" r="11.00"></circle>
+<circle class="detection" cx="2370.21" cy="631.54" r="11.00"></circle>
+<circle class="detection" cx="2038.48" cy="420.81" r="11.00"></circle>
+<circle class="detection" cx="3317.32" cy="1126.43" r="11.00"></circle>
+<circle class="detection" cx="1505.41" cy="437.15" r="11.00"></circle>
+<circle class="detection" cx="1973.17" cy="764.76" r="11.00"></circle>
+<circle class="detection" cx="2019.39" cy="228.21" r="11.00"></circle>
+<circle class="detection" cx="1849.69" cy="1085.14" r="11.00"></circle>
+<circle class="detection" cx="972.04" cy="1457.98" r="11.00"></circle>
+<circle class="detection" cx="2429.80" cy="321.45" r="11.00"></circle>
+<circle class="detection" cx="1712.59" cy="986.09" r="11.00"></circle>
+<circle class="detection" cx="734.56" cy="329.76" r="11.00"></circle>
+<circle class="detection" cx="2007.48" cy="375.91" r="11.00"></circle>
+<circle class="detection" cx="1789.75" cy="404.30" r="11.00"></circle>
+<circle class="detection" cx="1542.43" cy="842.16" r="11.00"></circle>
+<circle class="detection" cx="1368.45" cy="1460.98" r="11.00"></circle>
+<circle class="detection" cx="3291.48" cy="1096.18" r="11.00"></circle>
+<circle class="detection" cx="1536.74" cy="472.22" r="11.00"></circle>
+<circle class="detection" cx="844.65" cy="63.69" r="11.00"></circle>
+<circle class="detection" cx="2746.57" cy="721.21" r="11.00"></circle>
+<circle class="detection" cx="3247.06" cy="1323.86" r="11.00"></circle>
+<circle class="detection" cx="2251.90" cy="1056.77" r="11.00"></circle>
+<circle class="detection" cx="2639.83" cy="1332.31" r="11.00"></circle>
+<circle class="detection" cx="2277.21" cy="869.83" r="11.00"></circle>
+<circle class="detection" cx="1195.00" cy="1014.99" r="11.00"></circle>
+<circle class="detection" cx="1592.20" cy="563.47" r="11.00"></circle>
+<circle class="detection" cx="3892.28" cy="820.20" r="11.00"></circle>
+<circle class="detection" cx="1704.77" cy="823.03" r="11.00"></circle>
+<circle class="detection" cx="2823.89" cy="315.54" r="11.00"></circle>
+<circle class="detection" cx="896.08" cy="791.99" r="11.00"></circle>
+<circle class="detection" cx="1148.19" cy="498.66" r="11.00"></circle>
+<circle class="detection" cx="241.57" cy="730.76" r="11.00"></circle>
+<circle class="detection" cx="1361.46" cy="1094.32" r="11.00"></circle>
+<circle class="detection" cx="1461.18" cy="306.94" r="11.00"></circle>
+<circle class="detection" cx="3095.68" cy="219.23" r="11.00"></circle>
+<circle class="detection" cx="2587.36" cy="133.98" r="11.00"></circle>
+<circle class="detection" cx="1513.72" cy="749.87" r="11.00"></circle>
+<circle class="detection" cx="679.00" cy="1258.80" r="11.00"></circle>
+<circle class="detection" cx="1730.67" cy="864.71" r="11.00"></circle>
+<circle class="detection" cx="1446.26" cy="611.40" r="11.00"></circle>
+<circle class="detection" cx="276.60" cy="472.22" r="11.00"></circle>
+<circle class="detection" cx="1700.95" cy="1284.72" r="11.00"></circle>
+<circle class="detection" cx="1006.60" cy="1102.83" r="11.00"></circle>
+<circle class="detection" cx="1614.10" cy="284.60" r="11.00"></circle>
+<circle class="detection" cx="1788.14" cy="677.03" r="11.00"></circle>
+<circle class="detection" cx="1741.66" cy="1040.49" r="11.00"></circle>
+<circle class="detection" cx="2142.22" cy="858.66" r="11.00"></circle>
+<circle class="detection" cx="2828.99" cy="1530.93" r="11.00"></circle>
+<circle class="detection" cx="2465.20" cy="1369.24" r="11.00"></circle>
+<circle class="detection" cx="872.53" cy="588.98" r="11.00"></circle>
+<circle class="detection" cx="2069.09" cy="1027.87" r="11.00"></circle>
+<circle class="detection" cx="1465.48" cy="861.73" r="11.00"></circle>
+<circle class="detection" cx="1148.92" cy="355.35" r="11.00"></circle>
+<circle class="detection" cx="788.34" cy="2915.00" r="11.00"></circle>
+<circle class="detection" cx="2722.13" cy="1041.23" r="11.00"></circle>
+<circle class="detection" cx="2772.95" cy="1626.29" r="11.00"></circle>
+<circle class="detection" cx="1019.29" cy="795.09" r="11.00"></circle>
+<circle class="detection" cx="604.28" cy="1271.24" r="11.00"></circle>
+<circle class="detection" cx="1431.74" cy="1181.40" r="11.00"></circle>
+<circle class="detection" cx="1264.90" cy="1791.17" r="11.00"></circle>
+<circle class="detection" cx="1725.16" cy="784.61" r="11.00"></circle>
+<circle class="detection" cx="3710.38" cy="1462.06" r="11.00"></circle>
+<circle class="detection" cx="1365.01" cy="1425.17" r="11.00"></circle>
+<circle class="detection" cx="3152.85" cy="273.24" r="11.00"></circle>
+<circle class="detection" cx="1468.04" cy="1149.48" r="11.00"></circle>
+<circle class="detection" cx="3746.53" cy="1034.35" r="11.00"></circle>
+<circle class="detection" cx="289.48" cy="76.77" r="11.00"></circle>
+<circle class="detection" cx="1426.06" cy="1165.19" r="11.00"></circle>
+<circle class="detection" cx="1689.17" cy="607.64" r="11.00"></circle>
+<circle class="detection" cx="1753.27" cy="504.92" r="11.00"></circle>
+<circle class="detection" cx="1413.97" cy="1541.92" r="11.00"></circle>
+<circle class="detection" cx="2063.09" cy="743.60" r="11.00"></circle>
+<circle class="detection" cx="696.64" cy="1346.91" r="11.00"></circle>
+<circle class="detection" cx="155.57" cy="217.46" r="11.00"></circle>
+<circle class="detection" cx="2153.76" cy="1054.28" r="11.00"></circle>
+<circle class="detection" cx="2678.54" cy="1254.75" r="11.00"></circle>
+<circle class="detection" cx="3547.31" cy="1440.72" r="11.00"></circle>
+<circle class="detection" cx="2805.94" cy="1440.30" r="11.00"></circle>
+<circle class="detection" cx="1130.49" cy="990.37" r="11.00"></circle>
+<circle class="detection" cx="665.48" cy="1335.06" r="11.00"></circle>
+<circle class="detection" cx="2.65" cy="2804.09" r="11.00"></circle>
+<circle class="detection" cx="1539.19" cy="628.02" r="11.00"></circle>
+<circle class="detection" cx="846.97" cy="2438.82" r="11.00"></circle>
+<circle class="detection" cx="3963.52" cy="852.37" r="11.00"></circle>
+<circle class="detection" cx="1521.12" cy="1155.06" r="11.00"></circle>
+<circle class="detection" cx="2563.81" cy="1543.19" r="11.00"></circle>
+<circle class="detection" cx="1201.06" cy="1436.81" r="11.00"></circle>
+<circle class="detection" cx="3428.70" cy="910.69" r="11.00"></circle>
+<circle class="detection" cx="2132.85" cy="1074.90" r="11.00"></circle>
+<circle class="detection" cx="2238.53" cy="1095.61" r="11.00"></circle>
+<circle class="detection" cx="1436.98" cy="1522.30" r="11.00"></circle>
+<circle class="detection" cx="2272.04" cy="789.08" r="11.00"></circle>
+<circle class="detection" cx="1479.86" cy="1730.04" r="11.00"></circle>
+<circle class="detection" cx="3875.23" cy="2776.61" r="11.00"></circle>
+<circle class="detection" cx="2384.74" cy="1099.43" r="11.00"></circle>
+<circle class="detection" cx="1347.65" cy="1192.81" r="11.00"></circle>
+<circle class="detection" cx="31.16" cy="2828.34" r="11.00"></circle>
+<circle class="detection" cx="3553.88" cy="1778.84" r="11.00"></circle>
+<circle class="detection" cx="1725.60" cy="583.03" r="11.00"></circle>
+<circle class="detection" cx="644.39" cy="2912.47" r="11.00"></circle>
+<circle class="detection" cx="1286.15" cy="2481.72" r="11.00"></circle>
+<circle class="detection" cx="1319.21" cy="954.54" r="11.00"></circle>
+<circle class="detection" cx="1827.65" cy="555.68" r="11.00"></circle>
+<circle class="detection" cx="1687.32" cy="942.31" r="11.00"></circle>
+<circle class="detection" cx="2834.07" cy="1698.08" r="11.00"></circle>
+<circle class="detection" cx="1469.00" cy="379.37" r="11.00"></circle>
+<circle class="detection" cx="1145.51" cy="382.01" r="11.00"></circle>
+<circle class="detection" cx="425.64" cy="2722.69" r="11.00"></circle>
+<circle class="detection" cx="2323.84" cy="1689.34" r="11.00"></circle>
+<circle class="detection" cx="1293.30" cy="964.20" r="11.00"></circle>
+<circle class="detection" cx="2526.20" cy="1732.83" r="11.00"></circle>
+<circle class="detection" cx="1535.36" cy="1472.39" r="11.00"></circle>
+<circle class="detection" cx="645.09" cy="822.10" r="11.00"></circle>
+<circle class="detection" cx="1564.12" cy="255.42" r="11.00"></circle>
+<circle class="detection" cx="1257.96" cy="2045.81" r="11.00"></circle>
+<circle class="detection" cx="1645.78" cy="1775.44" r="11.00"></circle>
+<circle class="detection" cx="3046.38" cy="2189.92" r="11.00"></circle>
+<circle class="detection" cx="2475.20" cy="1789.88" r="11.00"></circle>
+<circle class="detection" cx="2703.71" cy="1032.89" r="11.00"></circle>
+<circle class="detection" cx="347.85" cy="2465.84" r="11.00"></circle>
+<circle class="detection" cx="663.79" cy="1433.31" r="11.00"></circle>
+<circle class="detection" cx="1049.99" cy="346.01" r="11.00"></circle>
+<circle class="detection" cx="1143.73" cy="1433.03" r="11.00"></circle>
+<circle class="detection" cx="1209.11" cy="1482.92" r="11.00"></circle>
+<circle class="detection" cx="2175.91" cy="1051.48" r="11.00"></circle>
+<circle class="detection" cx="1795.74" cy="1916.67" r="11.00"></circle>
+<circle class="detection" cx="2414.93" cy="1581.94" r="11.00"></circle>
+<circle class="detection" cx="3305.17" cy="1866.93" r="11.00"></circle>
+<circle class="detection" cx="1613.73" cy="258.74" r="11.00"></circle>
+<circle class="detection" cx="2244.88" cy="1083.66" r="11.00"></circle>
+<circle class="detection" cx="441.55" cy="2670.54" r="11.00"></circle>
+<circle class="detection" cx="1761.17" cy="727.36" r="11.00"></circle>
+<circle class="detection" cx="1854.02" cy="429.96" r="11.00"></circle>
+<circle class="detection" cx="693.86" cy="2656.12" r="11.00"></circle>
+<circle class="detection" cx="53.80" cy="1306.25" r="11.00"></circle>
+<circle class="detection" cx="2485.07" cy="788.31" r="11.00"></circle>
+<circle class="detection" cx="3449.82" cy="1324.90" r="11.00"></circle>
+<circle class="detection" cx="3685.02" cy="2018.12" r="11.00"></circle>
+<circle class="detection" cx="644.98" cy="2758.27" r="11.00"></circle>
+<circle class="detection" cx="1012.80" cy="2585.15" r="11.00"></circle>
+<circle class="detection" cx="2646.84" cy="1757.20" r="11.00"></circle>
+<circle class="detection" cx="152.82" cy="2718.68" r="11.00"></circle>
+<circle class="detection" cx="3198.49" cy="1351.44" r="11.00"></circle>
+<circle class="detection" cx="1162.18" cy="559.79" r="11.00"></circle>
+<circle class="detection" cx="1201.30" cy="2456.17" r="11.00"></circle>
+<circle class="detection" cx="1191.73" cy="1829.55" r="11.00"></circle>
+<circle class="detection" cx="2072.96" cy="2050.31" r="11.00"></circle>
+<circle class="detection" cx="159.29" cy="2544.08" r="11.00"></circle>
+<circle class="detection" cx="3058.92" cy="1397.91" r="11.00"></circle>
+<circle class="detection" cx="2115.12" cy="2198.89" r="11.00"></circle>
+<circle class="detection" cx="289.16" cy="2676.90" r="11.00"></circle>
+<circle class="detection" cx="1188.94" cy="1373.94" r="11.00"></circle>
+<circle class="detection" cx="1038.89" cy="1888.99" r="11.00"></circle>
+<circle class="detection" cx="1060.82" cy="2378.06" r="11.00"></circle>
+<circle class="detection" cx="487.26" cy="2700.95" r="11.00"></circle>
+<circle class="detection" cx="3364.78" cy="1447.51" r="11.00"></circle>
+<circle class="detection" cx="3012.73" cy="1536.15" r="11.00"></circle>
+<circle class="detection" cx="1303.54" cy="951.01" r="11.00"></circle>
+<circle class="detection" cx="2889.01" cy="1506.42" r="11.00"></circle>
+<circle class="detection" cx="1817.22" cy="1848.27" r="11.00"></circle>
+<circle class="detection" cx="2416.06" cy="1057.19" r="11.00"></circle>
+<circle class="detection" cx="2278.64" cy="2104.46" r="11.00"></circle>
+<circle class="detection" cx="310.47" cy="2424.49" r="11.00"></circle>
+<circle class="detection" cx="428.59" cy="2361.24" r="11.00"></circle>
+<circle class="detection" cx="2217.09" cy="1009.65" r="11.00"></circle>
+<circle class="detection" cx="1091.73" cy="1737.23" r="11.00"></circle>
+<circle class="detection" cx="2297.78" cy="898.22" r="11.00"></circle>
+<circle class="detection" cx="1016.09" cy="2342.92" r="11.00"></circle>
+<circle class="detection" cx="443.49" cy="2690.13" r="11.00"></circle>
+<circle class="detection" cx="1092.60" cy="1887.47" r="11.00"></circle>
+<circle class="detection" cx="1572.02" cy="1159.86" r="11.00"></circle>
+<circle class="detection" cx="1730.53" cy="1877.46" r="11.00"></circle>
+<circle class="detection" cx="2481.69" cy="1322.21" r="11.00"></circle>
+<circle class="detection" cx="3501.18" cy="1826.56" r="11.00"></circle>
+<circle class="detection" cx="3480.14" cy="1617.29" r="11.00"></circle>
+<circle class="detection" cx="1759.87" cy="778.14" r="11.00"></circle>
+<circle class="detection" cx="1165.03" cy="2481.84" r="11.00"></circle>
+<circle class="detection" cx="2505.37" cy="2044.80" r="11.00"></circle>
+<circle class="detection" cx="1050.02" cy="2554.44" r="11.00"></circle>
+<circle class="detection" cx="2286.88" cy="2090.04" r="11.00"></circle>
+<circle class="detection" cx="1791.58" cy="1878.39" r="11.00"></circle>
+<circle class="detection" cx="2367.36" cy="1462.84" r="11.00"></circle>
+<circle class="detection" cx="287.05" cy="2747.36" r="11.00"></circle>
+<circle class="detection" cx="2337.94" cy="2348.02" r="11.00"></circle>
+<circle class="detection" cx="976.26" cy="2974.81" r="11.00"></circle>
+<circle class="detection" cx="1059.08" cy="2428.08" r="11.00"></circle>
+<circle class="detection" cx="240.22" cy="2682.23" r="11.00"></circle>
+<circle class="detection" cx="1039.97" cy="2409.88" r="11.00"></circle>
+<circle class="detection" cx="1185.81" cy="2464.12" r="11.00"></circle>
+<circle class="detection" cx="715.26" cy="2646.73" r="11.00"></circle>
+<circle class="detection" cx="722.46" cy="2631.38" r="11.00"></circle>
+<circle class="detection" cx="1471.71" cy="1872.95" r="11.00"></circle>
+<circle class="detection" cx="3808.16" cy="1881.25" r="11.00"></circle>
+<circle class="detection" cx="2289.09" cy="2163.80" r="11.00"></circle>
+<circle class="detection" cx="3602.25" cy="1824.74" r="11.00"></circle>
+<circle class="detection" cx="10.78" cy="2796.24" r="11.00"></circle>
+<circle class="detection" cx="1603.26" cy="2039.11" r="11.00"></circle>
+<circle class="detection" cx="3482.39" cy="1670.74" r="11.00"></circle>
+<circle class="detection" cx="725.63" cy="2488.84" r="11.00"></circle>
+<circle class="detection" cx="112.35" cy="2787.16" r="11.00"></circle>
+<circle class="detection" cx="548.84" cy="2675.66" r="11.00"></circle>
+<circle class="detection" cx="252.89" cy="2761.17" r="11.00"></circle>
+<circle class="detection" cx="1474.10" cy="2364.65" r="11.00"></circle>
+<circle class="detection" cx="2862.08" cy="1917.34" r="11.00"></circle>
+<circle class="detection" cx="329.32" cy="2423.92" r="11.00"></circle>
+<circle class="detection" cx="470.43" cy="2703.17" r="11.00"></circle>
+<circle class="detection" cx="742.44" cy="2639.84" r="11.00"></circle>
+<circle class="detection" cx="3656.42" cy="1574.92" r="11.00"></circle>
+<circle class="detection" cx="319.40" cy="2739.16" r="11.00"></circle>
+<circle class="detection" cx="636.57" cy="2624.00" r="11.00"></circle>
+<circle class="detection" cx="3030.59" cy="1742.36" r="11.00"></circle>
+<circle class="detection" cx="2870.68" cy="1850.97" r="11.00"></circle>
+<circle class="detection" cx="1719.13" cy="507.70" r="11.00"></circle>
+<circle class="detection" cx="1715.92" cy="1185.12" r="11.00"></circle>
+<circle class="detection" cx="1197.46" cy="1931.95" r="11.00"></circle>
+<circle class="detection" cx="2279.96" cy="2121.80" r="11.00"></circle>
+<circle class="detection" cx="3188.83" cy="1995.02" r="11.00"></circle>
+<circle class="detection" cx="3764.96" cy="1823.53" r="11.00"></circle>
+<circle class="detection" cx="3787.30" cy="1712.80" r="11.00"></circle>
+<circle class="detection" cx="1023.65" cy="2352.01" r="11.00"></circle>
+<circle class="detection" cx="3957.89" cy="2014.11" r="11.00"></circle>
+<circle class="detection" cx="3534.28" cy="1603.02" r="11.00"></circle>
+<circle class="detection" cx="1657.40" cy="2000.94" r="11.00"></circle>
+<circle class="detection" cx="1776.69" cy="2151.14" r="11.00"></circle>
+<circle class="detection" cx="3619.52" cy="1838.13" r="11.00"></circle>
+<circle class="detection" cx="1937.49" cy="2175.98" r="11.00"></circle>
+<circle class="detection" cx="2529.69" cy="1942.18" r="11.00"></circle>
+<circle class="detection" cx="1574.31" cy="2250.84" r="11.00"></circle>
+<circle class="detection" cx="3951.00" cy="1504.84" r="11.00"></circle>
+<circle class="detection" cx="1529.93" cy="2026.13" r="11.00"></circle>
+<circle class="detection" cx="755.45" cy="2643.72" r="11.00"></circle>
+<circle class="detection" cx="139.07" cy="2680.88" r="11.00"></circle>
+<circle class="detection" cx="701.79" cy="2458.01" r="11.00"></circle>
+<circle class="detection" cx="1139.15" cy="2297.13" r="11.00"></circle>
+<circle class="detection" cx="2518.77" cy="2043.59" r="11.00"></circle>
+<circle class="detection" cx="569.33" cy="2688.89" r="11.00"></circle>
+<circle class="detection" cx="3443.29" cy="2259.90" r="11.00"></circle>
+<circle class="detection" cx="2794.82" cy="1860.77" r="11.00"></circle>
+<circle class="detection" cx="2966.19" cy="1964.69" r="11.00"></circle>
+<circle class="detection" cx="87.10" cy="2770.23" r="11.00"></circle>
+<circle class="detection" cx="1047.02" cy="2319.18" r="11.00"></circle>
+<circle class="detection" cx="2631.39" cy="2010.96" r="11.00"></circle>
+<circle class="detection" cx="2000.40" cy="844.83" r="11.00"></circle>
+<circle class="detection" cx="3013.77" cy="1808.43" r="11.00"></circle>
+<circle class="detection" cx="3259.83" cy="1731.88" r="11.00"></circle>
+<circle class="detection" cx="215.12" cy="2423.48" r="11.00"></circle>
+<circle class="detection" cx="3966.82" cy="2155.93" r="11.00"></circle>
+<circle class="detection" cx="3595.79" cy="1921.93" r="11.00"></circle>
+<circle class="detection" cx="3060.72" cy="1961.15" r="11.00"></circle>
+<circle class="detection" cx="2466.42" cy="2012.26" r="11.00"></circle>
+<circle class="detection" cx="2919.63" cy="1828.70" r="11.00"></circle>
+<circle class="detection" cx="2650.34" cy="1959.35" r="11.00"></circle>
+<circle class="detection" cx="3183.97" cy="1811.94" r="11.00"></circle>
+<circle class="detection" cx="2007.69" cy="2223.20" r="11.00"></circle>
+<circle class="detection" cx="1679.70" cy="2426.31" r="11.00"></circle>
+<circle class="detection" cx="2930.30" cy="1808.14" r="11.00"></circle>
+<circle class="detection" cx="3591.09" cy="1888.03" r="11.00"></circle>
+<circle class="detection" cx="644.61" cy="2611.93" r="11.00"></circle>
+<circle class="detection" cx="2811.59" cy="2016.11" r="11.00"></circle>
+<circle class="detection" cx="54.91" cy="2754.42" r="11.00"></circle>
+<circle class="detection" cx="2978.81" cy="1961.34" r="11.00"></circle>
+<circle class="detection" cx="2702.07" cy="1955.92" r="11.00"></circle>
+<circle class="detection" cx="2930.88" cy="1974.37" r="11.00"></circle>
+<circle class="detection" cx="361.49" cy="2397.05" r="11.00"></circle>
+<circle class="detection" cx="1972.49" cy="2099.48" r="11.00"></circle>
+<circle class="detection" cx="1932.43" cy="2222.05" r="11.00"></circle>
+<circle class="detection" cx="2925.98" cy="1746.82" r="11.00"></circle>
+<circle class="detection" cx="1561.53" cy="2171.99" r="11.00"></circle>
+<circle class="detection" cx="139.06" cy="2787.56" r="11.00"></circle>
+<circle class="detection" cx="3596.93" cy="1904.01" r="11.00"></circle>
+<circle class="detection" cx="3181.88" cy="1925.64" r="11.00"></circle>
+<circle class="detection" cx="3990.91" cy="2170.21" r="11.00"></circle>
+<circle class="detection" cx="1540.64" cy="1879.47" r="11.00"></circle>
+<circle class="detection" cx="770.31" cy="2642.84" r="11.00"></circle>
+<circle class="detection" cx="1729.00" cy="2107.87" r="11.00"></circle>
+<circle class="detection" cx="3854.30" cy="1529.82" r="11.00"></circle>
+<circle class="detection" cx="1282.86" cy="2405.77" r="11.00"></circle>
+<circle class="detection" cx="1762.86" cy="1489.13" r="11.00"></circle>
+<circle class="detection" cx="3191.56" cy="1949.22" r="11.00"></circle>
+<circle class="detection" cx="2374.62" cy="2346.22" r="11.00"></circle>
+<circle class="detection" cx="531.79" cy="2677.83" r="11.00"></circle>
+<circle class="detection" cx="2003.44" cy="1066.25" r="11.00"></circle>
+<circle class="detection" cx="3757.25" cy="1546.19" r="11.00"></circle>
+<circle class="detection" cx="1627.44" cy="2181.54" r="11.00"></circle>
+<circle class="detection" cx="1693.18" cy="1942.41" r="11.00"></circle>
+<circle class="detection" cx="3991.04" cy="1498.20" r="11.00"></circle>
+<circle class="detection" cx="3327.47" cy="2018.59" r="11.00"></circle>
+<circle class="detection" cx="2607.32" cy="1745.00" r="11.00"></circle>
+<circle class="detection" cx="1227.68" cy="2422.13" r="11.00"></circle>
+<circle class="detection" cx="1603.63" cy="2126.16" r="11.00"></circle>
+<circle class="detection" cx="2477.62" cy="1901.70" r="11.00"></circle>
+<circle class="detection" cx="1663.96" cy="2186.63" r="11.00"></circle>
+<circle class="detection" cx="3772.53" cy="2765.03" r="11.00"></circle>
+<circle class="detection" cx="652.59" cy="2649.58" r="11.00"></circle>
+<circle class="detection" cx="772.76" cy="2470.79" r="11.00"></circle>
+<circle class="detection" cx="2588.68" cy="1748.83" r="11.00"></circle>
+<circle class="detection" cx="1062.22" cy="2353.03" r="11.00"></circle>
+<circle class="detection" cx="1563.77" cy="2259.05" r="11.00"></circle>
+<circle class="detection" cx="353.29" cy="2332.90" r="11.00"></circle>
+<circle class="detection" cx="1707.14" cy="2176.30" r="11.00"></circle>
+<circle class="detection" cx="334.10" cy="2404.03" r="11.00"></circle>
+<circle class="detection" cx="1412.92" cy="2374.27" r="11.00"></circle>
+<circle class="detection" cx="2085.95" cy="2015.88" r="11.00"></circle>
+<circle class="detection" cx="3150.83" cy="1879.36" r="11.00"></circle>
+<circle class="detection" cx="1686.99" cy="1907.26" r="11.00"></circle>
+<circle class="detection" cx="3770.50" cy="1734.24" r="11.00"></circle>
+<circle class="detection" cx="3152.43" cy="1859.71" r="11.00"></circle>
+<circle class="detection" cx="3127.10" cy="1763.23" r="11.00"></circle>
+<circle class="detection" cx="1563.48" cy="2051.46" r="11.00"></circle>
+<circle class="detection" cx="1739.99" cy="1290.21" r="11.00"></circle>
+<circle class="detection" cx="143.07" cy="2640.55" r="11.00"></circle>
+<circle class="detection" cx="2692.66" cy="1839.12" r="11.00"></circle>
+<circle class="detection" cx="2362.54" cy="2339.31" r="11.00"></circle>
+<circle class="detection" cx="1069.28" cy="2461.20" r="11.00"></circle>
+<circle class="detection" cx="1017.54" cy="2417.71" r="11.00"></circle>
+<circle class="detection" cx="971.45" cy="1983.73" r="11.00"></circle>
+<circle class="detection" cx="1598.00" cy="2183.93" r="11.00"></circle>
+<circle class="detection" cx="2882.74" cy="1839.71" r="11.00"></circle>
+<circle class="detection" cx="1049.72" cy="2480.90" r="11.00"></circle>
+<circle class="detection" cx="1828.24" cy="1236.92" r="11.00"></circle>
+<circle class="detection" cx="2292.99" cy="2012.72" r="11.00"></circle>
+<circle class="detection" cx="2844.10" cy="1900.37" r="11.00"></circle>
+<circle class="detection" cx="3409.06" cy="2888.51" r="11.00"></circle>
+<circle class="detection" cx="1254.17" cy="2440.58" r="11.00"></circle>
+<circle class="detection" cx="1248.49" cy="2428.81" r="11.00"></circle>
+<circle class="detection" cx="1019.97" cy="2181.20" r="11.00"></circle>
+<circle class="detection" cx="3575.51" cy="1820.87" r="11.00"></circle>
+<circle class="detection" cx="18.45" cy="2731.67" r="11.00"></circle>
+<circle class="detection" cx="2569.89" cy="1778.73" r="11.00"></circle>
+<circle class="detection" cx="1978.49" cy="2016.12" r="11.00"></circle>
+<circle class="detection" cx="3219.18" cy="1724.83" r="11.00"></circle>
+<circle class="detection" cx="3356.98" cy="1853.73" r="11.00"></circle>
+<circle class="detection" cx="2763.59" cy="1887.48" r="11.00"></circle>
+<circle class="detection" cx="1507.37" cy="2394.23" r="11.00"></circle>
+<circle class="detection" cx="1980.98" cy="2165.85" r="11.00"></circle>
+<circle class="detection" cx="2006.74" cy="1999.69" r="11.00"></circle>
+<circle class="detection" cx="986.03" cy="2385.30" r="11.00"></circle>
+<circle class="detection" cx="2864.26" cy="1662.75" r="11.00"></circle>
+<circle class="detection" cx="2070.78" cy="2190.75" r="11.00"></circle>
+<circle class="detection" cx="1622.02" cy="2472.96" r="11.00"></circle>
+<circle class="detection" cx="1046.16" cy="2501.06" r="11.00"></circle>
+<circle class="detection" cx="1818.01" cy="2230.74" r="11.00"></circle>
+<circle class="detection" cx="1514.07" cy="2472.17" r="11.00"></circle>
+<circle class="detection" cx="1611.40" cy="2240.96" r="11.00"></circle>
+<circle class="detection" cx="2984.87" cy="1987.85" r="11.00"></circle>
+<circle class="detection" cx="3750.22" cy="2072.40" r="11.00"></circle>
+<circle class="detection" cx="1550.03" cy="2386.20" r="11.00"></circle>
+<circle class="detection" cx="913.88" cy="2329.95" r="11.00"></circle>
+<circle class="detection" cx="3606.89" cy="1619.43" r="11.00"></circle>
+<circle class="detection" cx="3036.02" cy="1805.04" r="11.00"></circle>
+<circle class="detection" cx="2328.45" cy="2312.15" r="11.00"></circle>
+<circle class="detection" cx="2110.44" cy="2138.08" r="11.00"></circle>
+<circle class="detection" cx="1123.33" cy="1484.32" r="11.00"></circle>
+<circle class="detection" cx="2344.52" cy="1991.44" r="11.00"></circle>
+<circle class="detection" cx="2489.62" cy="2083.37" r="11.00"></circle>
+<circle class="detection" cx="427.75" cy="2488.79" r="11.00"></circle>
+<circle class="detection" cx="1725.78" cy="2188.36" r="11.00"></circle>
+<circle class="detection" cx="3255.75" cy="1899.66" r="11.00"></circle>
+<circle class="detection" cx="1431.93" cy="2429.32" r="11.00"></circle>
+<circle class="detection" cx="2438.90" cy="1894.44" r="11.00"></circle>
+<circle class="detection" cx="3289.98" cy="1990.60" r="11.00"></circle>
+<circle class="detection" cx="2594.63" cy="1773.98" r="11.00"></circle>
+<circle class="detection" cx="679.11" cy="2628.32" r="11.00"></circle>
+<circle class="detection" cx="2893.03" cy="1951.92" r="11.00"></circle>
+<circle class="detection" cx="3657.29" cy="1618.40" r="11.00"></circle>
+<circle class="detection" cx="445.16" cy="2420.91" r="11.00"></circle>
+<circle class="detection" cx="1698.53" cy="2264.05" r="11.00"></circle>
+<circle class="detection" cx="2504.17" cy="1959.46" r="11.00"></circle>
+<circle class="detection" cx="3241.04" cy="1734.07" r="11.00"></circle>
+<circle class="detection" cx="3519.87" cy="1653.79" r="11.00"></circle>
+<circle class="detection" cx="2558.19" cy="2021.02" r="11.00"></circle>
+<circle class="detection" cx="3554.13" cy="1651.09" r="11.00"></circle>
+<circle class="detection" cx="1924.66" cy="2269.06" r="11.00"></circle>
+<circle class="detection" cx="1264.65" cy="2413.64" r="11.00"></circle>
+<circle class="detection" cx="1597.05" cy="2160.79" r="11.00"></circle>
+<circle class="detection" cx="3031.89" cy="1915.74" r="11.00"></circle>
+<circle class="detection" cx="1792.24" cy="2212.35" r="11.00"></circle>
+<circle class="detection" cx="1517.83" cy="1989.17" r="11.00"></circle>
+<circle class="detection" cx="2452.75" cy="1901.54" r="11.00"></circle>
+<circle class="detection" cx="3500.24" cy="1654.33" r="11.00"></circle>
+<circle class="detection" cx="3216.60" cy="1739.53" r="11.00"></circle>
+<circle class="detection" cx="1755.65" cy="2231.50" r="11.00"></circle>
+<circle class="detection" cx="2848.63" cy="1977.99" r="11.00"></circle>
+<circle class="detection" cx="1626.42" cy="2072.27" r="11.00"></circle>
+<circle class="detection" cx="3520.78" cy="1638.19" r="11.00"></circle>
+<circle class="detection" cx="1052.66" cy="2229.54" r="11.00"></circle>
+<circle class="detection" cx="2441.10" cy="1880.38" r="11.00"></circle>
+<circle class="detection" cx="1473.97" cy="2310.16" r="11.00"></circle>
+<circle class="detection" cx="2017.06" cy="2124.72" r="11.00"></circle>
+<circle class="detection" cx="3022.31" cy="2060.92" r="11.00"></circle>
+<circle class="detection" cx="3439.90" cy="1670.92" r="11.00"></circle>
+<circle class="detection" cx="2599.14" cy="1719.30" r="11.00"></circle>
+<circle class="detection" cx="2066.93" cy="2174.39" r="11.00"></circle>
+<circle class="detection" cx="2878.89" cy="1918.54" r="11.00"></circle>
+<circle class="detection" cx="1975.30" cy="2149.50" r="11.00"></circle>
+<circle class="detection" cx="396.79" cy="2387.87" r="11.00"></circle>
+<circle class="detection" cx="1538.33" cy="1067.16" r="11.00"></circle>
+<circle class="detection" cx="972.11" cy="2379.79" r="11.00"></circle>
+<circle class="detection" cx="1014.36" cy="2516.96" r="11.00"></circle>
+<circle class="detection" cx="1738.84" cy="2193.43" r="11.00"></circle>
+<circle class="detection" cx="2951.63" cy="1759.97" r="11.00"></circle>
+<circle class="detection" cx="1546.75" cy="2429.93" r="11.00"></circle>
+<circle class="detection" cx="1514.00" cy="2119.17" r="11.00"></circle>
+<circle class="detection" cx="2072.73" cy="2018.95" r="11.00"></circle>
+<circle class="detection" cx="2720.00" cy="1855.06" r="11.00"></circle>
+<circle class="detection" cx="1588.68" cy="2364.17" r="11.00"></circle>
+<circle class="detection" cx="415.74" cy="2642.36" r="11.00"></circle>
+<circle class="detection" cx="3650.64" cy="1604.70" r="11.00"></circle>
+<circle class="detection" cx="971.90" cy="2392.77" r="11.00"></circle>
+<circle class="detection" cx="1660.56" cy="1004.69" r="11.00"></circle>
+<circle class="detection" cx="2819.93" cy="1707.16" r="11.00"></circle>
+<circle class="detection" cx="3544.72" cy="1619.84" r="11.00"></circle>
+<circle class="detection" cx="1736.67" cy="2310.04" r="11.00"></circle>
+<circle class="detection" cx="1621.51" cy="2227.95" r="11.00"></circle>
+<circle class="detection" cx="3305.97" cy="1967.06" r="11.00"></circle>
+<circle class="detection" cx="2133.00" cy="1954.14" r="11.00"></circle>
+<circle class="detection" cx="3794.47" cy="1793.68" r="11.00"></circle>
+<circle class="detection" cx="2580.13" cy="2026.98" r="11.00"></circle>
+<circle class="detection" cx="1528.66" cy="2077.28" r="11.00"></circle>
+<circle class="detection" cx="2462.58" cy="1825.16" r="11.00"></circle>
+<circle class="detection" cx="2597.58" cy="2024.20" r="11.00"></circle>
+<circle class="detection" cx="980.03" cy="2483.11" r="11.00"></circle>
+<circle class="detection" cx="3812.87" cy="1766.09" r="11.00"></circle>
+<circle class="detection" cx="2097.18" cy="2084.08" r="11.00"></circle>
+<circle class="detection" cx="3779.97" cy="1759.58" r="11.00"></circle>
+<circle class="detection" cx="815.86" cy="2554.91" r="11.00"></circle>
+<circle class="detection" cx="2533.70" cy="1828.21" r="11.00"></circle>
+<circle class="detection" cx="3750.20" cy="1800.07" r="11.00"></circle>
+<circle class="detection" cx="1648.98" cy="2435.21" r="11.00"></circle>
+<circle class="detection" cx="2978.36" cy="2187.94" r="11.00"></circle>
+<circle class="detection" cx="2751.52" cy="1881.84" r="11.00"></circle>
+<circle class="detection" cx="2590.18" cy="1960.42" r="11.00"></circle>
+<circle class="detection" cx="1280.05" cy="2350.09" r="11.00"></circle>
+<circle class="detection" cx="3364.70" cy="1677.29" r="11.00"></circle>
+<circle class="detection" cx="2873.10" cy="1673.96" r="11.00"></circle>
+<circle class="detection" cx="763.34" cy="2425.57" r="11.00"></circle>
+<circle class="detection" cx="3390.77" cy="1689.07" r="11.00"></circle>
+<circle class="detection" cx="3848.80" cy="1770.57" r="11.00"></circle>
+<circle class="detection" cx="2034.03" cy="1999.79" r="11.00"></circle>
+<circle class="detection" cx="1838.85" cy="2209.09" r="11.00"></circle>
+<circle class="detection" cx="2267.49" cy="2302.18" r="11.00"></circle>
+<circle class="detection" cx="3130.25" cy="1781.20" r="11.00"></circle>
+<circle class="detection" cx="2447.66" cy="1972.74" r="11.00"></circle>
+<circle class="detection" cx="2652.25" cy="2086.78" r="11.00"></circle>
+<circle class="detection" cx="2063.84" cy="2312.26" r="11.00"></circle>
+<circle class="detection" cx="3980.18" cy="1499.08" r="11.00"></circle>
+<circle class="detection" cx="2854.65" cy="1963.78" r="11.00"></circle>
+<circle class="detection" cx="2825.49" cy="1814.38" r="11.00"></circle>
+<circle class="detection" cx="2250.10" cy="2072.81" r="11.00"></circle>
+<circle class="detection" cx="26.13" cy="2720.29" r="11.00"></circle>
+<circle class="detection" cx="3336.72" cy="1853.60" r="11.00"></circle>
+<circle class="detection" cx="1913.66" cy="2220.50" r="11.00"></circle>
+<circle class="detection" cx="1540.09" cy="2020.43" r="11.00"></circle>
+<circle class="detection" cx="455.85" cy="2430.78" r="11.00"></circle>
+<circle class="detection" cx="3094.32" cy="1792.82" r="11.00"></circle>
+<circle class="detection" cx="2501.96" cy="1855.96" r="11.00"></circle>
+<circle class="detection" cx="1489.50" cy="2413.05" r="11.00"></circle>
+<circle class="detection" cx="2871.81" cy="1807.76" r="11.00"></circle>
+<circle class="detection" cx="122.86" cy="2674.08" r="11.00"></circle>
+<circle class="detection" cx="3202.15" cy="1763.21" r="11.00"></circle>
+<circle class="detection" cx="2608.55" cy="2023.98" r="11.00"></circle>
+<circle class="detection" cx="3727.60" cy="1564.67" r="11.00"></circle>
+<circle class="detection" cx="2536.60" cy="1374.30" r="11.00"></circle>
+<circle class="detection" cx="1644.41" cy="1946.56" r="11.00"></circle>
+<circle class="detection" cx="2242.93" cy="918.18" r="11.00"></circle>
+<circle class="detection" cx="2172.39" cy="2112.22" r="11.00"></circle>
+<circle class="detection" cx="3606.78" cy="1605.08" r="11.00"></circle>
+<circle class="detection" cx="3320.45" cy="1983.02" r="11.00"></circle>
+<circle class="detection" cx="1436.01" cy="2351.05" r="11.00"></circle>
+<circle class="detection" cx="2808.63" cy="1916.99" r="11.00"></circle>
+<circle class="detection" cx="437.92" cy="2266.91" r="11.00"></circle>
+<circle class="detection" cx="2993.16" cy="1839.53" r="11.00"></circle>
+<circle class="detection" cx="2048.09" cy="1938.70" r="11.00"></circle>
+<circle class="detection" cx="1372.69" cy="2382.77" r="11.00"></circle>
+<circle class="detection" cx="3113.15" cy="1787.08" r="11.00"></circle>
+<circle class="detection" cx="3381.29" cy="1647.09" r="11.00"></circle>
+<circle class="detection" cx="2525.26" cy="1761.37" r="11.00"></circle>
+<circle class="detection" cx="1283.69" cy="2419.51" r="11.00"></circle>
+<circle class="detection" cx="3229.32" cy="1692.10" r="11.00"></circle>
+<circle class="detection" cx="1986.42" cy="2153.12" r="11.00"></circle>
+<circle class="detection" cx="2924.55" cy="1787.81" r="11.00"></circle>
+<circle class="detection" cx="2225.59" cy="2066.60" r="11.00"></circle>
+<circle class="detection" cx="3422.99" cy="1635.11" r="11.00"></circle>
+<circle class="detection" cx="1637.05" cy="2256.83" r="11.00"></circle>
+<circle class="detection" cx="1495.33" cy="1910.06" r="11.00"></circle>
+<circle class="detection" cx="2167.89" cy="1942.37" r="11.00"></circle>
+<circle class="detection" cx="1950.67" cy="2137.42" r="11.00"></circle>
+<circle class="detection" cx="1703.76" cy="2374.13" r="11.00"></circle>
+<circle class="detection" cx="635.30" cy="2570.89" r="11.00"></circle>
+<circle class="detection" cx="3029.54" cy="1902.38" r="11.00"></circle>
+<circle class="detection" cx="1377.93" cy="2397.36" r="11.00"></circle>
+<circle class="detection" cx="1981.99" cy="2178.59" r="11.00"></circle>
+<circle class="detection" cx="3572.13" cy="1630.93" r="11.00"></circle>
+<circle class="detection" cx="2482.45" cy="1962.11" r="11.00"></circle>
+<circle class="detection" cx="903.34" cy="2562.92" r="11.00"></circle>
+<circle class="detection" cx="2417.82" cy="1903.27" r="11.00"></circle>
+<circle class="detection" cx="1857.00" cy="2224.95" r="11.00"></circle>
+<circle class="detection" cx="3268.48" cy="1681.07" r="11.00"></circle>
+<circle class="detection" cx="1438.64" cy="2054.99" r="11.00"></circle>
+<circle class="detection" cx="396.85" cy="2702.39" r="11.00"></circle>
+<circle class="detection" cx="2316.07" cy="2200.77" r="11.00"></circle>
+<circle class="detection" cx="2803.18" cy="1902.28" r="11.00"></circle>
+<circle class="detection" cx="1958.13" cy="2358.44" r="11.00"></circle>
+<circle class="detection" cx="2394.37" cy="2008.24" r="11.00"></circle>
+<circle class="detection" cx="2581.18" cy="1838.61" r="11.00"></circle>
+<circle class="detection" cx="3206.88" cy="1779.22" r="11.00"></circle>
+<circle class="detection" cx="2667.53" cy="2032.49" r="11.00"></circle>
+<circle class="detection" cx="3597.12" cy="1808.93" r="11.00"></circle>
+<circle class="detection" cx="1449.66" cy="2132.41" r="11.00"></circle>
+<circle class="detection" cx="2431.23" cy="2097.60" r="11.00"></circle>
+<circle class="detection" cx="3240.30" cy="1685.18" r="11.00"></circle>
+<circle class="detection" cx="892.94" cy="2554.32" r="11.00"></circle>
+<circle class="detection" cx="2075.60" cy="2065.55" r="11.00"></circle>
+<circle class="detection" cx="1507.84" cy="2266.16" r="11.00"></circle>
+<circle class="detection" cx="2634.77" cy="1977.43" r="11.00"></circle>
+<circle class="detection" cx="2021.89" cy="2081.37" r="11.00"></circle>
+<circle class="detection" cx="1323.61" cy="2390.52" r="11.00"></circle>
+<circle class="detection" cx="3475.29" cy="1659.57" r="11.00"></circle>
+<circle class="detection" cx="653.41" cy="2630.90" r="11.00"></circle>
+<circle class="detection" cx="2339.43" cy="2150.69" r="11.00"></circle>
+<circle class="detection" cx="1788.72" cy="2300.06" r="11.00"></circle>
+<circle class="detection" cx="1698.98" cy="2424.99" r="11.00"></circle>
+<circle class="detection" cx="2627.13" cy="1837.57" r="11.00"></circle>
+<circle class="detection" cx="1007.56" cy="2074.29" r="11.00"></circle>
+<circle class="detection" cx="2649.50" cy="2111.67" r="11.00"></circle>
+<circle class="detection" cx="1087.12" cy="2198.92" r="11.00"></circle>
+<circle class="detection" cx="1554.02" cy="2002.38" r="11.00"></circle>
+<circle class="detection" cx="3605.63" cy="2048.66" r="11.00"></circle>
+<circle class="detection" cx="1858.53" cy="1892.40" r="11.00"></circle>
+<circle class="detection" cx="3012.60" cy="1794.81" r="11.00"></circle>
+<circle class="detection" cx="1573.30" cy="2233.29" r="11.00"></circle>
+<circle class="detection" cx="2005.92" cy="2093.06" r="11.00"></circle>
+<circle class="detection" cx="1691.66" cy="2021.49" r="11.00"></circle>
+<circle class="detection" cx="1514.68" cy="2243.76" r="11.00"></circle>
+<circle class="detection" cx="469.30" cy="2725.04" r="11.00"></circle>
+<circle class="detection" cx="59.12" cy="2728.46" r="11.00"></circle>
+<circle class="detection" cx="1842.52" cy="2299.00" r="11.00"></circle>
+<circle class="detection" cx="3631.67" cy="1893.42" r="11.00"></circle>
+<circle class="detection" cx="948.09" cy="2379.65" r="11.00"></circle>
+<circle class="detection" cx="3787.26" cy="2040.04" r="11.00"></circle>
+<circle class="detection" cx="2770.80" cy="1872.81" r="11.00"></circle>
+<circle class="detection" cx="3347.67" cy="1690.02" r="11.00"></circle>
+<circle class="detection" cx="410.36" cy="2684.01" r="11.00"></circle>
+<circle class="detection" cx="2353.72" cy="1019.60" r="11.00"></circle>
+<circle class="detection" cx="2671.88" cy="1963.23" r="11.00"></circle>
+<circle class="detection" cx="2926.07" cy="2018.35" r="11.00"></circle>
+<circle class="detection" cx="1655.88" cy="2077.47" r="11.00"></circle>
+<circle class="detection" cx="2156.71" cy="994.17" r="11.00"></circle>
+<circle class="detection" cx="2701.84" cy="1585.81" r="11.00"></circle>
+<circle class="detection" cx="977.04" cy="2356.72" r="11.00"></circle>
+<circle class="detection" cx="2222.63" cy="1930.59" r="11.00"></circle>
+<circle class="detection" cx="2449.68" cy="2022.45" r="11.00"></circle>
+<circle class="detection" cx="3223.50" cy="2059.80" r="11.00"></circle>
+<circle class="detection" cx="1772.55" cy="2306.84" r="11.00"></circle>
+<circle class="detection" cx="3039.48" cy="2152.93" r="11.00"></circle>
+<circle class="detection" cx="1734.63" cy="1866.03" r="11.00"></circle>
+<circle class="detection" cx="97.90" cy="2725.91" r="11.00"></circle>
+<circle class="detection" cx="3295.07" cy="1703.95" r="11.00"></circle>
+<circle class="detection" cx="1629.04" cy="2380.15" r="11.00"></circle>
+<circle class="detection" cx="3065.60" cy="1779.57" r="11.00"></circle>
+<circle class="detection" cx="3423.92" cy="1680.91" r="11.00"></circle>
+<circle class="detection" cx="1738.52" cy="2322.06" r="11.00"></circle>
+<circle class="detection" cx="2271.37" cy="2032.92" r="11.00"></circle>
+<circle class="detection" cx="1480.86" cy="2240.65" r="11.00"></circle>
+<circle class="detection" cx="1533.91" cy="1935.99" r="11.00"></circle>
+<circle class="detection" cx="1155.70" cy="2085.06" r="11.00"></circle>
+<circle class="detection" cx="948.93" cy="2341.98" r="11.00"></circle>
+<circle class="detection" cx="1279.04" cy="2310.91" r="11.00"></circle>
+<circle class="detection" cx="3184.76" cy="2078.07" r="11.00"></circle>
+<circle class="detection" cx="2065.60" cy="2149.85" r="11.00"></circle>
+<circle class="detection" cx="1725.26" cy="1922.70" r="11.00"></circle>
+<circle class="detection" cx="1642.84" cy="2389.43" r="11.00"></circle>
+<circle class="detection" cx="2346.89" cy="2225.17" r="11.00"></circle>
+<circle class="detection" cx="3623.97" cy="1791.35" r="11.00"></circle>
+<circle class="detection" cx="1697.57" cy="2210.91" r="11.00"></circle>
+<circle class="detection" cx="3636.93" cy="2885.24" r="11.00"></circle>
+<circle class="detection" cx="1564.26" cy="1988.20" r="11.00"></circle>
+<circle class="detection" cx="324.25" cy="2582.80" r="11.00"></circle>
+<circle class="detection" cx="2918.26" cy="1923.67" r="11.00"></circle>
+<circle class="detection" cx="2436.21" cy="2000.54" r="11.00"></circle>
+<circle class="detection" cx="3097.40" cy="1738.03" r="11.00"></circle>
+<circle class="detection" cx="671.82" cy="2322.12" r="11.00"></circle>
+<circle class="detection" cx="2152.96" cy="2332.39" r="11.00"></circle>
+<circle class="detection" cx="2976.59" cy="2119.04" r="11.00"></circle>
+<circle class="detection" cx="1791.89" cy="2227.02" r="11.00"></circle>
+<circle class="detection" cx="1583.19" cy="2188.00" r="11.00"></circle>
+<circle class="detection" cx="3768.47" cy="1558.35" r="11.00"></circle>
+<circle class="detection" cx="3011.38" cy="2269.34" r="11.00"></circle>
+<circle class="detection" cx="2288.26" cy="2248.55" r="11.00"></circle>
+<circle class="detection" cx="955.47" cy="2504.12" r="11.00"></circle>
+<circle class="detection" cx="1119.47" cy="2060.57" r="11.00"></circle>
+<circle class="detection" cx="1562.13" cy="2485.33" r="11.00"></circle>
+<circle class="detection" cx="975.91" cy="2312.14" r="11.00"></circle>
+<circle class="detection" cx="1794.13" cy="1812.54" r="11.00"></circle>
+<circle class="detection" cx="1793.44" cy="1797.29" r="11.00"></circle>
+<circle class="detection" cx="2363.03" cy="2236.83" r="11.00"></circle>
+<circle class="detection" cx="1945.99" cy="914.10" r="11.00"></circle>
+<circle class="detection" cx="2691.79" cy="2111.53" r="11.00"></circle>
+<circle class="detection" cx="2449.83" cy="2000.06" r="11.00"></circle>
+<circle class="detection" cx="2986.11" cy="2047.09" r="11.00"></circle>
+<circle class="detection" cx="2294.48" cy="2350.12" r="11.00"></circle>
+<circle class="detection" cx="3571.24" cy="2031.76" r="11.00"></circle>
+<circle class="detection" cx="1081.70" cy="2324.05" r="11.00"></circle>
+<circle class="identified wrong" cx="2426.08" cy="769.64" r="9.00"><title>Vega; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="1092.60" cy="1887.47" r="9.00"><title>Altair; correct</title></circle>
+<circle class="identified correct" cx="1564.12" cy="255.42" r="9.00"><title>Cyg Gamma-37; correct</title></circle>
+<circle class="identified correct" cx="3095.68" cy="219.23" r="9.00"><title>Rastaban; correct</title></circle>
+<circle class="identified correct" cx="1145.51" cy="382.01" r="9.00"><title>Cyg Epsilo-53; correct</title></circle>
+<circle class="identified correct" cx="1191.73" cy="1829.55" r="9.00"><title>Tarazed; correct</title></circle>
+<circle class="identified correct" cx="3358.76" cy="192.98" r="9.00"><title>Alwaid; correct</title></circle>
+<circle class="identified correct" cx="3710.38" cy="1462.06" r="9.00"><title>Her Zeta-40; correct</title></circle>
+<circle class="identified correct" cx="2019.39" cy="228.21" r="9.00"><title>Cyg Delta-18; correct</title></circle>
+<circle class="identified correct" cx="1730.53" cy="1877.46" r="9.00"><title>Aql Zeta-17; correct</title></circle>
+<circle class="identified correct" cx="1749.71" cy="1128.80" r="9.00"><title>Albireo; correct</title></circle>
+<circle class="identified correct" cx="3202.15" cy="1763.21" r="9.00"><title>Her Delta-65; correct</title></circle>
+<circle class="identified correct" cx="3317.32" cy="1126.43" r="9.00"><title>Her Pi-67; correct</title></circle>
+<circle class="identified correct" cx="734.56" cy="329.76" r="9.00"><title>Cyg Zeta-64; correct</title></circle>
+<circle class="identified correct" cx="2153.76" cy="1054.28" r="9.00"><title>Sulaphat; correct</title></circle>
+<circle class="identified correct" cx="1279.04" cy="2310.91" r="9.00"><title>Aql Delta-30; correct</title></circle>
+<circle class="identified correct" cx="2828.99" cy="1530.93" r="9.00"><title>Her Mu-86; correct</title></circle>
+<circle class="identified correct" cx="2251.90" cy="1056.77" r="9.00"><title>Sheliak; correct</title></circle>
+<circle class="identified correct" cx="1264.25" cy="1355.37" r="9.00"><title>Sge Gamma-12; correct</title></circle>
+<circle class="identified correct" cx="3746.53" cy="1034.35" r="9.00"><title>Her Eta-44; correct</title></circle>
+<circle class="identified correct" cx="665.48" cy="1335.06" r="9.00"><title>Rotanev; correct</title></circle>
+<circle class="identified correct" cx="2721.52" cy="1423.62" r="9.00"><title>Her Xi-92; correct</title></circle>
+<circle class="identified correct" cx="971.45" cy="1983.73" r="9.00"><title>Aql Beta-60; correct</title></circle>
+<circle class="identified correct" cx="2337.94" cy="2348.02" r="9.00"><title>Oph 72; correct</title></circle>
+<circle class="identified correct" cx="679.00" cy="1258.80" r="9.00"><title>Svalocin; correct</title></circle>
+<circle class="identified correct" cx="3169.58" cy="575.16" r="9.00"><title>Her Iota-85; correct</title></circle>
+<circle class="identified correct" cx="1368.45" cy="1460.98" r="9.00"><title>Sge Delta-7; correct</title></circle>
+<circle class="identified correct" cx="2606.86" cy="1417.09" r="9.00"><title>Her Omicr-103; correct</title></circle>
+<circle class="identified correct" cx="2323.84" cy="1689.34" r="9.00"><title>Her 109; correct</title></circle>
+<circle class="identified correct" cx="2859.41" cy="1026.19" r="9.00"><title>Her Theta-91; correct</title></circle>
+<circle class="identified correct" cx="1664.35" cy="665.50" r="9.00"><title>Cyg Eta-21; correct</title></circle>
+<circle class="identified correct" cx="3441.30" cy="1471.46" r="9.00"><title>Her Epsilo-58; correct</title></circle>
+<circle class="identified correct" cx="1213.61" cy="671.90" r="9.00"><title>Cyg 41; correct</title></circle>
+<circle class="identified correct" cx="1817.22" cy="1848.27" r="9.00"><title>Aql Epsilo-13; correct</title></circle>
+<circle class="identified correct" cx="622.47" cy="1520.18" r="9.00"><title>Del Epsilon-2; correct</title></circle>
+<circle class="identified correct" cx="2416.21" cy="505.93" r="9.00"><title>Lyr 13; correct</title></circle>
+<circle class="identified correct" cx="241.57" cy="730.76" r="9.00"><title>Peg 1; correct</title></circle>
+<circle class="identified correct" cx="155.57" cy="217.46" r="9.00"><title>Peg Kappa-10; correct</title></circle>
+<circle class="identified correct" cx="3892.28" cy="820.20" r="9.00"><title>Her Sigma-35; correct</title></circle>
+<circle class="identified correct" cx="1052.05" cy="536.96" r="9.00"><title>Cyg 52; correct</title></circle>
+<circle class="identified wrong" cx="1725.16" cy="784.61" r="9.00"><title>Cyg Chi; not oracle-confirmed</title></circle>
+<circle class="identified wrong" cx="594.74" cy="1199.40" r="9.00"><title>Del Gamma2-12; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="2277.21" cy="869.83" r="9.00"><title>Lyr Delta2-12; correct</title></circle>
+<circle class="identified correct" cx="2596.20" cy="1025.82" r="9.00"><title>Lyr Kappa-1; correct</title></circle>
+<circle class="identified correct" cx="2101.89" cy="721.13" r="9.00"><title>Lyr Theta-21; correct</title></circle>
+<circle class="identified wrong" cx="2382.63" cy="870.70" r="9.00"><title>Lyr Zeta1-6; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="2475.20" cy="1789.88" r="9.00"><title>Her 102; correct</title></circle>
+<circle class="identified correct" cx="1436.98" cy="1522.30" r="9.00"><title>Sge Alpha-5; correct</title></circle>
+<circle class="identified correct" cx="1413.97" cy="1541.92" r="9.00"><title>Sge Beta-6; correct</title></circle>
+<circle class="identified correct" cx="2147.48" cy="682.59" r="9.00"><title>Lyr Eta-20; correct</title></circle>
+<circle class="identified correct" cx="2997.42" cy="1655.13" r="9.00"><title>Her Lambda-76; correct</title></circle>
+<circle class="identified correct" cx="2727.41" cy="1375.55" r="9.00"><title>Her Nu-94; correct</title></circle>
+<circle class="identified correct" cx="1321.02" cy="626.59" r="9.00"><title>Cyg 39; correct</title></circle>
+<circle class="identified correct" cx="604.28" cy="1271.24" r="9.00"><title>Del Delta-11; correct</title></circle>
+<circle class="identified correct" cx="844.65" cy="63.69" r="9.00"><title>Cyg Upsilo-66; correct</title></circle>
+<circle class="identified correct" cx="1700.95" cy="1284.72" r="9.00"><title>Vul Alpha-6; correct</title></circle>
+<circle class="identified correct" cx="1257.96" cy="2045.81" r="9.00"><title>Aql Mu-38; correct</title></circle>
+<circle class="identified wrong" cx="3219.40" cy="1094.99" r="9.00"><title>Her Rho-75; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="1287.74" cy="880.01" r="9.00"><title>Vul 23; correct</title></circle>
+<circle class="identified correct" cx="1212.74" cy="254.09" r="9.00"><title>Cyg Lambda-54; correct</title></circle>
+<circle class="identified correct" cx="276.60" cy="472.22" r="9.00"><title>Peg 2; correct</title></circle>
+<circle class="identified correct" cx="1431.74" cy="1181.40" r="9.00"><title>Vul 13; correct</title></circle>
+<circle class="identified correct" cx="869.00" cy="652.69" r="9.00"><title>Vul 31; correct</title></circle>
+<circle class="identified correct" cx="1307.25" cy="414.12" r="9.00"><title>Cyg 47; correct</title></circle>
+<circle class="identified correct" cx="1642.84" cy="2389.43" r="9.00"><title>Ser Theta1-63; correct</title></circle>
+<circle class="identified correct" cx="1439.50" cy="973.39" r="9.00"><title>Vul 15; correct</title></circle>
+<circle class="identified correct" cx="3291.48" cy="1096.18" r="9.00"><title>Her 69; correct</title></circle>
+<circle class="identified correct" cx="696.64" cy="1346.91" r="9.00"><title>Del Zeta-4; correct</title></circle>
+<circle class="identified correct" cx="1712.59" cy="986.09" r="9.00"><title>Cyg Phi-12; correct</title></circle>
+<circle class="identified correct" cx="53.80" cy="1306.25" r="9.00"><title>Equ Gamma-5; correct</title></circle>
+<circle class="identified correct" cx="1038.89" cy="1888.99" r="9.00"><title>Aql Xi-59; correct</title></circle>
+<circle class="identified correct" cx="289.48" cy="76.77" r="9.00"><title>Cyg Mu1-78; correct</title></circle>
+<circle class="identified correct" cx="1880.14" cy="826.22" r="9.00"><title>Cyg 8; correct</title></circle>
+<circle class="identified correct" cx="1762.86" cy="1489.13" r="9.00"><title>Vul 1; correct</title></circle>
+<circle class="identified correct" cx="1540.74" cy="392.30" r="9.00"><title>Cyg 34; correct</title></circle>
+<circle class="identified correct" cx="3247.06" cy="1323.86" r="9.00"><title>Her 68; correct</title></circle>
+<circle class="identified correct" cx="849.19" cy="1023.85" r="9.00"><title>Vul 29; correct</title></circle>
+<circle class="identified correct" cx="1830.80" cy="624.08" r="9.00"><title>Cyg 15; correct</title></circle>
+<circle class="identified correct" cx="896.08" cy="791.99" r="9.00"><title>Vul 30; correct</title></circle>
+<circle class="identified correct" cx="1586.46" cy="502.99" r="9.00"><title>Cyg 28; correct</title></circle>
+<circle class="identified correct" cx="2132.85" cy="1074.90" r="9.00"><title>Lyr Lambda-15; correct</title></circle>
+<circle class="identified correct" cx="1753.27" cy="504.92" r="9.00"><title>Cyg 22; correct</title></circle>
+<circle class="identified correct" cx="1422.93" cy="1259.97" r="9.00"><title>Vul 12; correct</title></circle>
+<circle class="identified correct" cx="972.04" cy="1457.98" r="9.00"><title>Aql Rho-67; correct</title></circle>
+<circle class="identified wrong" cx="2414.93" cy="1581.94" r="9.00"><title>Her 106; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="2569.89" cy="1778.73" r="9.00"><title>Her 95; correct</title></circle>
+<circle class="identified correct" cx="1536.74" cy="472.22" r="9.00"><title>Cyg 29; correct</title></circle>
+<circle class="identified correct" cx="1849.69" cy="1085.14" r="9.00"><title>Cyg 2; correct</title></circle>
+<circle class="identified correct" cx="2601.35" cy="1277.17" r="9.00"><title>Her 104; correct</title></circle>
+<circle class="identified correct" cx="1629.04" cy="2380.15" r="9.00"><title>Ser Theta2-63; correct</title></circle>
+<circle class="identified correct" cx="1365.01" cy="1425.17" r="9.00"><title>Sge Zeta-8; correct</title></circle>
+<circle class="identified correct" cx="1535.36" cy="1472.39" r="9.00"><title>Vul 9; correct</title></circle>
+<circle class="identified correct" cx="2429.80" cy="321.45" r="9.00"><title>Lyr 16; correct</title></circle>
+<circle class="identified correct" cx="872.53" cy="588.98" r="9.00"><title>Vul 32; correct</title></circle>
+<circle class="identified correct" cx="3152.85" cy="273.24" r="9.00"><title>Dra 30; correct</title></circle>
+<circle class="identified correct" cx="3963.52" cy="852.37" r="9.00"><title>Her 30; correct</title></circle>
+<circle class="identified correct" cx="935.11" cy="891.00" r="9.00"><title>Vul 28; correct</title></circle>
+<circle class="identified correct" cx="2639.83" cy="1332.31" r="9.00"><title>Her 99; correct</title></circle>
+<circle class="identified correct" cx="3501.18" cy="1826.56" r="9.00"><title>Her 51; correct</title></circle>
+<circle class="identified correct" cx="2526.20" cy="1732.83" r="9.00"><title>Her 98; correct</title></circle>
+<circle class="identified correct" cx="1276.13" cy="1124.03" r="9.00"><title>Vul 17; correct</title></circle>
+<circle class="identified correct" cx="1657.40" cy="2000.94" r="9.00"><title>Aql 18; correct</title></circle>
+<circle class="identified correct" cx="2462.58" cy="1825.16" r="9.00"><title>Her 101; correct</title></circle>
+<circle class="identified wrong" cx="1201.06" cy="1436.81" r="9.00"><title>Sge Eta-16; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="3636.93" cy="2885.24" r="9.00"><title>Eri 47; correct</title></circle>
+<circle class="identified wrong" cx="1091.73" cy="1737.23" r="9.00"><title>Aql Omicro-54; not oracle-confirmed</title></circle>
+<circle class="identified wrong" cx="1741.66" cy="1040.49" r="9.00"><title>Cyg Beta2-6; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="2614.30" cy="838.66" r="9.00"><title>Lyr Mu-2; correct</title></circle>
+<circle class="identified correct" cx="1807.11" cy="522.94" r="9.00"><title>Cyg 19; correct</title></circle>
+<circle class="identified correct" cx="2772.95" cy="1626.29" r="9.00"><title>Her 87; correct</title></circle>
+<circle class="identified correct" cx="2465.20" cy="1369.24" r="9.00"><title>Her 107; correct</title></circle>
+<circle class="identified correct" cx="1973.17" cy="764.76" r="9.00"><title>Cyg 4; correct</title></circle>
+<circle class="identified correct" cx="1178.72" cy="1075.17" r="9.00"><title>Vul 22; correct</title></circle>
+<circle class="identified correct" cx="2934.42" cy="887.44" r="9.00"><title>Her 90; correct</title></circle>
+<circle class="identified correct" cx="1471.71" cy="1872.95" r="9.00"><title>Aql 31; correct</title></circle>
+<circle class="identified correct" cx="1448.77" cy="531.33" r="9.00"><title>Cyg 35; correct</title></circle>
+<circle class="identified correct" cx="1326.60" cy="850.20" r="9.00"><title>Vul 21; correct</title></circle>
+<circle class="identified wrong" cx="2533.70" cy="1828.21" r="9.00"><title>Her 95; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="1679.72" cy="550.97" r="9.00"><title>Cyg 25; correct</title></circle>
+<circle class="identified correct" cx="1361.46" cy="1094.32" r="9.00"><title>Vul 16; correct</title></circle>
+<circle class="identified correct" cx="1514.68" cy="2243.76" r="9.00"><title>Aql 19; correct</title></circle>
+<circle class="identified correct" cx="2069.09" cy="1027.87" r="9.00"><title>Lyr 17; correct</title></circle>
+<circle class="identified correct" cx="1795.74" cy="1916.67" r="9.00"><title>Aql 11; correct</title></circle>
+<circle class="identified correct" cx="2238.53" cy="1095.61" r="9.00"><title>Lyr Nu2-9; correct</title></circle>
+<circle class="identified correct" cx="3449.82" cy="1324.90" r="9.00"><title>Her 59; correct</title></circle>
+<circle class="identified correct" cx="1264.90" cy="1791.17" r="9.00"><title>Aql Chi-47; correct</title></circle>
+<circle class="identified wrong" cx="2563.81" cy="1543.19" r="9.00"><title>Her 105; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="2142.22" cy="858.66" r="9.00"><title>Lyr Iota-18; correct</title></circle>
+<circle class="identified correct" cx="1533.91" cy="1935.99" r="9.00"><title>Aql Omega1-25; correct</title></circle>
+<circle class="identified correct" cx="645.09" cy="822.10" r="9.00"><title>Vul 33; correct</title></circle>
+<circle class="identified correct" cx="1195.00" cy="1014.99" r="9.00"><title>Vul 24; correct</title></circle>
+<circle class="identified correct" cx="3547.31" cy="1440.72" r="9.00"><title>Her 53; correct</title></circle>
+<circle class="identified correct" cx="1592.20" cy="563.47" r="9.00"><title>Cyg 27; correct</title></circle>
+<circle class="identified wrong" cx="1209.11" cy="1482.92" r="9.00"><title>Sge 10; not oracle-confirmed</title></circle>
+<circle class="identified wrong" cx="1143.73" cy="1433.03" r="9.00"><title>Sge 13; not oracle-confirmed</title></circle>
+<circle class="identified correct" cx="663.79" cy="1433.31" r="9.00"><title>Del Eta-3; correct</title></circle>
+<circle class="identified correct" cx="3198.49" cy="1351.44" r="9.00"><title>Her 72; correct</title></circle>
+<circle class="identified correct" cx="2007.48" cy="375.91" r="9.00"><title>Cyg 14; correct</title></circle>
+<circle class="identified correct" cx="2701.84" cy="1585.81" r="9.00"><title>Her 89; correct</title></circle>
+<circle class="identified correct" cx="1303.54" cy="951.01" r="9.00"><title>Vul 19; correct</title></circle>
+<circle class="identified correct" cx="1572.02" cy="1159.86" r="9.00"><title>Vul 10; correct</title></circle>
+<circle class="identified correct" cx="1148.19" cy="498.66" r="9.00"><title>Cyg 49; correct</title></circle>
+<circle class="identified correct" cx="1319.21" cy="954.54" r="9.00"><title>Vul 18; correct</title></circle>
+<circle class="identified correct" cx="2834.07" cy="1698.08" r="9.00"><title>Her 83; correct</title></circle>
+<circle class="identified correct" cx="1540.64" cy="1879.47" r="9.00"><title>Aql 28; correct</title></circle>
+<circle class="identified correct" cx="1130.49" cy="990.37" r="9.00"><title>Vul 25; correct</title></circle>
+<circle class="identified correct" cx="1505.41" cy="437.15" r="9.00"><title>Cyg 36; correct</title></circle>
+<circle class="identified correct" cx="1019.29" cy="795.09" r="9.00"><title>Vul 27; correct</title></circle>
+<circle class="identified correct" cx="1461.18" cy="306.94" r="9.00"><title>Cyg 40; correct</title></circle>
+<circle class="identified correct" cx="3012.73" cy="1536.15" r="9.00"><title>Her 78; correct</title></circle>
+<circle class="identified correct" cx="2481.69" cy="1322.21" r="9.00"><title>Her 108; correct</title></circle>
+<circle class="identified correct" cx="1347.65" cy="1192.81" r="9.00"><title>Vul 14; correct</title></circle>
+<circle class="identified correct" cx="2819.93" cy="1707.16" r="9.00"><title>Her 84; correct</title></circle>
+<circle class="identified correct" cx="2244.88" cy="1083.66" r="9.00"><title>Lyr Nu1-8; correct</title></circle>
+<circle class="identified correct" cx="1293.30" cy="964.20" r="9.00"><title>Vul 20; correct</title></circle>
+<circle class="identified correct" cx="2003.44" cy="1066.25" r="9.00"><title>Lyr 19; correct</title></circle>
+<circle class="identified correct" cx="2.65" cy="2804.09" r="9.00"><title>Cnc 21; correct</title></circle>
+<circle class="identified correct" cx="1162.18" cy="559.79" r="9.00"><title>Cyg 48; correct</title></circle></svg>
+</section>
+<h2>Undistorted Plane</h2>
+<svg class="plane" viewBox="0 0 720 540"><path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 482.21 243.48 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 376.94 135.62 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 376.94 135.62 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 167.82 186.16 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 482.21 243.48 L 376.94 135.62 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 481.25 251.40 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 167.82 186.16 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 482.21 243.48 L 167.82 186.16 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 376.94 135.62 L 167.82 186.16 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 481.25 251.40 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 376.94 135.62 L 167.82 186.16 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 167.82 186.16 L 481.25 251.40 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 482.21 243.48 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 376.94 135.62 L 481.25 251.40 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 167.82 186.16 L 481.25 251.40 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 376.94 135.62 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 167.82 186.16 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 482.21 243.48 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 167.82 186.16 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 481.25 251.40 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 376.94 135.62 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 167.82 186.16 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 376.94 135.62 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 376.94 135.62 L 167.82 186.16 L 481.25 251.40 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 167.82 186.16 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 167.82 186.16 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 481.25 251.40 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 481.25 251.40 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 167.82 186.16 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 482.21 243.48 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 376.94 135.62 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 376.94 135.62 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 167.82 186.16 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 167.82 186.16 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 235.96 240.13 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 240.40 162.09 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 376.94 135.62 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 376.94 135.62 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 481.25 251.40 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 481.25 251.40 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 267.70 105.34 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 167.82 186.16 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 240.40 162.09 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 235.96 240.13 Z"></path>
+<path class="asterism" d="M 376.94 135.62 L 481.25 251.40 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 376.94 135.62 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 481.25 251.40 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 482.21 243.48 L 267.70 105.34 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 482.21 243.48 L 235.96 240.13 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 167.82 186.16 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 240.40 162.09 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 584.73 51.73 Z"></path>
+<path class="asterism" d="M 376.94 135.62 L 167.82 186.16 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 376.94 135.62 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 167.82 186.16 L 235.96 240.13 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 240.40 162.09 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 376.94 135.62 L 235.96 240.13 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 240.40 162.09 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 303.51 126.74 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 481.25 251.40 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 167.82 186.16 L 481.25 251.40 L 240.40 162.09 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 482.21 243.48 L 267.70 105.34 Z"></path>
+<path class="asterism" d="M 460.07 185.82 L 167.82 186.16 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 167.82 186.16 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 376.94 135.62 L 481.25 251.40 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 376.94 135.62 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 376.94 135.62 L 167.82 186.16 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 481.25 251.40 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 240.40 162.09 L 265.52 177.13 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 460.07 185.82 L 462.20 250.29 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 240.40 162.09 L 429.32 101.17 Z"></path>
+<path class="asterism" d="M 167.82 186.16 L 481.25 251.40 L 303.51 126.74 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 167.82 186.16 L 267.70 105.34 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 167.82 186.16 L 462.79 155.29 Z"></path>
+<path class="asterism" d="M 482.21 243.48 L 376.94 135.62 L 235.96 240.13 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 376.94 135.62 L 584.73 51.73 Z"></path>
+<path class="asterism" d="M 503.63 186.26 L 481.25 251.40 L 235.96 240.13 Z"></path>
+<circle class="catalog" cx="440.29" cy="154.84" r="3"></circle>
+<circle class="catalog" cx="527.10" cy="454.82" r="3"></circle>
+<circle class="catalog" cx="169.88" cy="458.58" r="3"></circle>
+<circle class="catalog" cx="207.90" cy="327.86" r="3"></circle>
+<circle class="catalog" cx="460.44" cy="503.27" r="3"></circle>
+<circle class="catalog" cx="451.82" cy="492.10" r="3"></circle>
+<circle class="catalog" cx="489.48" cy="400.91" r="3"></circle>
+<circle class="catalog" cx="287.00" cy="60.79" r="3"></circle>
+<circle class="catalog" cx="541.43" cy="55.66" r="3"></circle>
+<circle class="catalog" cx="217.60" cy="81.55" r="3"></circle>
+<circle class="catalog" cx="224.10" cy="318.27" r="3"></circle>
+<circle class="catalog" cx="659.74" cy="357.10" r="3"></circle>
+<circle class="catalog" cx="473.50" cy="459.50" r="3"></circle>
+<circle class="catalog" cx="584.82" cy="51.64" r="3"></circle>
+<circle class="catalog" cx="537.50" cy="490.39" r="3"></circle>
+<circle class="catalog" cx="643.29" cy="258.02" r="3"></circle>
+<circle class="catalog" cx="363.05" cy="56.34" r="3"></circle>
+<circle class="catalog" cx="182.68" cy="498.93" r="3"></circle>
+<circle class="catalog" cx="314.16" cy="326.82" r="3"></circle>
+<circle class="catalog" cx="317.47" cy="202.23" r="3"></circle>
+<circle class="catalog" cx="556.84" cy="307.29" r="3"></circle>
+<circle class="catalog" cx="578.69" cy="203.17" r="3"></circle>
+<circle class="catalog" cx="149.19" cy="73.27" r="3"></circle>
+<circle class="catalog" cx="118.31" cy="390.06" r="3"></circle>
+<circle class="catalog" cx="385.83" cy="189.90" r="3"></circle>
+<circle class="catalog" cx="236.05" cy="396.00" r="3"></circle>
+<circle class="catalog" cx="490.99" cy="502.14" r="3"></circle>
+<circle class="catalog" cx="498.95" cy="269.06" r="3"></circle>
+<circle class="catalog" cx="402.39" cy="190.38" r="3"></circle>
+<circle class="catalog" cx="236.00" cy="240.16" r="3"></circle>
+<circle class="catalog" cx="538.65" cy="398.29" r="3"></circle>
+<circle class="catalog" cx="57.53" cy="466.66" r="3"></circle>
+<circle class="catalog" cx="649.05" cy="188.44" r="3"></circle>
+<circle class="catalog" cx="517.02" cy="465.16" r="3"></circle>
+<circle class="catalog" cx="137.39" cy="237.15" r="3"></circle>
+<circle class="catalog" cx="481.28" cy="251.34" r="3"></circle>
+<circle class="catalog" cx="188.07" cy="343.39" r="3"></circle>
+<circle class="catalog" cx="414.09" cy="403.47" r="3"></circle>
+<circle class="catalog" cx="680.71" cy="384.05" r="3"></circle>
+<circle class="catalog" cx="139.58" cy="224.71" r="3"></circle>
+<circle class="catalog" cx="553.96" cy="113.39" r="3"></circle>
+<circle class="catalog" cx="458.05" cy="487.60" r="3"></circle>
+<circle class="catalog" cx="253.17" cy="257.56" r="3"></circle>
+<circle class="catalog" cx="462.27" cy="250.32" r="3"></circle>
+<circle class="catalog" cx="414.70" cy="295.56" r="3"></circle>
+<circle class="catalog" cx="503.45" cy="186.34" r="3"></circle>
+<circle class="catalog" cx="303.52" cy="126.84" r="3"></circle>
+<circle class="catalog" cx="169.90" cy="390.87" r="3"></circle>
+<circle class="catalog" cx="599.17" cy="259.47" r="3"></circle>
+<circle class="catalog" cx="228.54" cy="128.62" r="3"></circle>
+<circle class="catalog" cx="328.88" cy="322.01" r="3"></circle>
+<circle class="catalog" cx="130.23" cy="267.45" r="3"></circle>
+<circle class="catalog" cx="429.20" cy="101.37" r="3"></circle>
+<circle class="catalog" cx="67.33" cy="138.71" r="3"></circle>
+<circle class="catalog" cx="52.89" cy="55.30" r="3"></circle>
+<circle class="catalog" cx="504.05" cy="451.14" r="3"></circle>
+<circle class="catalog" cx="371.31" cy="290.55" r="3"></circle>
+<circle class="catalog" cx="672.89" cy="153.69" r="3"></circle>
+<circle class="catalog" cx="451.81" cy="492.10" r="3"></circle>
+<circle class="catalog" cx="201.92" cy="106.76" r="3"></circle>
+<circle class="catalog" cx="303.78" cy="148.48" r="3"></circle>
+<circle class="catalog" cx="125.72" cy="214.89" r="3"></circle>
+<circle class="catalog" cx="541.24" cy="453.81" r="3"></circle>
+<circle class="catalog" cx="406.58" cy="159.89" r="3"></circle>
+<circle class="catalog" cx="50.11" cy="366.86" r="3"></circle>
+<circle class="catalog" cx="177.24" cy="504.57" r="3"></circle>
+<circle class="catalog" cx="460.11" cy="185.76" r="3"></circle>
+<circle class="catalog" cx="440.11" cy="312.11" r="3"></circle>
+<circle class="catalog" cx="361.78" cy="307.50" r="3"></circle>
+<circle class="catalog" cx="376.94" cy="135.58" r="3"></circle>
+<circle class="catalog" cx="424.21" cy="160.06" r="3"></circle>
+<circle class="catalog" cx="264.59" cy="267.76" r="3"></circle>
+<circle class="catalog" cx="260.80" cy="270.93" r="3"></circle>
+<circle class="catalog" cx="577.12" cy="500.06" r="3"></circle>
+<circle class="catalog" cx="384.57" cy="129.34" r="3"></circle>
+<circle class="catalog" cx="526.46" cy="289.55" r="3"></circle>
+<circle class="catalog" cx="482.19" cy="243.41" r="3"></circle>
+<circle class="catalog" cx="246.39" cy="121.12" r="3"></circle>
+<circle class="catalog" cx="167.70" cy="30.06" r="3"></circle>
+<circle class="catalog" cx="127.17" cy="226.71" r="3"></circle>
+<circle class="catalog" cx="309.10" cy="228.18" r="3"></circle>
+<circle class="catalog" cx="235.44" cy="354.07" r="3"></circle>
+<circle class="catalog" cx="293.24" cy="475.47" r="3"></circle>
+<circle class="catalog" cx="562.56" cy="197.98" r="3"></circle>
+<circle class="catalog" cx="240.50" cy="162.23" r="3"></circle>
+<circle class="catalog" cx="228.75" cy="60.75" r="3"></circle>
+<circle class="catalog" cx="73.46" cy="96.61" r="3"></circle>
+<circle class="catalog" cx="263.91" cy="211.31" r="3"></circle>
+<circle class="catalog" cx="361.45" cy="268.51" r="3"></circle>
+<circle class="catalog" cx="471.10" cy="469.42" r="3"></circle>
+<circle class="catalog" cx="171.50" cy="125.65" r="3"></circle>
+<circle class="catalog" cx="244.42" cy="86.67" r="3"></circle>
+<circle class="catalog" cx="299.51" cy="410.70" r="3"></circle>
+<circle class="catalog" cx="411.98" cy="410.45" r="3"></circle>
+<circle class="catalog" cx="265.47" cy="177.19" r="3"></circle>
+<circle class="catalog" cx="574.46" cy="198.22" r="3"></circle>
+<circle class="catalog" cx="446.97" cy="349.73" r="3"></circle>
+<circle class="catalog" cx="142.54" cy="239.05" r="3"></circle>
+<circle class="catalog" cx="311.21" cy="178.83" r="3"></circle>
+<circle class="catalog" cx="36.02" cy="232.50" r="3"></circle>
+<circle class="catalog" cx="199.13" cy="327.97" r="3"></circle>
+<circle class="catalog" cx="475.40" cy="510.23" r="3"></circle>
+<circle class="catalog" cx="75.69" cy="32.36" r="3"></circle>
+<circle class="catalog" cx="339.56" cy="152.63" r="3"></circle>
+<circle class="catalog" cx="319.55" cy="262.15" r="3"></circle>
+<circle class="catalog" cx="283.16" cy="83.01" r="3"></circle>
+<circle class="catalog" cx="557.65" cy="475.26" r="3"></circle>
+<circle class="catalog" cx="645.92" cy="118.35" r="3"></circle>
+<circle class="catalog" cx="567.18" cy="235.27" r="3"></circle>
+<circle class="catalog" cx="168.03" cy="186.19" r="3"></circle>
+<circle class="catalog" cx="690.19" cy="268.30" r="3"></circle>
+<circle class="catalog" cx="45.51" cy="381.96" r="3"></circle>
+<circle class="catalog" cx="331.43" cy="119.98" r="3"></circle>
+<circle class="catalog" cx="671.37" cy="86.34" r="3"></circle>
+<circle class="catalog" cx="61.87" cy="391.94" r="3"></circle>
+<circle class="catalog" cx="175.89" cy="148.35" r="3"></circle>
+<circle class="catalog" cx="290.62" cy="100.81" r="3"></circle>
+<circle class="catalog" cx="382.33" cy="193.35" r="3"></circle>
+<circle class="catalog" cx="318.53" cy="100.93" r="3"></circle>
+<circle class="catalog" cx="188.02" cy="257.19" r="3"></circle>
+<circle class="catalog" cx="421.47" cy="296.18" r="3"></circle>
+<circle class="catalog" cx="262.37" cy="224.26" r="3"></circle>
+<circle class="catalog" cx="455.88" cy="310.22" r="3"></circle>
+<circle class="catalog" cx="334.34" cy="195.07" r="3"></circle>
+<circle class="catalog" cx="282.54" cy="95.90" r="3"></circle>
+<circle class="catalog" cx="461.25" cy="227.13" r="3"></circle>
+<circle class="catalog" cx="299.45" cy="410.70" r="3"></circle>
+<circle class="catalog" cx="181.30" cy="510.31" r="3"></circle>
+<circle class="catalog" cx="313.62" cy="145.97" r="3"></circle>
+<circle class="catalog" cx="252.61" cy="251.65" r="3"></circle>
+<circle class="catalog" cx="281.14" cy="259.40" r="3"></circle>
+<circle class="catalog" cx="431.33" cy="71.66" r="3"></circle>
+<circle class="catalog" cx="171.96" cy="115.31" r="3"></circle>
+<circle class="catalog" cx="551.00" cy="64.55" r="3"></circle>
+<circle class="catalog" cx="684.53" cy="158.96" r="3"></circle>
+<circle class="catalog" cx="609.15" cy="318.60" r="3"></circle>
+<circle class="catalog" cx="467.73" cy="236.29" r="3"></circle>
+<circle class="catalog" cx="182.22" cy="164.52" r="3"></circle>
+<circle class="catalog" cx="110.84" cy="270.61" r="3"></circle>
+<circle class="catalog" cx="448.78" cy="302.68" r="3"></circle>
+<circle class="catalog" cx="431.45" cy="143.51" r="3"></circle>
+<circle class="catalog" cx="238.19" cy="202.06" r="3"></circle>
+<circle class="catalog" cx="681.95" cy="41.14" r="3"></circle>
+<circle class="catalog" cx="472.47" cy="464.08" r="3"></circle>
+<circle class="catalog" cx="34.69" cy="36.85" r="3"></circle>
+<circle class="catalog" cx="301.85" cy="347.10" r="3"></circle>
+<circle class="catalog" cx="437.94" cy="318.08" r="3"></circle>
+<circle class="catalog" cx="226.19" cy="230.41" r="3"></circle>
+<circle class="catalog" cx="213.83" cy="315.58" r="3"></circle>
+<circle class="catalog" cx="317.43" cy="202.16" r="3"></circle>
+<circle class="catalog" cx="633.62" cy="487.75" r="3"></circle>
+<circle class="catalog" cx="327.51" cy="103.82" r="3"></circle>
+<circle class="catalog" cx="539.43" cy="495.65" r="3"></circle>
+<circle class="catalog" cx="534.07" cy="495.89" r="3"></circle>
+<circle class="catalog" cx="438.55" cy="242.27" r="3"></circle>
+<circle class="catalog" cx="543.67" cy="307.55" r="3"></circle>
+<circle class="catalog" cx="489.70" cy="284.90" r="3"></circle>
+<circle class="catalog" cx="462.76" cy="155.30" r="3"></circle>
+<circle class="catalog" cx="472.65" cy="464.41" r="3"></circle>
+<circle class="catalog" cx="125.75" cy="214.91" r="3"></circle>
+<circle class="catalog" cx="431.20" cy="143.96" r="3"></circle>
+<circle class="catalog" cx="355.26" cy="142.63" r="3"></circle>
+<circle class="catalog" cx="222.17" cy="194.22" r="3"></circle>
+<circle class="catalog" cx="270.53" cy="326.04" r="3"></circle>
+<circle class="catalog" cx="56.88" cy="351.25" r="3"></circle>
+<circle class="catalog" cx="515.44" cy="163.84" r="3"></circle>
+<circle class="catalog" cx="297.59" cy="266.66" r="3"></circle>
+<circle class="catalog" cx="217.14" cy="365.66" r="3"></circle>
+<circle class="catalog" cx="267.72" cy="105.59" r="3"></circle>
+<circle class="catalog" cx="92.93" cy="222.60" r="3"></circle>
+<circle class="catalog" cx="455.90" cy="310.23" r="3"></circle>
+<circle class="catalog" cx="246.98" cy="157.29" r="3"></circle>
+<circle class="catalog" cx="324.73" cy="221.02" r="3"></circle>
+<circle class="catalog" cx="306.18" cy="108.43" r="3"></circle>
+<circle class="catalog" cx="692.00" cy="239.69" r="3"></circle>
+<circle class="catalog" cx="280.53" cy="385.13" r="3"></circle>
+<circle class="catalog" cx="404.53" cy="500.06" r="3"></circle>
+<circle class="catalog" cx="252.32" cy="197.03" r="3"></circle>
+<circle class="catalog" cx="325.22" cy="333.45" r="3"></circle>
+<circle class="catalog" cx="28.91" cy="296.01" r="3"></circle>
+<circle class="catalog" cx="371.47" cy="185.59" r="3"></circle>
+<circle class="catalog" cx="187.14" cy="484.71" r="3"></circle>
+<circle class="catalog" cx="600.58" cy="235.44" r="3"></circle>
+<circle class="catalog" cx="400.19" cy="196.79" r="3"></circle>
+<circle class="catalog" cx="470.53" cy="469.04" r="3"></circle>
+<circle class="catalog" cx="236.17" cy="312.15" r="3"></circle>
+<circle class="catalog" cx="430.09" cy="277.64" r="3"></circle>
+<circle class="catalog" cx="282.95" cy="334.50" r="3"></circle>
+<circle class="catalog" cx="207.63" cy="303.10" r="3"></circle>
+<circle class="catalog" cx="452.34" cy="315.75" r="3"></circle>
+<circle class="catalog" cx="383.82" cy="157.88" r="3"></circle>
+<circle class="catalog" cx="30.32" cy="73.59" r="3"></circle>
+<circle class="catalog" cx="124.69" cy="508.83" r="3"></circle>
+<circle class="catalog" cx="134.12" cy="153.34" r="3"></circle>
+<circle class="catalog" cx="616.56" cy="254.44" r="3"></circle>
+<circle class="catalog" cx="224.93" cy="184.35" r="3"></circle>
+<circle class="catalog" cx="591.26" cy="373.36" r="3"></circle>
+<circle class="catalog" cx="291.56" cy="110.51" r="3"></circle>
+<circle class="catalog" cx="229.51" cy="263.88" r="3"></circle>
+<circle class="catalog" cx="565.17" cy="88.93" r="3"></circle>
+<circle class="catalog" cx="431.20" cy="143.96" r="3"></circle>
+<circle class="catalog" cx="225.49" cy="253.58" r="3"></circle>
+<circle class="catalog" cx="316.09" cy="187.72" r="3"></circle>
+<circle class="catalog" cx="137.26" cy="253.22" r="3"></circle>
+<circle class="catalog" cx="691.59" cy="240.63" r="3"></circle>
+<circle class="catalog" cx="559.28" cy="239.69" r="3"></circle>
+<circle class="catalog" cx="538.64" cy="398.29" r="3"></circle>
+<circle class="catalog" cx="360.96" cy="80.25" r="3"></circle>
+<circle class="catalog" cx="103.76" cy="70.02" r="3"></circle>
+<circle class="catalog" cx="120.48" cy="261.83" r="3"></circle>
+<circle class="catalog" cx="322.43" cy="248.90" r="3"></circle>
+<circle class="catalog" cx="478.08" cy="278.12" r="3"></circle>
+<circle class="catalog" cx="112.79" cy="389.98" r="3"></circle>
+<circle class="catalog" cx="562.57" cy="197.98" r="3"></circle>
+<circle class="catalog" cx="69.95" cy="242.01" r="3"></circle>
+<circle class="catalog" cx="362.10" cy="279.38" r="3"></circle>
+<circle class="catalog" cx="287.38" cy="207.53" r="3"></circle>
+<circle class="catalog" cx="243.05" cy="173.70" r="3"></circle>
+<circle class="catalog" cx="217.95" cy="100.51" r="3"></circle>
+<circle class="catalog" cx="567.26" cy="499.76" r="3"></circle>
+<circle class="catalog" cx="173.41" cy="328.32" r="3"></circle>
+<circle class="catalog" cx="499.74" cy="296.67" r="3"></circle>
+<circle class="catalog" cx="245.62" cy="174.24" r="3"></circle>
+<circle class="catalog" cx="282.20" cy="327.04" r="3"></circle>
+<circle class="catalog" cx="681.98" cy="41.41" r="3"></circle>
+<circle class="catalog" cx="226.85" cy="261.13" r="3"></circle>
+<circle class="catalog" cx="687.67" cy="203.99" r="3"></circle>
+<circle class="catalog" cx="214.38" cy="180.48" r="3"></circle>
+<circle class="catalog" cx="277.28" cy="90.30" r="3"></circle>
+<circle class="catalog" cx="68.01" cy="294.27" r="3"></circle>
+<circle class="catalog" cx="86.42" cy="231.64" r="3"></circle>
+<circle class="catalog" cx="408.04" cy="159.79" r="3"></circle>
+<circle class="catalog" cx="260.96" cy="389.16" r="3"></circle>
+<circle class="catalog" cx="587.67" cy="114.41" r="3"></circle>
+<circle class="catalog" cx="196.31" cy="148.83" r="3"></circle>
+<circle class="catalog" cx="161.47" cy="395.22" r="3"></circle>
+<circle class="catalog" cx="270.04" cy="69.25" r="3"></circle>
+<circle class="catalog" cx="528.95" cy="269.93" r="3"></circle>
+<circle class="catalog" cx="441.32" cy="234.58" r="3"></circle>
+<circle class="catalog" cx="297.31" cy="263.85" r="3"></circle>
+<circle class="catalog" cx="320.66" cy="264.03" r="3"></circle>
+<circle class="catalog" cx="263.95" cy="281.68" r="3"></circle>
+<circle class="catalog" cx="249.88" cy="213.21" r="3"></circle>
+<circle class="catalog" cx="134.94" cy="395.32" r="3"></circle>
+<circle class="catalog" cx="497.47" cy="298.15" r="3"></circle>
+<circle class="catalog" cx="224.14" cy="306.86" r="3"></circle>
+<circle class="catalog" cx="128.39" cy="245.69" r="3"></circle>
+<circle class="catalog" cx="632.58" cy="504.00" r="3"></circle>
+<circle class="catalog" cx="619.08" cy="272.29" r="3"></circle>
+<circle class="catalog" cx="424.13" cy="160.12" r="3"></circle>
+<circle class="catalog" cx="533.94" cy="319.05" r="3"></circle>
+<circle class="catalog" cx="509.06" cy="301.22" r="3"></circle>
+<circle class="catalog" cx="224.06" cy="402.87" r="3"></circle>
+<circle class="catalog" cx="631.76" cy="28.00" r="3"></circle>
+<circle class="catalog" cx="215.93" cy="253.08" r="3"></circle>
+<circle class="catalog" cx="309.05" cy="227.22" r="3"></circle>
+<circle class="catalog" cx="631.76" cy="28.00" r="3"></circle>
+<circle class="catalog" cx="317.64" cy="512.00" r="3"></circle>
+<circle class="catalog" cx="581.05" cy="93.66" r="3"></circle>
+<circle class="catalog" cx="455.08" cy="271.16" r="3"></circle>
+<circle class="catalog" cx="257.62" cy="82.66" r="3"></circle>
+<circle class="catalog" cx="326.72" cy="331.50" r="3"></circle>
+<circle class="catalog" cx="605.88" cy="476.43" r="3"></circle>
+<circle class="catalog" cx="455.08" cy="271.19" r="3"></circle>
+<circle class="catalog" cx="213.06" cy="342.28" r="3"></circle>
+<circle class="catalog" cx="401.20" cy="194.83" r="3"></circle>
+<circle class="catalog" cx="636.65" cy="301.51" r="3"></circle>
+<circle class="catalog" cx="241.26" cy="175.91" r="3"></circle>
+<circle class="catalog" cx="100.13" cy="239.11" r="3"></circle>
+<circle class="catalog" cx="360.33" cy="191.79" r="3"></circle>
+<circle class="catalog" cx="126.69" cy="391.76" r="3"></circle>
+<circle class="catalog" cx="129.37" cy="233.02" r="3"></circle>
+<circle class="catalog" cx="278.78" cy="333.30" r="3"></circle>
+<circle class="catalog" cx="431.46" cy="143.50" r="3"></circle>
+<circle class="catalog" cx="342.77" cy="130.19" r="3"></circle>
+<circle class="catalog" cx="35.04" cy="232.94" r="3"></circle>
+<circle class="catalog" cx="28.00" cy="476.06" r="3"></circle>
+<circle class="catalog" cx="75.70" cy="32.36" r="3"></circle>
+<circle class="catalog" cx="134.55" cy="273.76" r="3"></circle>
+<circle class="catalog" cx="603.02" cy="307.65" r="3"></circle>
+<circle class="catalog" cx="62.22" cy="397.58" r="3"></circle>
+<circle class="catalog" cx="212.29" cy="207.45" r="3"></circle>
+<circle class="catalog" cx="257.35" cy="77.08" r="3"></circle>
+<circle class="catalog" cx="564.43" cy="314.22" r="3"></circle>
+<circle class="catalog" cx="457.20" cy="299.15" r="3"></circle>
+<circle class="catalog" cx="244.53" cy="252.09" r="3"></circle>
+<circle class="catalog" cx="289.52" cy="288.80" r="3"></circle>
+<circle class="catalog" cx="238.10" cy="299.17" r="3"></circle>
+<circle class="catalog" cx="596.71" cy="310.08" r="3"></circle>
+<circle class="catalog" cx="220.34" cy="110.24" r="3"></circle>
+<circle class="catalog" cx="73.74" cy="276.55" r="3"></circle>
+<circle class="catalog" cx="292.36" cy="259.98" r="3"></circle>
+<circle class="catalog" cx="238.30" cy="309.65" r="3"></circle>
+<circle class="catalog" cx="195.24" cy="154.22" r="3"></circle>
+<circle class="catalog" cx="689.19" cy="84.40" r="3"></circle>
+<circle class="catalog" cx="221.20" cy="218.92" r="3"></circle>
+<circle class="detection" cx="503.63" cy="186.26" r="2"></circle>
+<circle class="detection" cx="460.07" cy="185.82" r="2"></circle>
+<circle class="detection" cx="482.21" cy="243.48" r="2"></circle>
+<circle class="detection" cx="376.94" cy="135.62" r="2"></circle>
+<circle class="detection" cx="167.82" cy="186.16" r="2"></circle>
+<circle class="detection" cx="481.25" cy="251.40" r="2"></circle>
+<circle class="detection" cx="240.40" cy="162.09" r="2"></circle>
+<circle class="detection" cx="303.51" cy="126.74" r="2"></circle>
+<circle class="detection" cx="429.32" cy="101.17" r="2"></circle>
+<circle class="detection" cx="265.52" cy="177.13" r="2"></circle>
+<circle class="detection" cx="462.79" cy="155.29" r="2"></circle>
+<circle class="detection" cx="235.96" cy="240.13" r="2"></circle>
+<circle class="detection" cx="267.70" cy="105.34" r="2"></circle>
+<circle class="detection" cx="584.73" cy="51.73" r="2"></circle>
+<circle class="detection" cx="462.20" cy="250.29" r="2"></circle>
+<circle class="detection" cx="431.33" cy="143.79" r="2"></circle>
+<circle class="detection" cx="424.19" cy="160.18" r="2"></circle>
+<circle class="detection" cx="384.58" cy="129.40" r="2"></circle>
+<circle class="detection" cx="526.65" cy="289.48" r="2"></circle>
+<circle class="detection" cx="331.43" cy="119.93" r="2"></circle>
+<circle class="detection" cx="290.67" cy="100.60" r="2"></circle>
+<circle class="detection" cx="461.20" cy="227.17" r="2"></circle>
+<circle class="detection" cx="553.82" cy="113.53" r="2"></circle>
+<circle class="detection" cx="228.44" cy="128.40" r="2"></circle>
+<circle class="detection" cx="238.13" cy="202.03" r="2"></circle>
+<circle class="detection" cx="222.05" cy="194.14" r="2"></circle>
+<circle class="detection" cx="201.92" cy="106.80" r="2"></circle>
+<circle class="detection" cx="171.53" cy="125.77" r="2"></circle>
+<circle class="detection" cx="317.48" cy="202.39" r="2"></circle>
+<circle class="detection" cx="339.63" cy="152.69" r="2"></circle>
+<circle class="detection" cx="283.17" cy="82.85" r="2"></circle>
+<circle class="detection" cx="246.33" cy="120.90" r="2"></circle>
+<circle class="detection" cx="262.45" cy="224.28" r="2"></circle>
+<circle class="detection" cx="182.12" cy="164.41" r="2"></circle>
+<circle class="detection" cx="130.31" cy="267.35" r="2"></circle>
+<circle class="detection" cx="306.19" cy="108.24" r="2"></circle>
+<circle class="detection" cx="246.90" cy="157.18" r="2"></circle>
+<circle class="detection" cx="228.85" cy="60.93" r="2"></circle>
+<circle class="detection" cx="599.06" cy="259.41" r="2"></circle>
+<circle class="detection" cx="125.85" cy="214.99" r="2"></circle>
+<circle class="detection" cx="515.73" cy="163.77" r="2"></circle>
+<circle class="detection" cx="327.51" cy="103.63" r="2"></circle>
+<circle class="detection" cx="562.67" cy="197.95" r="2"></circle>
+<circle class="detection" cx="244.35" cy="86.63" r="2"></circle>
+<circle class="detection" cx="578.67" cy="203.17" r="2"></circle>
+<circle class="detection" cx="277.24" cy="90.10" r="2"></circle>
+<circle class="detection" cx="355.30" cy="142.67" r="2"></circle>
+<circle class="detection" cx="362.99" cy="56.33" r="2"></circle>
+<circle class="detection" cx="334.40" cy="195.14" r="2"></circle>
+<circle class="detection" cx="187.68" cy="257.13" r="2"></circle>
+<circle class="detection" cx="431.34" cy="71.56" r="2"></circle>
+<circle class="detection" cx="311.31" cy="178.93" r="2"></circle>
+<circle class="detection" cx="149.48" cy="73.45" r="2"></circle>
+<circle class="detection" cx="361.03" cy="79.99" r="2"></circle>
+<circle class="detection" cx="253.26" cy="257.55" r="2"></circle>
+<circle class="detection" cx="574.43" cy="198.22" r="2"></circle>
+<circle class="detection" cx="282.42" cy="95.71" r="2"></circle>
+<circle class="detection" cx="167.78" cy="30.18" r="2"></circle>
+<circle class="detection" cx="567.37" cy="235.29" r="2"></circle>
+<circle class="detection" cx="402.40" cy="190.54" r="2"></circle>
+<circle class="detection" cx="467.65" cy="236.29" r="2"></circle>
+<circle class="detection" cx="406.51" cy="159.92" r="2"></circle>
+<circle class="detection" cx="224.82" cy="184.27" r="2"></circle>
+<circle class="detection" cx="291.56" cy="110.34" r="2"></circle>
+<circle class="detection" cx="673.00" cy="153.67" r="2"></circle>
+<circle class="detection" cx="175.82" cy="148.36" r="2"></circle>
+<circle class="detection" cx="217.87" cy="100.48" r="2"></circle>
+<circle class="detection" cx="67.38" cy="138.72" r="2"></circle>
+<circle class="detection" cx="252.36" cy="197.06" r="2"></circle>
+<circle class="detection" cx="270.03" cy="69.21" r="2"></circle>
+<circle class="detection" cx="541.29" cy="55.88" r="2"></circle>
+<circle class="detection" cx="139.67" cy="224.64" r="2"></circle>
+<circle class="detection" cx="73.18" cy="96.59" r="2"></circle>
+<circle class="detection" cx="309.17" cy="228.22" r="2"></circle>
+<circle class="detection" cx="316.17" cy="187.84" r="2"></circle>
+<circle class="detection" cx="383.79" cy="158.00" r="2"></circle>
+<circle class="detection" cx="499.02" cy="269.11" r="2"></circle>
+<circle class="detection" cx="438.49" cy="242.31" r="2"></circle>
+<circle class="detection" cx="172.18" cy="115.44" r="2"></circle>
+<circle class="detection" cx="371.52" cy="185.70" r="2"></circle>
+<circle class="detection" cx="489.75" cy="284.83" r="2"></circle>
+<circle class="detection" cx="196.13" cy="148.69" r="2"></circle>
+<circle class="detection" cx="127.39" cy="226.71" r="2"></circle>
+<circle class="detection" cx="263.99" cy="211.31" r="2"></circle>
+<circle class="detection" cx="236.14" cy="312.05" r="2"></circle>
+<circle class="detection" cx="313.59" cy="146.01" r="2"></circle>
+<circle class="detection" cx="643.08" cy="257.91" r="2"></circle>
+<circle class="detection" cx="252.69" cy="251.62" r="2"></circle>
+<circle class="detection" cx="550.76" cy="64.66" r="2"></circle>
+<circle class="detection" cx="648.95" cy="188.44" r="2"></circle>
+<circle class="detection" cx="75.44" cy="32.31" r="2"></circle>
+<circle class="detection" cx="318.52" cy="100.77" r="2"></circle>
+<circle class="detection" cx="260.86" cy="270.95" r="2"></circle>
+<circle class="detection" cx="142.52" cy="239.02" r="2"></circle>
+<circle class="detection" cx="53.20" cy="55.23" r="2"></circle>
+<circle class="detection" cx="385.84" cy="190.07" r="2"></circle>
+<circle class="detection" cx="616.36" cy="254.42" r="2"></circle>
+<circle class="detection" cx="214.19" cy="180.33" r="2"></circle>
+<circle class="detection" cx="137.41" cy="237.10" r="2"></circle>
+<circle class="detection" cx="28.15" cy="476.27" r="2"></circle>
+<circle class="detection" cx="684.78" cy="158.90" r="2"></circle>
+<circle class="detection" cx="455.03" cy="271.15" r="2"></circle>
+<circle class="detection" cx="225.45" cy="253.59" r="2"></circle>
+<circle class="detection" cx="382.31" cy="193.46" r="2"></circle>
+<circle class="detection" cx="400.17" cy="196.92" r="2"></circle>
+<circle class="detection" cx="264.70" cy="267.70" r="2"></circle>
+<circle class="detection" cx="249.95" cy="213.27" r="2"></circle>
+<circle class="detection" cx="245.51" cy="174.21" r="2"></circle>
+<circle class="detection" cx="499.80" cy="296.62" r="2"></circle>
+<circle class="detection" cx="217.58" cy="81.64" r="2"></circle>
+<circle class="detection" cx="414.70" cy="295.45" r="2"></circle>
+<circle class="detection" cx="241.19" cy="175.83" r="2"></circle>
+<circle class="detection" cx="448.67" cy="302.56" r="2"></circle>
+<circle class="detection" cx="281.20" cy="259.41" r="2"></circle>
+<circle class="detection" cx="134.40" cy="153.50" r="2"></circle>
+<circle class="detection" cx="287.18" cy="60.84" r="2"></circle>
+<circle class="detection" cx="235.29" cy="353.84" r="2"></circle>
+<circle class="detection" cx="440.09" cy="312.02" r="2"></circle>
+<circle class="detection" cx="137.11" cy="253.15" r="2"></circle>
+<circle class="detection" cx="215.97" cy="252.98" r="2"></circle>
+<circle class="detection" cx="226.77" cy="261.20" r="2"></circle>
+<circle class="detection" cx="325.26" cy="333.16" r="2"></circle>
+<circle class="detection" cx="430.07" cy="277.60" r="2"></circle>
+<circle class="detection" cx="401.24" cy="194.96" r="2"></circle>
+<circle class="detection" cx="36.06" cy="232.50" r="2"></circle>
+<circle class="detection" cx="600.41" cy="235.55" r="2"></circle>
+<circle class="detection" cx="559.47" cy="239.76" r="2"></circle>
+<circle class="detection" cx="220.10" cy="110.34" r="2"></circle>
+<circle class="detection" cx="224.05" cy="318.30" r="2"></circle>
+<circle class="detection" cx="198.87" cy="327.90" r="2"></circle>
+<circle class="detection" cx="529.19" cy="269.96" r="2"></circle>
+<circle class="detection" cx="242.91" cy="173.66" r="2"></circle>
+<circle class="detection" cx="328.87" cy="321.86" r="2"></circle>
+<circle class="detection" cx="207.45" cy="303.05" r="2"></circle>
+<circle class="detection" cx="207.73" cy="327.71" r="2"></circle>
+<circle class="detection" cx="287.52" cy="207.64" r="2"></circle>
+<circle class="detection" cx="314.23" cy="326.65" r="2"></circle>
+<circle class="detection" cx="441.24" cy="234.53" r="2"></circle>
+<circle class="detection" cx="608.77" cy="317.20" r="2"></circle>
+<circle class="detection" cx="416.49" cy="403.52" r="2"></circle>
+<circle class="detection" cx="270.70" cy="325.71" r="2"></circle>
+<circle class="detection" cx="301.98" cy="346.95" r="2"></circle>
+<circle class="detection" cx="282.25" cy="326.85" r="2"></circle>
+<circle class="detection" cx="319.59" cy="262.18" r="2"></circle>
+<circle class="detection" cx="360.42" cy="192.01" r="2"></circle>
+<circle class="detection" cx="187.88" cy="343.32" r="2"></circle>
+<circle class="detection" cx="455.94" cy="310.11" r="2"></circle>
+<circle class="detection" cx="497.46" cy="298.13" r="2"></circle>
+<circle class="detection" cx="437.95" cy="317.86" r="2"></circle>
+<circle class="detection" cx="449.85" cy="318.30" r="2"></circle>
+<circle class="detection" cx="560.02" cy="307.04" r="2"></circle>
+<circle class="detection" cx="278.32" cy="386.49" r="2"></circle>
+<circle class="detection" cx="477.99" cy="278.18" r="2"></circle>
+<circle class="detection" cx="297.60" cy="408.75" r="2"></circle>
+<circle class="detection" cx="281.18" cy="336.16" r="2"></circle>
+<circle class="detection" cx="239.19" cy="397.06" r="2"></circle>
+<circle class="detection" cx="299.92" cy="410.26" r="2"></circle>
+<circle class="detection" cx="630.86" cy="489.27" r="2"></circle>
+<circle class="identified wrong" cx="431.33" cy="143.79" r="6"></circle>
+<circle class="identified correct" cx="207.73" cy="327.71" r="6"></circle>
+<circle class="identified correct" cx="287.18" cy="60.84" r="6"></circle>
+<circle class="identified correct" cx="541.29" cy="55.88" r="6"></circle>
+<circle class="identified correct" cx="217.58" cy="81.64" r="6"></circle>
+<circle class="identified correct" cx="224.05" cy="318.30" r="6"></circle>
+<circle class="identified correct" cx="584.73" cy="51.73" r="6"></circle>
+<circle class="identified correct" cx="643.08" cy="257.91" r="6"></circle>
+<circle class="identified correct" cx="362.99" cy="56.33" r="6"></circle>
+<circle class="identified correct" cx="314.23" cy="326.65" r="6"></circle>
+<circle class="identified correct" cx="317.48" cy="202.39" r="6"></circle>
+<circle class="identified correct" cx="560.02" cy="307.04" r="6"></circle>
+<circle class="identified correct" cx="578.67" cy="203.17" r="6"></circle>
+<circle class="identified correct" cx="149.48" cy="73.45" r="6"></circle>
+<circle class="identified correct" cx="385.84" cy="190.07" r="6"></circle>
+<circle class="identified correct" cx="239.19" cy="397.06" r="6"></circle>
+<circle class="identified correct" cx="499.02" cy="269.11" r="6"></circle>
+<circle class="identified correct" cx="402.40" cy="190.54" r="6"></circle>
+<circle class="identified correct" cx="235.96" cy="240.13" r="6"></circle>
+<circle class="identified correct" cx="648.95" cy="188.44" r="6"></circle>
+<circle class="identified correct" cx="137.41" cy="237.10" r="6"></circle>
+<circle class="identified correct" cx="481.25" cy="251.40" r="6"></circle>
+<circle class="identified correct" cx="187.88" cy="343.32" r="6"></circle>
+<circle class="identified correct" cx="416.49" cy="403.52" r="6"></circle>
+<circle class="identified correct" cx="139.67" cy="224.64" r="6"></circle>
+<circle class="identified correct" cx="553.82" cy="113.53" r="6"></circle>
+<circle class="identified correct" cx="253.26" cy="257.55" r="6"></circle>
+<circle class="identified correct" cx="462.20" cy="250.29" r="6"></circle>
+<circle class="identified correct" cx="414.70" cy="295.45" r="6"></circle>
+<circle class="identified correct" cx="503.63" cy="186.26" r="6"></circle>
+<circle class="identified correct" cx="303.51" cy="126.74" r="6"></circle>
+<circle class="identified correct" cx="599.06" cy="259.41" r="6"></circle>
+<circle class="identified correct" cx="228.44" cy="128.40" r="6"></circle>
+<circle class="identified correct" cx="328.87" cy="321.86" r="6"></circle>
+<circle class="identified correct" cx="130.31" cy="267.35" r="6"></circle>
+<circle class="identified correct" cx="429.32" cy="101.17" r="6"></circle>
+<circle class="identified correct" cx="67.38" cy="138.72" r="6"></circle>
+<circle class="identified correct" cx="53.20" cy="55.23" r="6"></circle>
+<circle class="identified correct" cx="673.00" cy="153.67" r="6"></circle>
+<circle class="identified correct" cx="201.92" cy="106.80" r="6"></circle>
+<circle class="identified wrong" cx="313.59" cy="146.01" r="6"></circle>
+<circle class="identified wrong" cx="125.85" cy="214.99" r="6"></circle>
+<circle class="identified correct" cx="406.51" cy="159.92" r="6"></circle>
+<circle class="identified correct" cx="460.07" cy="185.82" r="6"></circle>
+<circle class="identified correct" cx="376.94" cy="135.62" r="6"></circle>
+<circle class="identified wrong" cx="424.19" cy="160.18" r="6"></circle>
+<circle class="identified correct" cx="440.09" cy="312.02" r="6"></circle>
+<circle class="identified correct" cx="264.70" cy="267.70" r="6"></circle>
+<circle class="identified correct" cx="260.86" cy="270.95" r="6"></circle>
+<circle class="identified correct" cx="384.58" cy="129.40" r="6"></circle>
+<circle class="identified correct" cx="526.65" cy="289.48" r="6"></circle>
+<circle class="identified correct" cx="482.21" cy="243.48" r="6"></circle>
+<circle class="identified correct" cx="246.33" cy="120.90" r="6"></circle>
+<circle class="identified correct" cx="127.39" cy="226.71" r="6"></circle>
+<circle class="identified correct" cx="167.78" cy="30.18" r="6"></circle>
+<circle class="identified correct" cx="309.17" cy="228.22" r="6"></circle>
+<circle class="identified correct" cx="235.29" cy="353.84" r="6"></circle>
+<circle class="identified wrong" cx="562.67" cy="197.95" r="6"></circle>
+<circle class="identified correct" cx="240.40" cy="162.09" r="6"></circle>
+<circle class="identified correct" cx="228.85" cy="60.93" r="6"></circle>
+<circle class="identified correct" cx="73.18" cy="96.59" r="6"></circle>
+<circle class="identified correct" cx="263.99" cy="211.31" r="6"></circle>
+<circle class="identified correct" cx="171.53" cy="125.77" r="6"></circle>
+<circle class="identified correct" cx="244.35" cy="86.63" r="6"></circle>
+<circle class="identified correct" cx="299.92" cy="410.26" r="6"></circle>
+<circle class="identified correct" cx="265.52" cy="177.13" r="6"></circle>
+<circle class="identified correct" cx="574.43" cy="198.22" r="6"></circle>
+<circle class="identified correct" cx="142.52" cy="239.02" r="6"></circle>
+<circle class="identified correct" cx="311.31" cy="178.93" r="6"></circle>
+<circle class="identified correct" cx="36.06" cy="232.50" r="6"></circle>
+<circle class="identified correct" cx="198.87" cy="327.90" r="6"></circle>
+<circle class="identified correct" cx="75.44" cy="32.31" r="6"></circle>
+<circle class="identified correct" cx="339.63" cy="152.69" r="6"></circle>
+<circle class="identified correct" cx="319.59" cy="262.18" r="6"></circle>
+<circle class="identified correct" cx="283.17" cy="82.85" r="6"></circle>
+<circle class="identified correct" cx="567.37" cy="235.29" r="6"></circle>
+<circle class="identified correct" cx="167.82" cy="186.16" r="6"></circle>
+<circle class="identified correct" cx="331.43" cy="119.93" r="6"></circle>
+<circle class="identified correct" cx="175.82" cy="148.36" r="6"></circle>
+<circle class="identified correct" cx="290.67" cy="100.60" r="6"></circle>
+<circle class="identified correct" cx="382.31" cy="193.46" r="6"></circle>
+<circle class="identified correct" cx="318.52" cy="100.77" r="6"></circle>
+<circle class="identified correct" cx="262.45" cy="224.28" r="6"></circle>
+<circle class="identified correct" cx="187.68" cy="257.13" r="6"></circle>
+<circle class="identified wrong" cx="430.07" cy="277.60" r="6"></circle>
+<circle class="identified correct" cx="455.94" cy="310.11" r="6"></circle>
+<circle class="identified correct" cx="282.42" cy="95.71" r="6"></circle>
+<circle class="identified correct" cx="334.40" cy="195.14" r="6"></circle>
+<circle class="identified correct" cx="461.20" cy="227.17" r="6"></circle>
+<circle class="identified correct" cx="297.60" cy="408.75" r="6"></circle>
+<circle class="identified correct" cx="252.69" cy="251.62" r="6"></circle>
+<circle class="identified correct" cx="281.20" cy="259.41" r="6"></circle>
+<circle class="identified correct" cx="431.34" cy="71.56" r="6"></circle>
+<circle class="identified correct" cx="172.18" cy="115.44" r="6"></circle>
+<circle class="identified correct" cx="550.76" cy="64.66" r="6"></circle>
+<circle class="identified correct" cx="684.78" cy="158.90" r="6"></circle>
+<circle class="identified correct" cx="182.12" cy="164.41" r="6"></circle>
+<circle class="identified correct" cx="467.65" cy="236.29" r="6"></circle>
+<circle class="identified correct" cx="608.77" cy="317.20" r="6"></circle>
+<circle class="identified correct" cx="448.67" cy="302.56" r="6"></circle>
+<circle class="identified correct" cx="238.13" cy="202.03" r="6"></circle>
+<circle class="identified correct" cx="301.98" cy="346.95" r="6"></circle>
+<circle class="identified correct" cx="437.95" cy="317.86" r="6"></circle>
+<circle class="identified wrong" cx="225.45" cy="253.59" r="6"></circle>
+<circle class="identified correct" cx="630.86" cy="489.27" r="6"></circle>
+<circle class="identified wrong" cx="207.45" cy="303.05" r="6"></circle>
+<circle class="identified wrong" cx="316.17" cy="187.84" r="6"></circle>
+<circle class="identified correct" cx="462.79" cy="155.29" r="6"></circle>
+<circle class="identified correct" cx="327.51" cy="103.63" r="6"></circle>
+<circle class="identified correct" cx="489.75" cy="284.83" r="6"></circle>
+<circle class="identified correct" cx="438.49" cy="242.31" r="6"></circle>
+<circle class="identified correct" cx="355.30" cy="142.67" r="6"></circle>
+<circle class="identified correct" cx="222.05" cy="194.14" r="6"></circle>
+<circle class="identified correct" cx="515.73" cy="163.77" r="6"></circle>
+<circle class="identified correct" cx="270.70" cy="325.71" r="6"></circle>
+<circle class="identified correct" cx="267.70" cy="105.34" r="6"></circle>
+<circle class="identified correct" cx="246.90" cy="157.18" r="6"></circle>
+<circle class="identified wrong" cx="449.85" cy="318.30" r="6"></circle>
+<circle class="identified correct" cx="306.19" cy="108.24" r="6"></circle>
+<circle class="identified correct" cx="252.36" cy="197.06" r="6"></circle>
+<circle class="identified correct" cx="278.32" cy="386.49" r="6"></circle>
+<circle class="identified correct" cx="371.52" cy="185.70" r="6"></circle>
+<circle class="identified correct" cx="325.26" cy="333.16" r="6"></circle>
+<circle class="identified correct" cx="400.17" cy="196.92" r="6"></circle>
+<circle class="identified correct" cx="600.41" cy="235.55" r="6"></circle>
+<circle class="identified correct" cx="236.14" cy="312.05" r="6"></circle>
+<circle class="identified wrong" cx="455.03" cy="271.15" r="6"></circle>
+<circle class="identified correct" cx="383.79" cy="158.00" r="6"></circle>
+<circle class="identified correct" cx="281.18" cy="336.16" r="6"></circle>
+<circle class="identified correct" cx="134.40" cy="153.50" r="6"></circle>
+<circle class="identified correct" cx="224.82" cy="184.27" r="6"></circle>
+<circle class="identified correct" cx="616.36" cy="254.42" r="6"></circle>
+<circle class="identified correct" cx="291.56" cy="110.34" r="6"></circle>
+<circle class="identified wrong" cx="226.77" cy="261.20" r="6"></circle>
+<circle class="identified wrong" cx="215.97" cy="252.98" r="6"></circle>
+<circle class="identified correct" cx="137.11" cy="253.15" r="6"></circle>
+<circle class="identified correct" cx="559.47" cy="239.76" r="6"></circle>
+<circle class="identified correct" cx="361.03" cy="79.99" r="6"></circle>
+<circle class="identified correct" cx="477.99" cy="278.18" r="6"></circle>
+<circle class="identified correct" cx="242.91" cy="173.66" r="6"></circle>
+<circle class="identified correct" cx="287.52" cy="207.64" r="6"></circle>
+<circle class="identified correct" cx="217.87" cy="100.48" r="6"></circle>
+<circle class="identified correct" cx="245.51" cy="174.21" r="6"></circle>
+<circle class="identified correct" cx="499.80" cy="296.62" r="6"></circle>
+<circle class="identified correct" cx="282.25" cy="326.85" r="6"></circle>
+<circle class="identified correct" cx="214.19" cy="180.33" r="6"></circle>
+<circle class="identified correct" cx="277.24" cy="90.10" r="6"></circle>
+<circle class="identified correct" cx="196.13" cy="148.69" r="6"></circle>
+<circle class="identified correct" cx="270.03" cy="69.21" r="6"></circle>
+<circle class="identified correct" cx="529.19" cy="269.96" r="6"></circle>
+<circle class="identified correct" cx="441.24" cy="234.53" r="6"></circle>
+<circle class="identified correct" cx="249.95" cy="213.27" r="6"></circle>
+<circle class="identified correct" cx="497.46" cy="298.13" r="6"></circle>
+<circle class="identified correct" cx="401.24" cy="194.96" r="6"></circle>
+<circle class="identified correct" cx="241.19" cy="175.83" r="6"></circle>
+<circle class="identified correct" cx="360.42" cy="192.01" r="6"></circle>
+<circle class="identified correct" cx="28.15" cy="476.27" r="6"></circle>
+<circle class="identified correct" cx="220.10" cy="110.34" r="6"></circle></svg>
+<h2>Details</h2>
+<pre>{
+  &quot;image&quot;: &quot;test_cases/IMG_9953/IMG_9953.png&quot;,
+  &quot;maxMag&quot;: 6.5,
+  &quot;detectorStatus&quot;: &quot;bright-star detector: bg 73.1, sigma 29.5, thresholds scan/global 87.8/117.4, 161652 local peaks, 2412/8957 star-like candidates after clutter, selected top 650/650, suppression radius 10 px&quot;,
+  &quot;detectorOptions&quot;: {
+    &quot;maxDetections&quot;: 650,
+    &quot;scanStep&quot;: 1,
+    &quot;thresholdSigma&quot;: 1.5,
+    &quot;localThresholdSigma&quot;: 1.5,
+    &quot;requireGlobalThreshold&quot;: false,
+    &quot;maxRadiusPx&quot;: 5,
+    &quot;maxElongation&quot;: 4,
+    &quot;suppressionRadiusPx&quot;: 10,
+    &quot;crowdingRadiusPx&quot;: 36,
+    &quot;maxCrowding&quot;: 7,
+    &quot;crowdingScorePower&quot;: 1.25
+  },
+  &quot;detectedStars&quot;: 650,
+  &quot;oracleDetectorHits&quot;: 158,
+  &quot;asterismInputDetections&quot;: 158,
+  &quot;asterismInput&quot;: &quot;oracle-validated automatic detections&quot;,
+  &quot;asterismIdentifiedStars&quot;: 158,
+  &quot;correctIdentifiedStars&quot;: 145,
+  &quot;incorrectIdentifiedStars&quot;: 13,
+  &quot;unknownIdentifiedStars&quot;: 0,
+  &quot;wrong&quot;: [
+    {
+      &quot;detectionId&quot;: 17,
+      &quot;identified&quot;: &quot;Vega|18.6156389|38.7836111&quot;,
+      &quot;truth&quot;: &quot;Lyr Epsilo2-5|18.7396944|39.6130556&quot;
+    },
+    {
+      &quot;detectionId&quot;: 108,
+      &quot;identified&quot;: &quot;Cyg Chi|19.8427500|32.9141667&quot;,
+      &quot;truth&quot;: &quot;Cyg 17|19.7737778|33.7277778&quot;
+    },
+    {
+      &quot;detectionId&quot;: 43,
+      &quot;identified&quot;: &quot;Del Gamma2-12|20.7776389|16.1241667&quot;,
+      &quot;truth&quot;: &quot;Del Gamma1-12|20.7774167|16.1244444&quot;
+    },
+    {
+      &quot;detectionId&quot;: 18,
+      &quot;identified&quot;: &quot;Lyr Zeta1-6|18.7462222|37.6050000&quot;,
+      &quot;truth&quot;: &quot;Lyr Zeta2-7|18.7467222|37.5944444&quot;
+    },
+    {
+      &quot;detectionId&quot;: 46,
+      &quot;identified&quot;: &quot;Her Rho-75|17.3947222|37.1458333&quot;,
+      &quot;truth&quot;: &quot;Her Rho-75|17.3946389|37.1466667&quot;
+    },
+    {
+      &quot;detectionId&quot;: 174,
+      &quot;identified&quot;: &quot;Her 106|18.3383056|21.9613889&quot;,
+      &quot;truth&quot;: &quot;Her 105|18.3196389|24.4461111&quot;
+    },
+    {
+      &quot;detectionId&quot;: 134,
+      &quot;identified&quot;: &quot;Sge Eta-16|20.0859722|19.9911111&quot;,
+      &quot;truth&quot;: &quot;Sge 13|20.0009167|17.5166667&quot;
+    },
+    {
+      &quot;detectionId&quot;: 213,
+      &quot;identified&quot;: &quot;Aql Omicro-54|19.8504444|10.4155556&quot;,
+      &quot;truth&quot;: &quot;Aql Phi-61|19.9373056|11.4238889&quot;
+    },
+    {
+      &quot;detectionId&quot;: 93,
+      &quot;identified&quot;: &quot;Cyg Beta2-6|19.5125833|27.9652778&quot;,
+      &quot;truth&quot;: &quot;Cyg 9|19.5808056|29.4630556&quot;
+    },
+    {
+      &quot;detectionId&quot;: 474,
+      &quot;identified&quot;: &quot;Her 95|18.0249722|21.5952778&quot;,
+      &quot;truth&quot;: &quot;Her 96|18.0397500|20.8336111&quot;
+    },
+    {
+      &quot;detectionId&quot;: 133,
+      &quot;identified&quot;: &quot;Her 105|18.3196389|24.4461111&quot;,
+      &quot;truth&quot;: &quot;Her 100|18.1304167|26.1013889&quot;
+    },
+    {
+      &quot;detectionId&quot;: 171,
+      &quot;identified&quot;: &quot;Sge 10|19.9336944|16.6347222&quot;,
+      &quot;truth&quot;: &quot;Sge 11|19.9626111|16.7891667&quot;
+    },
+    {
+      &quot;detectionId&quot;: 170,
+      &quot;identified&quot;: &quot;Sge 13|20.0009167|17.5166667&quot;,
+      &quot;truth&quot;: &quot;Sge 15|20.0683889|17.0700000&quot;
+    }
+  ],
+  &quot;status&quot;: &quot;auto-identify: asterism matched 158 stars &lt;= mag 6.5, median residual 0.6 px, scored 7000 triangle transforms&quot;,
+  &quot;catalogTriangleCount&quot;: 30000,
+  &quot;detectionTriangleCount&quot;: 4000,
+  &quot;scoredTransforms&quot;: 7000
+}</pre>
+</main>
+</body>
+</html>
