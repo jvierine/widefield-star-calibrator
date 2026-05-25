@@ -46,6 +46,14 @@ function fullTest(name, fn) {
     test(name, {skip: !RUN_FULL_TESTS, timeout: 10000}, fn);
 }
 
+function pythonCommand() {
+    if (process.env.PYTHON) {
+        return process.env.PYTHON;
+    }
+    const localConda = "/opt/miniconda3/bin/python";
+    return fs.existsSync(localConda) ? localConda : "python3";
+}
+
 function contextForOptmod(optmod) {
     const optpar = optmod === ExportGenerators.BROWN_CONRADY_OPTMOD ?
         [0.9, 1.2, 1.0, -2.0, 3.0, 0.01, -0.02, 0.02, -0.005, 0.0004, 0.0001, -0.0002] :
@@ -107,7 +115,7 @@ test("mapper code generators support every language and model", () => {
 });
 
 test("python mapper exports are syntactically valid for every model", () => {
-    const python = process.env.PYTHON || "/opt/miniconda3/bin/python";
+    const python = pythonCommand();
     for (const optmod of MODELS) {
         const text = ExportGenerators.mapperCode(contextForOptmod(optmod), "python");
         const result = childProcess.spawnSync(
@@ -233,7 +241,7 @@ ${testCase.samples.map((sample, index) => `
 }
 
 function runGeneratedPythonMapper(context, samples) {
-    const python = process.env.PYTHON || "/opt/miniconda3/bin/python";
+    const python = pythonCommand();
     const script = `${ExportGenerators.mapperCode(context, "python")}
 import json
 samples = ${JSON.stringify(samples)}

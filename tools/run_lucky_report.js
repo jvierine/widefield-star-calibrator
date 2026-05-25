@@ -119,6 +119,15 @@ function fmt(value, digits = 2) {
     return Number.isFinite(value) ? Number(value).toFixed(digits) : "n/a";
 }
 
+function optparText(result) {
+    if (!result || !result.testCase || !Array.isArray(result.optpar)) {
+        return "[]";
+    }
+    return `[${[result.testCase.optmod].concat(result.optpar).map(value =>
+        Number.isFinite(Number(value)) ? Number(value).toPrecision(12) : "0"
+    ).join(", ")}]`;
+}
+
 function run(command, args, options = {}) {
     const result = childProcess.spawnSync(command, args, {
         encoding: "utf8",
@@ -948,6 +957,8 @@ function resultPanel(result, index) {
             <p>optmod ${c.optmod}; ${c.width}x${c.height}; ${escapeHtml(c.date.toISOString())}</p>
             <p>site lat ${fmt(c.latDeg, 5)}, lon ${fmt(c.lonDeg, 5)} (${escapeHtml(c.siteSource)}); time from ${escapeHtml(c.timestampSource)}</p>
             <p>${c.metadataFound ? "matched saved test-case metadata" : "no saved metadata; used inferred/fallback metadata"}</p>
+            <h3>Fitted optpar</h3>
+            <pre><code>${escapeHtml(optparText(result))}</code></pre>
             <h3>Timing</h3>
             <table><tbody>${timingRows(result.timings || {})}</tbody></table>
             <h3>Stages</h3>
@@ -1057,6 +1068,30 @@ show(0);
 </html>`;
 }
 
+function summaryJson(results, command = reportCommand()) {
+    return {
+        generatedAt: new Date().toISOString(),
+        command,
+        results: results.map(result => ({
+            id: result.testCase.id,
+            image: result.testCase.image,
+            optmod: result.testCase.optmod,
+            width: result.testCase.width,
+            height: result.testCase.height,
+            timestampUtc: result.testCase.date.toISOString(),
+            latDeg: result.testCase.latDeg,
+            lonDeg: result.testCase.lonDeg,
+            altM: result.testCase.altM,
+            solved: !result.error && result.matches.length >= 4,
+            matches: result.matches ? result.matches.length : 0,
+            finalRmsPx: Number.isFinite(result.finalRms) ? result.finalRms : null,
+            optpar: result.error ? null : [result.testCase.optmod].concat(result.optpar),
+            timings: result.timings || {},
+            error: result.error || null,
+        })),
+    };
+}
+
 async function analyzeImage(filename, index, total, metadataMap, options) {
     const base = path.basename(filename);
     const log = text => console.log(text);
@@ -1107,7 +1142,9 @@ async function main() {
         results.push(await analyzeImage(images[i], i, images.length, metadataMap, options));
     }
     const outFile = path.join(options.outDir, "index.html");
-    fs.writeFileSync(outFile, pageHtml(results, reportCommand(process.argv.slice(2))));
+    const command = reportCommand(process.argv.slice(2));
+    fs.writeFileSync(outFile, pageHtml(results, command));
+    fs.writeFileSync(path.join(options.outDir, "summary.json"), JSON.stringify(summaryJson(results, command), null, 2));
     const total = results.reduce((acc, result) => {
         for (const [key, value] of Object.entries(result.timings || {})) {
             acc[key] = (acc[key] || 0) + (Number.isFinite(value) ? value : 0);

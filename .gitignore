@@ -7,3 +7,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
+# Generated locally by report and diagnostic scripts. Keep these out of Git.
+test-report/
+lucky-report/
+test_cases/report/

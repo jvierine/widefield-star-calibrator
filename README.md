@@ -1,8 +1,17 @@
 # AIDA Browser Star Calibration
 
-This directory contains a browser-only AIDA star calibration tool. It is used to
-align catalog stars with all-sky images, manually pair stars, fit the AIDA lens
-model, inspect residuals, and export the calibrated optical parameters.
+[![Fast Unit Tests](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg)](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml)
+
+This repository contains a browser-only wide-field star calibration tool. It is
+used to align catalog stars with all-sky images, automatically or manually pair
+stars, fit flexible wide-field lens models, inspect residuals, and export the
+calibrated optical parameters.
+
+Try the hosted version here:
+
+http://4.235.86.214/aida/
+
+![Wide-field star calibrator GUI](docs/gui-screenshot.png)
 
 Open `index.html` directly in a browser. No local web server is needed.
 
@@ -132,23 +141,39 @@ Run the JavaScript unit tests with:
 npm test
 ```
 
+GitHub Actions runs these fast tests on every pushed commit and pull request.
+Long-running reports and sensitivity studies are intentionally local-only; they
+write into ignored directories such as `test-report/`, `lucky-report/`, and
+`test_cases/report/`.
+
 The camera-model cross-check starts Python and imports `aida_tools_py`. Set
 `PYTHON=/path/to/python` if the default `/opt/miniconda3/bin/python` is not the
 right environment.
 
-## Command-Line Lucky Calibration Report
+## Automatic Command-Line Lens Calibration
 
-Run the browser-style "I'm feeling lucky" calibration over the images in
-`calibration_images/` with:
+Run the browser-style "I'm feeling lucky" calibration from the command line with:
+
+```bash
+npm run lucky:report -- --filter IMG_9953
+```
+
+The script scans `calibration_images/`, selects matching image names, infers
+metadata from saved `test_cases/*/metadata.json` when available, runs the same
+automatic star finding and asterism matching strategy as the GUI, fits the
+selected lens model, and writes:
+
+- `lucky-report/index.html`: visual overlay report with raw detections,
+  asterisms, matched stars, residuals, timing, and fitted `optpar`.
+- `lucky-report/summary.json`: machine-readable calibration summary with
+  `optmod`, `[optmod, ...optpar]`, RMS, match count, site/time metadata, and
+  timing totals.
+
+To calibrate all bundled images:
 
 ```bash
 npm run lucky:report
 ```
-
-The script prints per-image progress, writes star-overlay panels with raw
-detections, debug asterism lines, and fitted stars to `lucky-report/index.html`,
-and includes timing totals for image decode, star detection, blind asterism
-matching, projected matching, and lens fitting.
 
 Useful variants:
 
@@ -156,6 +181,7 @@ Useful variants:
 npm run lucky:report -- --filter IMG_0537
 npm run lucky:report -- --limit 5
 npm run lucky:report -- --lat 69.65 --lon 18.95 --time 2025-01-29T18:45:02Z
+npm run lucky:report -- --filter my_frame --optmod 20 --out /tmp/my-calibration-report
 ```
 
 Saved `test_cases/*/metadata.json` files are used when available. Otherwise
