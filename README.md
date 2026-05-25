@@ -9,6 +9,11 @@ models, inspecting residuals, and exporting calibrated optical parameters.
 However, it can also be installed and run on the command line like a normal
 Linux/Unix command-line program; see the installation instructions below.
 
+The tool was inspired by the legendary aurora image data analysis (AIDA) tools,
+a useful set of MATLAB scripts developed by Björn Gustavsson. This repository
+only implements the lens-model calibration parts needed by the browser and
+command-line calibrator.
+
 Original AIDA_tools MATLAB toolbox:
 https://github.com/jvierine/AIDA_tools
 
