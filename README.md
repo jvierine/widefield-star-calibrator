@@ -7,6 +7,11 @@ used to align catalog stars with all-sky images, automatically or manually pair
 stars, fit flexible wide-field lens models, inspect residuals, and export the
 calibrated optical parameters.
 
+Authors: Juha Vierinen, Björn Gustavsson, and Codex.
+
+License: Creative Commons Attribution 4.0 International (CC BY 4.0). See
+[`LICENSE.md`](LICENSE.md).
+
 Try the hosted version here:
 
 http://4.235.86.214/aida/
