@@ -165,16 +165,18 @@ right environment.
 
 ## Automatic Command-Line Lens Calibration
 
-Run the browser-style "I'm feeling lucky" calibration from the command line with:
+Run the browser-style "I'm feeling lucky" calibration from the command line by
+giving an image filename. Latitude, longitude, altitude, and UTC time may be
+provided as flags; if they are omitted, saved test-case metadata and image
+EXIF-derived metadata are used by default when available, followed by filename
+or fallback values.
 
 ```bash
-npm run lucky:report -- --filter IMG_9953
+npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z
 ```
 
-The script scans `calibration_images/`, selects matching image names, infers
-metadata from saved `test_cases/*/metadata.json` when available, runs the same
-automatic star finding and asterism matching strategy as the GUI, fits the
-selected lens model, and writes:
+The script runs the same automatic star finding and asterism matching strategy
+as the GUI, fits the selected lens model, and writes:
 
 - `lucky-report/index.html`: visual overlay report with raw detections,
   asterisms, matched stars, residuals, timing, and fitted `optpar`.
@@ -182,22 +184,7 @@ selected lens model, and writes:
   `optmod`, `[optmod, ...optpar]`, RMS, match count, site/time metadata, and
   timing totals.
 
-To calibrate all bundled images:
-
-```bash
-npm run lucky:report
-```
-
-Useful variants:
-
-```bash
-npm run lucky:report -- --filter IMG_0537
-npm run lucky:report -- --limit 5
-npm run lucky:report -- --lat 69.65 --lon 18.95 --time 2025-01-29T18:45:02Z
-npm run lucky:report -- --filter my_frame --optmod 20 --out /tmp/my-calibration-report
-```
-
 Saved `test_cases/*/metadata.json` files are used when available. Otherwise
 the script infers allsky7 timestamps and station metadata from filenames, and
-falls back to the command-line site/time options or a Tromso default. HEIC and
-JPEG inputs are normalized to PNG report assets with macOS `sips`.
+falls back to a Tromso default. HEIC and JPEG inputs are normalized to PNG
+report assets with macOS `sips`.

@@ -30,6 +30,7 @@ function parseArgs(argv) {
     const options = {
         limit: Infinity,
         filter: "",
+        imageArgs: [],
         optmod: null,
         lat: null,
         lon: null,
@@ -63,7 +64,7 @@ function parseArgs(argv) {
             usage();
             process.exit(0);
         } else {
-            options.filter = arg;
+            options.imageArgs.push(arg);
         }
     }
     if (!Number.isFinite(options.limit) || options.limit <= 0) {
@@ -75,12 +76,15 @@ function parseArgs(argv) {
 function usage() {
     console.log(`Usage:
   npm run lucky:report
+  npm run lucky:report -- calibration_images/IMG_9953.HEIC
+  npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z
   npm run lucky:report -- --filter IMG_0537
   npm run lucky:report -- --limit 5
-  npm run lucky:report -- --lat 69.65 --lon 18.95 --time 2025-01-29T18:45:02Z
 
-The script scans calibration_images/, runs the command-line lucky matcher on
-each supported image, logs progress and timing, and writes lucky-report/index.html.
+Give one or more image filenames, or omit filenames to scan calibration_images/.
+If site/time flags are omitted, saved test-case metadata and image EXIF-derived
+metadata are used when available before falling back to filename/fallback values.
+The script logs progress and timing, and writes lucky-report/index.html.
 HEIC/JPEG inputs are converted to PNG report assets with macOS sips.`);
 }
 
@@ -108,7 +112,7 @@ function shellQuote(value) {
 
 function reportCommand(args = []) {
     const suffix = args.length ? ` -- ${args.map(shellQuote).join(" ")}` : "";
-    return `cd /Users/j/src/AIDA_tools/aida_js_calibrator && npm run lucky:report${suffix}`;
+    return `cd /Users/j/src/widefield-star-calibrator && npm run lucky:report${suffix}`;
 }
 
 function fmtMs(value) {
@@ -147,6 +151,27 @@ function ensureSips() {
 }
 
 function listImages(options) {
+    if (options.imageArgs.length > 0) {
+        const selected = [];
+        for (const arg of options.imageArgs) {
+            const direct = path.resolve(arg);
+            const bundled = path.join(IMAGE_DIR, arg);
+            if (fs.existsSync(direct) && fs.statSync(direct).isFile()) {
+                selected.push(direct);
+            } else if (fs.existsSync(bundled) && fs.statSync(bundled).isFile()) {
+                selected.push(bundled);
+            } else {
+                selected.push(...fs.readdirSync(IMAGE_DIR)
+                    .filter(name => SUPPORTED_EXTENSIONS.has(path.extname(name).toLowerCase()))
+                    .filter(name => name.includes(arg))
+                    .map(name => path.join(IMAGE_DIR, name)));
+            }
+        }
+        return Array.from(new Set(selected))
+            .filter(filename => SUPPORTED_EXTENSIONS.has(path.extname(filename).toLowerCase()))
+            .sort((a, b) => path.basename(a).localeCompare(path.basename(b)))
+            .slice(0, Number.isFinite(options.limit) ? options.limit : undefined);
+    }
     return fs.readdirSync(IMAGE_DIR)
         .filter(name => SUPPORTED_EXTENSIONS.has(path.extname(name).toLowerCase()))
         .filter(name => !options.filter || name.includes(options.filter))
