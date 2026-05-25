@@ -2,10 +2,12 @@
 
 [![Fast Unit Tests](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg)](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml)
 
-This repository contains a browser-only wide-field star calibration tool. It is
-used to align catalog stars with all-sky images, automatically or manually pair
-stars, fit flexible wide-field lens models, inspect residuals, and export the
-calibrated optical parameters.
+This repository contains a JavaScript wide-field star calibration tool. The
+strength of the code, and the reason for the JavaScript implementation, is the
+interactive browser GUI for aligning catalog stars with sky images, fitting lens
+models, inspecting residuals, and exporting calibrated optical parameters.
+However, it can also be installed and run on the command line like a normal
+Linux/Unix command-line program; see the installation instructions below.
 
 Original AIDA_tools MATLAB toolbox:
 https://github.com/jvierine/AIDA_tools
@@ -22,6 +24,21 @@ http://4.235.86.214/aida/
 ![Wide-field star calibrator GUI](docs/gui-screenshot.png)
 
 Open `index.html` directly in a browser. No local web server is needed.
+
+## Installation
+
+Clone the repository and install the command-line wrapper:
+
+```bash
+git clone https://github.com/jvierine/widefield-star-calibrator.git
+cd widefield-star-calibrator
+scripts/install.sh
+```
+
+The installer links `widefield-star-calibrate` into `~/.local/bin` by default.
+Set `PREFIX=/usr/local` or `BINDIR=/some/bin` before running the script to
+choose another install location. The command-line calibrator needs Node.js; HEIC
+and JPEG input conversion uses macOS `sips`.
 
 ## What It Does
 
@@ -172,7 +189,7 @@ EXIF-derived metadata are used by default when available, followed by filename
 or fallback values.
 
 ```bash
-npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
+widefield-star-calibrate calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
 ```
 
 The script runs the same automatic star finding and asterism matching strategy
@@ -193,3 +210,8 @@ Saved `test_cases/*/metadata.json` files are used when available. Otherwise
 the script infers allsky7 timestamps and station metadata from filenames, and
 falls back to a Tromso default. HEIC and JPEG inputs are normalized to PNG
 report assets with macOS `sips`.
+
+For scripted meteor-camera operation, run the command after each image or
+stacked frame is available, then read `calibration.json`. A failed solve keeps
+`solved: false` and `optpar: null`, so automation can reject it without parsing
+the visual HTML report.
