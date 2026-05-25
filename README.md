@@ -172,7 +172,7 @@ EXIF-derived metadata are used by default when available, followed by filename
 or fallback values.
 
 ```bash
-npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --code python
+npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
 ```
 
 The script runs the same automatic star finding and asterism matching strategy
@@ -183,6 +183,9 @@ as the GUI, fits the selected lens model, and writes:
 - `lucky-report/summary.json`: machine-readable calibration summary with
   `optmod`, `[optmod, ...optpar]`, RMS, match count, site/time metadata, and
   timing totals.
+- `calibration.json`: compact machine-readable optpar output when
+  `--optpar-out` is used. This is the file a meteor-camera pipeline should
+  consume automatically.
 - `lucky-report/code/*_mapper.py`: mapper source code when `--code` is used.
   Supported code languages are `python`, `julia`, `c`, and `matlab`.
 

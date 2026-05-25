@@ -48,6 +48,7 @@ function parseArgs(argv) {
         alt: 0,
         timestampUtc: "",
         outDir: OUT_DIR,
+        optparOut: "",
         outputCode: false,
         codeLanguage: "python",
         keepGoing: true,
@@ -71,6 +72,8 @@ function parseArgs(argv) {
             options.timestampUtc = String(next() || "");
         } else if (arg === "--out") {
             options.outDir = path.resolve(next());
+        } else if (arg === "--optpar-out" || arg === "--optpar") {
+            options.optparOut = path.resolve(next());
         } else if (arg === "--code") {
             options.outputCode = true;
             if (CODE_LANGUAGES.has(String(argv[i + 1] || "").toLowerCase())) {
@@ -101,7 +104,7 @@ function usage() {
     console.log(`Usage:
   npm run lucky:report
   npm run lucky:report -- calibration_images/IMG_9953.HEIC
-  npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --code python
+  npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
   npm run lucky:report -- --filter IMG_0537
   npm run lucky:report -- --limit 5
 
@@ -109,6 +112,7 @@ Give one or more image filenames, or omit filenames to scan calibration_images/.
 If site/time flags are omitted, saved test-case metadata and image EXIF-derived
 metadata are used when available before falling back to filename/fallback values.
 The script logs progress and timing, and writes lucky-report/index.html. Add
+--optpar-out FILE to write a compact machine-readable calibration result, and
 --code python|julia|c|matlab to also write mapper source files.
 HEIC/JPEG inputs are converted to PNG report assets with macOS sips.`);
 }
@@ -1177,6 +1181,32 @@ function summaryJson(results, command = reportCommand()) {
     };
 }
 
+function optparOutputJson(results, command = reportCommand()) {
+    const calibrations = results.map(result => ({
+        id: result.testCase.id,
+        image: result.testCase.imagePath || result.testCase.image,
+        solved: !result.error && result.matches.length >= 4,
+        optmod: result.testCase.optmod,
+        optpar: result.error ? null : [result.testCase.optmod].concat(result.optpar),
+        matches: result.matches ? result.matches.length : 0,
+        finalRmsPx: Number.isFinite(result.finalRms) ? result.finalRms : null,
+        timestampUtc: result.testCase.date.toISOString(),
+        latDeg: result.testCase.latDeg,
+        lonDeg: result.testCase.lonDeg,
+        altM: result.testCase.altM,
+        mapperCode: result.codePath ? {
+            language: result.codeLanguage,
+            path: result.codePath,
+        } : null,
+        error: result.error || null,
+    }));
+    return {
+        generatedAt: new Date().toISOString(),
+        command,
+        calibrations,
+    };
+}
+
 async function analyzeImage(filename, index, total, metadataMap, options) {
     const base = path.basename(filename);
     const log = text => console.log(text);
@@ -1231,6 +1261,11 @@ async function main() {
     const command = reportCommand(process.argv.slice(2));
     fs.writeFileSync(outFile, pageHtml(results, command));
     fs.writeFileSync(path.join(options.outDir, "summary.json"), JSON.stringify(summaryJson(results, command), null, 2));
+    if (options.optparOut) {
+        fs.mkdirSync(path.dirname(options.optparOut), {recursive: true});
+        fs.writeFileSync(options.optparOut, JSON.stringify(optparOutputJson(results, command), null, 2) + "\n");
+        console.log(`Optpar output: ${options.optparOut}`);
+    }
     const total = results.reduce((acc, result) => {
         for (const [key, value] of Object.entries(result.timings || {})) {
             acc[key] = (acc[key] || 0) + (Number.isFinite(value) ? value : 0);
