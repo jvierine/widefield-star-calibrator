@@ -7,6 +7,9 @@ used to align catalog stars with all-sky images, automatically or manually pair
 stars, fit flexible wide-field lens models, inspect residuals, and export the
 calibrated optical parameters.
 
+Original AIDA_tools MATLAB toolbox:
+https://github.com/jvierine/AIDA_tools
+
 Authors: Juha Vierinen, Björn Gustavsson, and Codex.
 
 License: Creative Commons Attribution 4.0 International (CC BY 4.0). See
