@@ -160,17 +160,14 @@
         </li>
         <li>
             For a hands-off attempt, press <kbd>L</kbd> or the
-            <em>I'm feeling lucky...</em> button. This follows the same
-            bootstrap idea used in the graphical test cases: first a
-            conservative magnitude-4 bright-star search, then a blind spherical
-            asterism match to seed the selected optical model's rotation and
-            coarse focal scale. It then fits the selected model in sweeps using
-            the brightest matched stars first, expands to fainter stars with
-            the improved projection, prunes obvious automatic outliers from the
-            residual pattern, and repeats until the model stops improving. Late
-            expansion stages only keep additional stars when they do not
-            substantially increase the fit RMSE, because a bad automatic star
-            usually worsens the residuals immediately.
+            <em>I'm feeling lucky...</em> button. It detects candidate stars,
+            uses triangle asterisms to find likely catalog matches, seeds the
+            selected optical model, fits the brightest matches first, expands
+            to fainter stars as the projection improves, and prunes obvious
+            automatic outliers from the residual pattern. Late expansion stages
+            only keep additional stars when they do not substantially increase
+            the fit RMSE, because a bad automatic star usually worsens the
+            residuals immediately.
         </li>
         <li>
             Hold <kbd>S</kbd> and click an image star. The local star position is
@@ -214,9 +211,9 @@
         <li><kbd>G</kbd>: fit the selected model parameters with Levenberg-Marquardt.</li>
         <li><kbd>Cmd/Ctrl Z</kbd>: undo the most recent accepted fit or automatic pairing batch.</li>
         <li><kbd>D</kbd> + click: delete the nearest matched star pairing.</li>
-        <li><kbd>M</kbd> + click or drag: paint a 100 px radius circle over bad yellow star finder detections. Their raw pixel positions are saved in test-case metadata and ignored by later automatic searches.</li>
+        <li><kbd>M</kbd> + click or drag: paint fast 128x128 black not-star mask tiles. Masked tiles are ignored by later star finding.</li>
         <li><kbd>R</kbd>: show or hide residual view.</li>
-        <li>Submit as test case button: save the current image metadata, <code>[optmod, ...optpar]</code>, residuals, manual or automatic pairings, and bad star finder detection positions into <code>aida_js_calibrator/test_cases/</code> when using the local server.</li>
+        <li>Submit as test case button: save the current image metadata, <code>[optmod, ...optpar]</code>, residuals, manual or automatic pairings, and mask metadata into <code>test_cases/</code> when using the local server.</li>
         <li><kbd>Esc</kbd>: cancel the current star selection or close the density popup.</li>
         <li>Left mouse drag: move the field of view by shifting the 90 degree elevation point.</li>
         <li>Right mouse drag: rotate the field of view around the 90 degree elevation point.</li>
@@ -266,13 +263,13 @@
 
     <h2>Lens models</h2>
     <p>
-        The model selector includes the self-contained parametric AIDA models
-        from the MATLAB code: optmods 1, 2, 3, 4, 5, and 12. The lookup-table
-        and instrument-specific MATLAB variants are not included because they
-        require external calibration tables or camera-specific code.
-        Brown-Conrady is provided as a standard radial/tangential distortion
-        alternative under browser optmod 20; see Nowakowski and Skarbek
-        (2013), "Analysis of Brown camera distortion model", SPIE volume 8903.
+        The model selector includes robust radial lens models from the original
+        AIDA_tools MATLAB code: optmods 1, 2, 3, 4, 5, and 12. These models have
+        been useful for many wide-field and all-sky lenses. The lookup-table and
+        instrument-specific MATLAB variants are not included because they require
+        external calibration tables or camera-specific code. Brown-Conrady is
+        provided as browser optmod 20 for ordinary radial/tangential camera
+        distortion.
     </p>
     <div class="equation-block">
         <strong>AIDA radial models (<code>optmod 1,2,3,4,5,12</code>)</strong>
@@ -335,23 +332,21 @@
         the AIDA reference camera model.
     </p>
     <p>
-        For ordinary rectilinear lenses and narrow or moderate fields of view,
-        start with optmod 1 or Brown-Conrady. Brown-Conrady is usually the more
-        useful choice for phone cameras and other lenses with radial and
-        tangential distortion; it has worked well with iPhone images. For
-        fisheye and all-sky cameras, optmod 2, 3, 4, 5, or 12 are better
-        starting points because their radial laws are written directly in
-        off-axis angle. Optmod 2 is a sine-like fisheye model, optmod 3 is a
-        flexible blend of equidistant and rectilinear behavior, optmod 4 is a
-        power-law equidistant variant, optmod 5 is a scaled rectilinear model
-        that can become steep at large fields of view, and optmod 12 smoothly
-        switches between sine-like, equidistant, and tangent-like radial laws
-        depending on the sign of \(a_r\).
+        In practical terms, optmod 1 is a rectilinear/pinhole projection.
+        Optmod 2 is a sinusoidal radial model and is often a good common choice
+        for fisheye and all-sky lenses. Optmod 3 is a hybrid tangent/equidistant
+        radial model. Optmod 4 is a power-law equidistant-style model. Optmod 5
+        is a scaled rectilinear model. Optmod 12 is a unified radial model that
+        can smoothly move between sine-like, equidistant, and tangent-like
+        behavior. Brown-Conrady is the standard radial/tangential distortion
+        model and is usually a good starting point for ordinary phone-camera
+        lenses, including iPhone images; see Nowakowski and Skarbek (2013),
+        "Analysis of Brown camera distortion model", SPIE volume 8903.
     </p>
 
     <h2>Test cases</h2>
     <p>
-        Saved test cases live under <code>aida_js_calibrator/test_cases/</code>.
+        Saved test cases live under <code>test_cases/</code>.
         Each case directory contains the calibrated image and a
         <code>metadata.json</code> file with image name, UTC timestamp, site
         coordinates, manually or automatically paired stars, residuals, and an

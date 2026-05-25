@@ -52,9 +52,9 @@ and JPEG input conversion uses macOS `sips`.
 - Reads UTC time and observer position from EXIF metadata when available.
 - Falls back to known allsky7 filename/station metadata when possible.
 - Uses the embedded bright-star catalog and AIDA camera projection code.
-- Provides an opt-in automatic star identifier that runs a bounded bright-star
-  finder, keeps at most the top 50 image detections, compares them with Yale
-  catalog stars brighter than magnitude 4, and adds plausible pairings.
+- Provides the `I'm feeling lucky` workflow: it detects stars, uses triangle
+  asterisms to identify likely catalog matches, fits the selected lens model,
+  expands to fainter stars, and prunes obvious bad automatic matches.
 - Supports the self-contained parametric AIDA/MATLAB lens models (`optmod 1`,
   `2`, `3`, `4`, `5`, and `12`) plus a Brown-Conrady radial/tangential
   distortion model under browser `optmod 20`; the selected optical model is
@@ -81,11 +81,11 @@ and JPEG input conversion uses macOS `sips`.
    - left-drag to move the zenith point,
    - right-drag to rotate the field,
    - mouse wheel to scale `f1` and `f2` together.
-6. Optionally click `Auto identify stars`. This is a user-requested action, not
-   a startup default. The first pass uses bright-star triangle asterisms and a
-   KD-tree lookup so it can still help when the current lens state is only a
-   rough guess; the current projected lens state is used as a fallback.
-7. Hold `S` and click an image star. The local star position is refined with
+6. Click `I'm feeling lucky...` or press `L` to run the automatic detector,
+   asterism matcher, and staged lens fit. Re-running it respects any masked
+   image tiles.
+7. To add or correct pairs manually, hold `S` and click an image star. The
+   local star position is refined with
    the interpolated density estimate.
 8. Release `S`, then click the matching red catalog star.
 9. Repeat until several well-spread star pairs are available.
@@ -105,16 +105,17 @@ and JPEG input conversion uses macOS `sips`.
 - `R`: show or hide residual view.
 - `A`: show or hide the az/el grid.
 - `D` + click: delete the nearest matched star pair.
-- `M` + click: mask a local image region.
+- `H`: show or hide automatic star-detection markers.
+- `M` + click or drag: paint fast 128x128 black not-star mask tiles. Masked
+  tiles are ignored by later star finding.
 - `Z`: show the zoom/magnifier view.
 - `Cmd/Ctrl Z`: undo the most recent accepted fit.
 - `Esc`: cancel the current interaction or close the density popup.
-- `Auto identify stars`: run the opt-in top-50 bright-star detector and
-  Yale-catalog matcher. The automatic matcher is capped at magnitude 4 even if
-  the display limiting magnitude is fainter.
+- `I'm feeling lucky...`: run automatic star finding, asterism identification,
+  and staged lens fitting for the currently selected optical model.
 
-The automatic identifier is deliberately not run by default. Manual KDE-based
-star picking remains the most controlled way to add or correct pairings.
+Manual KDE-based star picking remains the most controlled way to add or correct
+pairings after an automatic run.
 
 ## Image Display
 
@@ -141,15 +142,24 @@ radial/tangential projection. The MATLAB lookup-table and instrument-specific
 camera models are intentionally not in the browser UI because they require
 external calibration tables or special camera code.
 
-The AIDA model names are descriptive names for the implemented radial forms,
-not literature names. Brown-Conrady is usually a good starting point for
-ordinary phone-camera lenses, including iPhone images, while the AIDA radial
-models are often better for fisheye and all-sky optics. Brown-Conrady is the
-standard Brown-Conrady radial/tangential distortion model; see Nowakowski and
-Skarbek (2013),
-"Analysis of Brown camera distortion model", in Photonics Applications in
-Astronomy, Communications, Industry, and High-Energy Physics Experiments 2013,
-SPIE volume 8903, pages 248-257.
+The AIDA radial models are based on tried-and-true, robust lens models from
+the original AIDA_tools MATLAB code, where they have been used on a range of
+wide-field and all-sky lenses. The GUI exposes these options:
+
+- `optmod 1`: rectilinear/pinhole projection.
+- `optmod 2`: sinusoidal radial projection, a good common choice for fisheye
+  and all-sky lenses.
+- `optmod 3`: hybrid tangent/equidistant radial projection.
+- `optmod 4`: power-law equidistant-style radial projection.
+- `optmod 5`: scaled rectilinear projection.
+- `optmod 12`: unified radial projection that can smoothly move between
+  sine-like, equidistant, and tangent-like behavior.
+- `Brown-Conrady` (`optmod 20`): the standard radial/tangential distortion
+  model, usually a good starting point for ordinary phone-camera lenses,
+  including iPhone images. See Nowakowski and Skarbek (2013), "Analysis of
+  Brown camera distortion model", in Photonics Applications in Astronomy,
+  Communications, Industry, and High-Energy Physics Experiments 2013, SPIE
+  volume 8903, pages 248-257.
 
 ## Test Data
 

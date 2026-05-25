@@ -102,11 +102,13 @@ function parseArgs(argv) {
 
 function usage() {
     console.log(`Usage:
-  npm run lucky:report
+  widefield-star-calibrate calibration_images/IMG_9953.HEIC
+  widefield-star-calibrate calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
+  widefield-star-calibrate --filter IMG_0537
+  widefield-star-calibrate --limit 5
+
+Without installation, use:
   npm run lucky:report -- calibration_images/IMG_9953.HEIC
-  npm run lucky:report -- calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
-  npm run lucky:report -- --filter IMG_0537
-  npm run lucky:report -- --limit 5
 
 Give one or more image filenames, or omit filenames to scan calibration_images/.
 If site/time flags are omitted, saved test-case metadata and image EXIF-derived
