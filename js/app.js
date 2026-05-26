@@ -26,6 +26,9 @@
     const loadingOverlay = document.getElementById("loadingOverlay");
     const loadingBar = document.getElementById("loadingBar");
     const loadingText = document.getElementById("loadingText");
+    const starPickingLegend = document.getElementById("starPickingLegend");
+    const starPickingLegendHeader = document.getElementById("starPickingLegendHeader");
+    const starPickingLegendClose = document.getElementById("starPickingLegendClose");
     if (appVersionEl) {
         appVersionEl.textContent = APP_VERSION;
     }
@@ -168,6 +171,8 @@
         showAsterismLines: true,
         asterismEdges: [],
         triangleDebugSnapshot: null,
+        starPickingLegendVisible: true,
+        starPickingLegendDrag: null,
         fitMessage: "lens fit: not run",
         lastFitVector: null,
         lastAcceptedFitVector: null,
@@ -3298,6 +3303,17 @@ end
         }
     }
 
+    function updateStarPickingLegend() {
+        if (!starPickingLegend) {
+            return;
+        }
+        const visible = Boolean(state.image) &&
+            state.displayMode === "pairing" &&
+            !state.showFitResiduals &&
+            state.starPickingLegendVisible;
+        starPickingLegend.hidden = !visible;
+    }
+
     function render() {
         resizeCanvas();
         canvas.classList.toggle("match-mode", state.starMatchMode);
@@ -3335,6 +3351,7 @@ end
             }
         }
         updateTriangleDebugPlot();
+        updateStarPickingLegend();
         controls.brightnessValue.textContent = Number(controls.brightness.value).toFixed(2);
         controls.contrastValue.textContent = Number(controls.contrast.value).toFixed(2);
         controls.highPassWidthValue.textContent = Number(controls.highPassWidth.value).toFixed(0);
@@ -7923,6 +7940,80 @@ end
     });
     controls.toggleAmbientMusic.addEventListener("click", toggleAmbientMusic);
     controls.toggleFitResiduals.addEventListener("click", toggleFitResiduals);
+    function moveStarPickingLegend(clientX, clientY) {
+        if (!state.starPickingLegendDrag || !starPickingLegend) {
+            return;
+        }
+        const parentRect = starPickingLegend.parentElement.getBoundingClientRect();
+        const panelRect = starPickingLegend.getBoundingClientRect();
+        const margin = 8;
+        const left = Math.min(
+            Math.max(clientX - parentRect.left - state.starPickingLegendDrag.dx, margin),
+            Math.max(margin, parentRect.width - panelRect.width - margin)
+        );
+        const top = Math.min(
+            Math.max(clientY - parentRect.top - state.starPickingLegendDrag.dy, margin),
+            Math.max(margin, parentRect.height - panelRect.height - margin)
+        );
+        starPickingLegend.style.left = `${left}px`;
+        starPickingLegend.style.top = `${top}px`;
+        starPickingLegend.style.right = "auto";
+    }
+
+    if (starPickingLegend) {
+        starPickingLegend.addEventListener("pointerdown", event => {
+            event.stopPropagation();
+        });
+    }
+    if (starPickingLegendClose) {
+        starPickingLegendClose.addEventListener("click", event => {
+            event.preventDefault();
+            event.stopPropagation();
+            state.starPickingLegendVisible = false;
+            playInteractionSound("click");
+            render();
+            focusImageWindowSoon();
+        });
+    }
+    if (starPickingLegendHeader && starPickingLegend) {
+        starPickingLegendHeader.addEventListener("pointerdown", event => {
+            if (event.button !== 0 || event.target === starPickingLegendClose) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = starPickingLegend.getBoundingClientRect();
+            state.starPickingLegendDrag = {
+                dx: event.clientX - rect.left,
+                dy: event.clientY - rect.top,
+            };
+            starPickingLegendHeader.setPointerCapture(event.pointerId);
+            moveStarPickingLegend(event.clientX, event.clientY);
+        });
+        starPickingLegendHeader.addEventListener("pointermove", event => {
+            if (!state.starPickingLegendDrag) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            moveStarPickingLegend(event.clientX, event.clientY);
+        });
+        starPickingLegendHeader.addEventListener("pointerup", event => {
+            if (!state.starPickingLegendDrag) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            state.starPickingLegendDrag = null;
+            if (starPickingLegendHeader.hasPointerCapture(event.pointerId)) {
+                starPickingLegendHeader.releasePointerCapture(event.pointerId);
+            }
+            focusImageWindowSoon();
+        });
+        starPickingLegendHeader.addEventListener("pointercancel", () => {
+            state.starPickingLegendDrag = null;
+        });
+    }
     densityPopupClose.addEventListener("click", () => {
         clearDensityEstimate();
         render();

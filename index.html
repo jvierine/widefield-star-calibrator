@@ -55,6 +55,27 @@
     <section class="viewer-panel">
         <canvas id="glCanvas" tabindex="0"></canvas>
         <div class="cardinal-layer" id="cardinalLayer" aria-hidden="true"></div>
+        <div id="starPickingLegend" class="star-picking-legend" role="dialog" aria-label="Star picking legend" hidden>
+            <div id="starPickingLegendHeader" class="star-picking-legend-header">
+                <h2>Star Picking</h2>
+                <button id="starPickingLegendClose" class="panel-close" type="button" aria-label="Close star picking help">×</button>
+            </div>
+            <div class="legend-row">
+                <span class="legend-circle legend-circle-green" aria-hidden="true"></span>
+                <span>green circle = star in image associated with star in catalogue</span>
+            </div>
+            <div class="legend-row">
+                <span class="legend-circle legend-circle-red" aria-hidden="true"></span>
+                <span>red circle = star in catalogue not yet associated with star in image</span>
+            </div>
+            <div class="star-picking-help-line">
+                <kbd>S</kbd> + click selects an image star; then click the matching red catalogue star.
+                You might need to scan around a bit to find the star you are looking for.
+            </div>
+            <div class="star-picking-help-line">
+                Left drag moves the view, right drag rotates it, and the wheel scales the view.
+            </div>
+        </div>
         <div class="residual-histogram" id="residualHistogram" aria-hidden="true"></div>
         <canvas id="zoomCanvas" class="zoom-canvas" width="100" height="100" aria-hidden="true"></canvas>
         <div id="densityPopup" class="density-popup" aria-hidden="true">

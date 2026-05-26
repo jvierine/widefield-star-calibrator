@@ -101,6 +101,9 @@ test("mapper code generators support every language and model", () => {
             if (language === "python") {
                 assert.match(text, /def az_el_to_image/);
                 assert.match(text, /def image_to_az_el/);
+                assert.match(text, /class WiscCamera/);
+                assert.match(text, /camera = WiscCamera/);
+                assert.doesNotMatch(text, /from wisc_lens import/);
             } else if (language === "julia") {
                 assert.match(text, /function az_el_to_image/);
                 assert.doesNotMatch(text, /function image_to_az_el/);
@@ -125,6 +128,74 @@ test("python mapper exports are syntactically valid for every model", () => {
         );
         assert.equal(result.status, 0, result.stderr || result.stdout);
     }
+});
+
+test("wisc_lens Python module reproduces JS projections for every model", () => {
+    const python = pythonCommand();
+    const cases = [];
+    const samples = [
+        {azDeg: 15, elDeg: 70},
+        {azDeg: 120, elDeg: 50},
+        {azDeg: 240, elDeg: 35},
+    ];
+    for (const optmod of MODELS) {
+        const context = contextForOptmod(optmod);
+        for (const sample of samples) {
+            const expected = AidaTools.cameraModel(
+                sample.azDeg / RAD,
+                (90 - sample.elDeg) / RAD,
+                context.optpar,
+                context.optmod,
+                context.width,
+                context.height,
+            );
+            cases.push({...context, sample, expected});
+        }
+    }
+    const script = `
+import json
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path.cwd()))
+import wisc_lens
+
+cases = json.loads(${JSON.stringify(JSON.stringify(cases))})
+out = []
+for case in cases:
+    optpar = [case["optmod"]] + case["optpar"]
+    x, y = wisc_lens.az_el_to_pixel(
+        case["sample"]["azDeg"],
+        case["sample"]["elDeg"],
+        optpar,
+        case["width"],
+        case["height"],
+    )
+    az, el, err = wisc_lens.pixel_to_az_el(
+        x,
+        y,
+        optpar,
+        case["width"],
+        case["height"],
+        return_error=True,
+    )
+    out.append({"x": x, "y": y, "az": az, "el": el, "err": err})
+print(json.dumps(out))
+`;
+    const result = childProcess.spawnSync(python, ["-c", script], {
+        cwd: path.join(__dirname, ".."),
+        encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const actual = JSON.parse(result.stdout);
+    assert.equal(actual.length, cases.length);
+    actual.forEach((row, index) => {
+        const expected = cases[index].expected;
+        assert.ok(Math.abs(row.x - expected.x) < 1e-6,
+            `case ${index} x ${row.x} should match JS ${expected.x}`);
+        assert.ok(Math.abs(row.y - expected.y) < 1e-6,
+            `case ${index} y ${row.y} should match JS ${expected.y}`);
+        assert.ok(row.err < 0.1, `case ${index} inverse reprojection error ${row.err} px`);
+    });
 });
 
 function loadSavedCase(caseId) {

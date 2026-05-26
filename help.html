@@ -37,7 +37,7 @@ window.MathJax = {
 <p class="generated">Generated from <code>README.md</code>. Edit the README and run <code>npm run help:generate</code> to update this page.</p>
 <h1>WISC - Widefield Star Calibrator</h1>
 <p><a href="https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml"><img alt="Fast Unit Tests" src="https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg"></a></p>
-<p>This repository contains WISC, the Widefield Star Calibrator, a stand-alone JavaScript wide-field star calibration tool. The strength of the code, and the reason for the JavaScript implementation, is the interactive browser GUI for aligning catalog stars with sky images, fitting lens models, inspecting residuals, and exporting calibrated optical parameters. However, it can also be installed and run on the command line like a normal Linux/Unix command-line program named <code>wisc</code>; see the command-line section below.</p>
+<p>This repository contains WISC, the Widefield Star Calibrator, a stand-alone JavaScript wide-field star calibration tool. WISC can run star finding, asterism matching, and lens-model fitting as a somewhat robust automated process. The strength of the code, and the reason for the JavaScript implementation, is the interactive browser GUI for fine tuning, inspection, and completely manual star-pairing based optical model fitting assisted by the Yale Bright Star Catalogue. This is useful for difficult images that do not automatically plate solve cleanly. However, it can also be installed and run on the command line like a normal Linux/Unix command-line program named <code>wisc</code>; see the command-line section below.</p>
 <p>Author: Juha Vierinen. More authors can be added later. Merge requests are welcome!</p>
 <p>Acknowledgements: The tool was inspired by the legendary aurora image data analysis (AIDA) tools, a useful set of MATLAB scripts developed by Björn Gustavsson. This repository only implements the lens-model calibration parts needed by the browser and command-line calibrator. Original AIDA_tools MATLAB toolbox: https://github.com/jvierine/AIDA_tools. Thank you to Daniel Kastinen for suggesting making this a web page. The blind asterism-search ideas are also informed by astrometry.net. The star-detection experiments and reports were also informed by SExtractor and <a href="https://sep.readthedocs.io/">SEP</a>. Björn Gustavsson and Codex are gratefully acknowledged for their contributions.</p>
 <p>License: Creative Commons Attribution 4.0 International (CC BY 4.0). See <a href="LICENSE.md"><code>LICENSE.md</code></a>.</p>
@@ -52,12 +52,13 @@ code widefield-star-calibrator
 <p>Kudos to the person who finds all the easter eggs hidden in the GUI.</p>
 <h2>What It Does</h2>
 <ul>
+<li>Fits optical models manually in the browser by picking image stars and pairing them with catalog stars.</li>
+<li>Fits optical models automatically with the <code>L</code> / <code>I'm feeling lucky</code> workflow, which detects stars, matches triangle asterisms, fits the selected lens model, expands to fainter stars, and prunes obvious bad automatic matches.</li>
 <li>Loads PNG, JPEG, HEIC, and HEIF images.</li>
 <li>Loads a bundled iPhone HEIC example image automatically on startup.</li>
 <li>Reads UTC time and observer position from EXIF metadata when available.</li>
 <li>Falls back to known allsky7 filename/station metadata when possible.</li>
 <li>Uses the embedded bright-star catalog and AIDA camera projection code.</li>
-<li>Provides the <code>I'm feeling lucky</code> workflow: it detects stars, uses triangle asterisms to identify likely catalog matches, fits the selected lens model, expands to fainter stars, and prunes obvious bad automatic matches.</li>
 <li>Supports the self-contained parametric AIDA/MATLAB lens models (<code>optmod 1</code>, <code>2</code>, <code>3</code>, <code>4</code>, <code>5</code>, and <code>12</code>) plus a Brown-Conrady radial/tangential distortion model under browser <code>optmod 20</code>; the selected optical model is the one used by the fit.</li>
 <li>Lets the user manually pick image stars with a 40x interpolated density estimate and pair them with catalog stars.</li>
 <li>Fits the model-specific <code>optpar</code> vector: eight parameters for AIDA radial models, and twelve for Brown-Conrady with <code>k1</code>, <code>k2</code>, <code>k3</code>, <code>p1</code>, and <code>p2</code>.</li>
@@ -81,7 +82,7 @@ code widefield-star-calibrator
 <li><code>Z</code>: show the zoom/magnifier view.</li>
 <li><code>Cmd/Ctrl Z</code>: undo the most recent accepted fit.</li>
 <li><code>Esc</code>: cancel the current interaction or close the density popup.</li>
-<li><code>I'm feeling lucky...</code>: run automatic star finding, asterism identification, and staged lens fitting for the currently selected optical model.</li>
+<li><code>L</code> or <code>I'm feeling lucky...</code>: run automatic star finding, asterism identification, and staged lens fitting for the currently selected optical model.</li>
 </ul>
 <p>Manual KDE-based star picking remains the most controlled way to add or correct pairings after an automatic run.</p>
 <h2>Basic Workflow</h2>
@@ -92,8 +93,7 @@ code widefield-star-calibrator
 <li>Select the optical model to fit: an AIDA radial model (<code>optmod 1</code>, <code>2</code>, <code>3</code>, <code>4</code>, <code>5</code>, or <code>12</code>) or Brown-Conrady.</li>
 <li>Roughly align the star field: left-drag to move the zenith point, right-drag to rotate the field, and use the mouse wheel to scale <code>f1</code> and <code>f2</code> together.</li>
 <li>Click <code>I'm feeling lucky...</code> or press <code>L</code> to run the automatic detector, asterism matcher, and staged lens fit. Re-running it respects any masked image tiles.</li>
-<li>To add or correct pairs manually, hold <code>S</code> and click an image star. The local star position is refined with the interpolated density estimate.</li>
-<li>Release <code>S</code>, then click the matching red catalog star.</li>
+<li>To add or correct pairs manually, hold <code>S</code> and click an image star. The local star position is refined with the interpolated density estimate. Release <code>S</code>, then click the matching red catalog star.</li>
 <li>Repeat until several well-spread star pairs are available.</li>
 <li>Press <code>F</code> for robust randomized Nelder-Mead, or <code>G</code> for Levenberg-Marquardt.</li>
 <li>Press <code>R</code> to inspect residuals and remove bad pairs if needed.</li>
@@ -120,13 +120,32 @@ scripts/install.sh</code></pre>
 <li><code>lucky-report/index.html</code>: visual overlay report with raw detections, asterisms, matched stars, residuals, timing, and fitted <code>optpar</code>.</li>
 <li><code>lucky-report/summary.json</code>: machine-readable calibration summary with <code>optmod</code>, <code>[optmod, ...optpar]</code>, RMS, match count, site/time metadata, and timing totals.</li>
 <li><code>calibration.json</code>: compact machine-readable optpar output when <code>--optpar-out</code> is used. This is the file a meteor-camera pipeline should consume automatically.</li>
-<li><code>lucky-report/code/*_mapper.py</code>: mapper source code when <code>--code</code> is used. Supported code languages are <code>python</code>, <code>julia</code>, <code>c</code>, and <code>matlab</code>.</li>
+<li><code>lucky-report/code/*_mapper.py</code>: mapper source code when <code>--code</code> is used. Supported code languages are <code>python</code>, <code>julia</code>, <code>c</code>, and <code>matlab</code>. Python mapper output is self-contained and includes the lens-model code, optpar, and image dimensions in one file.</li>
 </ul>
 <p>Saved <code>test_cases/*/metadata.json</code> files are used when available. Otherwise the script infers allsky7 timestamps and station metadata from filenames, and falls back to a Tromso default. HEIC and JPEG inputs are normalized to PNG report assets by the Node command-line tool, without relying on macOS <code>sips</code>.</p>
 <p>For scripted meteor-camera operation, run the command after each image or stacked frame is available, then read <code>calibration.json</code>. A failed solve keeps <code>solved: false</code> and <code>optpar: null</code>, so automation can reject it without parsing the visual HTML report.</p>
 <h2>Export Notes</h2>
 <p>The copied <code>optpar</code> array always starts with the optical model number. For AIDA radial models it contains <code>[optmod, f1, f2, alpha, beta, gamma, du, dv, radial_alpha]</code>. For Brown-Conrady (<code>optmod 20</code>), it contains <code>[20, f1, f2, alpha, beta, gamma, du, dv, k1, k2, k3, p1, p2]</code>.</p>
-<p>The export language selector can copy the array and mapper code as Python, Julia, C, or MATLAB. The generated mapper code reads the model number from the first element before applying the parameter vector. The Python mapper includes a numerical <code>image_to_az_el</code> inverse; the Julia, C, and MATLAB exports provide the same forward <code>az_el_to_image</code> projection so they can be embedded in analysis code and inverted numerically when needed.</p>
+<p>The export language selector can copy the array and mapper code as Python, Julia, C, or MATLAB. The generated mapper code reads the model number from the first element before applying the parameter vector. The Python mapper is a small calibration module with the current <code>optpar</code>, image width, image height, the lens-model implementation, and a ready-to-use <code>WiscCamera</code> instance already filled in. It is complete as copied; no extra WISC Python file is needed. The Julia, C, and MATLAB exports provide the same forward <code>az_el_to_image</code> projection so they can be embedded in analysis code and inverted numerically when needed.</p>
+<h2>Python Lens Module</h2>
+<p>The repository also includes a reusable Python module, <code>wisc_lens.py</code>, which implements all browser lens models. This is useful when you want to write a normal Python program instead of pasting the complete mapper code from the GUI. It can be installed as a tiny module:</p>
+<pre><code class="language-bash">python setup.py install</code></pre>
+<p>or copied directly into the same directory as a Python script. It only depends on NumPy. The module uses the same <code>optpar</code> convention as the GUI export: the first value is the optical model number.</p>
+<pre><code class="language-python">from wisc_lens import WiscCamera, az_el_to_pixel, pixel_to_az_el
+
+optpar = [20, -0.93, -0.70, -12.1, -58.9, -15.2,
+          0.006, 0.004, 0.24, -0.30, -0.03, -0.013, 0.004]
+width = 3024
+height = 4032
+
+camera = WiscCamera(optpar, width, height)
+x, y = camera.az_el_to_pixel(az_deg=210.0, el_deg=45.0)
+az, el = camera.pixel_to_az_el(x, y)
+
+# Functional API:
+x, y = az_el_to_pixel(210.0, 45.0, optpar, width, height)
+az, el = pixel_to_az_el(x, y, optpar, width, height)</code></pre>
+<p><code>pixel_to_az_el</code> is a numerical inverse intended for calibrated pixels inside the useful field of view. Pass <code>return_error=True</code> to also get the residual reprojection error in pixels.</p>
 <h2>Why JavaScript?</h2>
 <p>JavaScript is not a beautiful language for mathematical software. In fact, I truly hate this language with a passion; there are only a few worse programming languages in the world to program in: Brainfuck, and normal Java. But JavaScript is extremely well optimized because it runs software for a huge fraction of the world's internet users. It is also very well suited for graphical user interfaces that can be shared over the internet without asking users to install a desktop application. WebGL is fast enough for the interactive image display and overlay work this tool needs.</p>
 <p>The GUI is optional, because the same calibrator can be installed as <code>wisc</code> and run like any other command-line program. Still, the GUI is a major advantage when a difficult star field does not automatically plate solve and needs a few manual corrections.</p>
@@ -162,21 +181,15 @@ v = \frac{1}{2} + d_y + f_2\frac{s_2}{\rho}q(\theta).
 $$</div>
 <p>At the optical axis, where $\rho = 0$, WISC uses $u = \frac{1}{2} + d_x$ and $v = \frac{1}{2} + d_y$.</p>
 <p>The AIDA radial models are based on tried-and-true, robust lens models from the original AIDA_tools MATLAB code, where they have been used on a range of wide-field and all-sky lenses. The GUI exposes these options, with the radial function $q(\theta)$ defined as:</p>
-<table>
-<thead><tr>
-<th>Model</th>
-<th>Projection</th>
-</tr></thead>
-<tbody>
-<tr><td><code>optmod 1</code></td><td>Rectilinear/pinhole projection: $u = \frac{1}{2} + d_x + f_1s_1/s_3$, $v = \frac{1}{2} + d_y + f_2s_2/s_3$.</td></tr>
-<tr><td><code>optmod 2</code></td><td>Sinusoidal radial projection: $q(\theta) = \sin(a\theta)$. This is often useful for fisheye and all-sky lenses.</td></tr>
-<tr><td><code>optmod 3</code></td><td>Hybrid rectilinear/equidistant projection: $p_x = (1-a)s_1/s_3 + a\theta s_1/\rho$, $p_y = (1-a)s_2/s_3 + a\theta s_2/\rho$.</td></tr>
-<tr><td><code>optmod 4</code></td><td>Power-law equidistant-style projection: $q(\theta) =</td><td>\theta</td><td>^a$.</td></tr>
-<tr><td><code>optmod 5</code></td><td>Scaled rectilinear projection: $q(\theta) = \tan(a\theta)$.</td></tr>
-<tr><td><code>optmod 12</code></td><td>Unified radial projection: $q(\theta)=\tan(a\theta)/a$ for $a&gt;0$, $q(\theta)=\theta$ for $a=0$, and $q(\theta)=\sin(a\theta)/a$ for $a&lt;0$.</td></tr>
-<tr><td><code>optmod 20</code></td><td>Brown-Conrady radial/tangential distortion model. This is usually a good starting point for ordinary phone-camera lenses, including iPhone images.</td></tr>
-</tbody>
-</table>
+<ul>
+<li><code>optmod 1</code>: rectilinear/pinhole projection: $u = \frac{1}{2} + d_x + f_1s_1/s_3$ and $v = \frac{1}{2} + d_y + f_2s_2/s_3$.</li>
+<li><code>optmod 2</code>: sinusoidal radial projection: $q(\theta) = \sin(a\theta)$. This is often useful for fisheye and all-sky lenses.</li>
+<li><code>optmod 3</code>: hybrid rectilinear/equidistant projection: $p_x = (1-a)s_1/s_3 + a\theta s_1/\rho$ and $p_y = (1-a)s_2/s_3 + a\theta s_2/\rho$.</li>
+<li><code>optmod 4</code>: power-law equidistant-style projection: $q(\theta) = \lvert \theta \rvert^a$.</li>
+<li><code>optmod 5</code>: scaled rectilinear projection: $q(\theta) = \tan(a\theta)$.</li>
+<li><code>optmod 12</code>: unified radial projection: $q(\theta)=\tan(a\theta)/a$ for $a&gt;0$, $q(\theta)=\theta$ for $a=0$, and $q(\theta)=\sin(a\theta)/a$ for $a&lt;0$.</li>
+<li><code>optmod 20</code>: Brown-Conrady radial/tangential distortion model. This is usually a good starting point for ordinary phone-camera lenses, including iPhone images.</li>
+</ul>
 <p>For Brown-Conrady, the undistorted pinhole coordinates are</p>
 <div class="math-block">$$
 x_n = \frac{s_1}{s_3}, \qquad
@@ -197,11 +210,6 @@ $$</div>
 u = \frac{1}{2} + d_x + f_1x_d, \qquad
 v = \frac{1}{2} + d_y + f_2y_d.
 $$</div>
-<h2>Test Data</h2>
-<p>The generated PNG copies live in <code>calibration_images/</code>. The source HDF5/MATLAB references remain under the local <code>allsky7 -&gt; ../python/examples/allsky7</code> symlink when present.</p>
-<p>The file <code>2025_02_19_03_44_00_000_010760_first1s.png</code> is included in the graphical star-fit report with a manually supplied known-good optmod 2 solution, because the optpar stored in its HDF5 file is not the accepted reference solution for this frame.</p>
-<p>Regenerate the bundled calibration cases with:</p>
-<pre><code class="language-bash">python tools/generate_calibration_cases.py</code></pre>
 <h2>Tests</h2>
 <p>Run the JavaScript unit tests with:</p>
 <pre><code class="language-bash">npm test</code></pre>

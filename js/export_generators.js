@@ -34,70 +34,100 @@
         return `# WISC export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
     }
 
-    function pythonMapperCode(context) {
-        return `${header(context, "python", true)}import numpy as np
-from scipy.optimize import least_squares
+    function pythonLensModuleCode() {
+        return `BROWN_CONRADY_OPTMOD = 20
+SUPPORTED_OPTMODS = (1, 2, 3, 4, 5, 12, BROWN_CONRADY_OPTMOD)
 
-${optparArrayText(context, "python")}
-optpar = np.array(optpar, dtype=float)
-optmod = int(round(optpar[0]))
-optpar = optpar[1:]
-image_width = ${context.width}
-image_height = ${context.height}
 
-def _camera_rot(alpha_deg, beta_deg, gamma_deg):
+def _as_float_array(values):
+    arr = np.asarray(values, dtype=float).ravel()
+    if arr.size < 9:
+        raise ValueError("optpar must contain [optmod, f1, f2, alpha, beta, gamma, du, dv, ...]")
+    return arr
+
+
+def split_optpar(optpar, optmod=None):
+    arr = _as_float_array(optpar)
+    if optmod is None:
+        model = int(round(float(arr[0])))
+        params = arr[1:].astype(float, copy=True)
+    else:
+        model = int(round(float(optmod)))
+        params = arr.astype(float, copy=True)
+    if model not in SUPPORTED_OPTMODS:
+        raise ValueError("unsupported optmod {}".format(model))
+    required = 12 if model == BROWN_CONRADY_OPTMOD else 8
+    if params.size < required:
+        if model == BROWN_CONRADY_OPTMOD and params.size >= 8:
+            params = np.pad(params, (0, required - params.size), mode="constant")
+        else:
+            raise ValueError("optmod {} requires {} parameters after optmod".format(model, required))
+    return model, params[:required]
+
+
+def camera_rotation(alpha_deg, beta_deg, gamma_deg):
     a = np.deg2rad(alpha_deg)
     b = np.deg2rad(beta_deg)
     g = np.deg2rad(gamma_deg)
     rot1 = np.array([[np.cos(g), -np.sin(g), 0.0],
                      [np.sin(g),  np.cos(g), 0.0],
-                     [0.0,        0.0,       1.0]])
+                     [0.0,        0.0,       1.0]], dtype=float)
     rot2 = np.array([[ np.cos(a), 0.0, np.sin(a)],
                      [0.0,        1.0, 0.0],
-                     [-np.sin(a), 0.0, np.cos(a)]])
+                     [-np.sin(a), 0.0, np.cos(a)]], dtype=float)
     rot3 = np.array([[1.0, 0.0,       0.0],
                      [0.0, np.cos(b), np.sin(b)],
-                     [0.0, -np.sin(b), np.cos(b)]])
+                     [0.0, -np.sin(b), np.cos(b)]], dtype=float)
     return rot2 @ rot3 @ rot1
 
-def az_el_to_image(az_deg, el_deg, optpar=optpar, optmod=optmod,
-                   width=image_width, height=image_height):
+
+def sky_vector_from_az_el(az_deg, el_deg):
     az = np.deg2rad(az_deg)
     ze = np.deg2rad(90.0 - el_deg)
-    rot = _camera_rot(optpar[2], optpar[3], optpar[4])
     sinze = np.sin(ze)
-    es = np.array([sinze * np.sin(az), sinze * np.cos(az), np.cos(ze)])
-    s1, s2, s3 = es @ rot
-    radial = np.hypot(s1, s2)
-    f1, f2, du, dv, radial_alpha = optpar[0], optpar[1], optpar[5], optpar[6], optpar[7]
+    return np.array([sinze * np.sin(az), sinze * np.cos(az), np.cos(ze)], dtype=float)
+
+
+def camera_frame_vector(az_deg, el_deg, params):
+    return sky_vector_from_az_el(az_deg, el_deg) @ camera_rotation(params[2], params[3], params[4])
+
+
+def az_el_to_pixel(az_deg, el_deg, optpar, width, height, optmod=None):
+    model, p = split_optpar(optpar, optmod)
+    s1, s2, s3 = camera_frame_vector(az_deg, el_deg, p)
+    radial = float(np.hypot(s1, s2))
+    f1, f2 = p[0], p[1]
+    du, dv = p[5], p[6]
+    radial_alpha = p[7]
+
     if radial <= 1e-12:
         u_norm = 0.5 + du
         v_norm = 0.5 + dv
-    elif optmod == 1:
-        safe_s3 = s3 if abs(s3) > 1e-12 else 1e-12
+    elif model == 1:
+        safe_s3 = s3 if abs(s3) > 1e-12 else np.copysign(1e-12, s3 if s3 else 1.0)
         u_norm = f1 * s1 / safe_s3 + 0.5 + du
         v_norm = f2 * s2 / safe_s3 + 0.5 + dv
-    elif optmod == 2:
+    elif model == 2:
         theta = np.arctan2(radial, s3)
         r = np.sin(radial_alpha * theta)
         u_norm = f1 * s1 / radial * r + 0.5 + du
         v_norm = f2 * s2 / radial * r + 0.5 + dv
-    elif optmod == 3:
+    elif model == 3:
         theta = np.arctan2(radial, s3)
         safe_s3 = max(s3, 1e-12)
         u_norm = f1 * (1.0 - radial_alpha) * s1 / safe_s3 + f1 * radial_alpha * s1 / radial * theta + 0.5 + du
         v_norm = f2 * (1.0 - radial_alpha) * s2 / safe_s3 + f2 * radial_alpha * s2 / radial * theta + 0.5 + dv
-    elif optmod == 4:
+    elif model == 4:
         theta = np.arctan2(radial, s3)
         r = abs(theta) ** radial_alpha
         u_norm = f1 * s1 / radial * r + 0.5 + du
         v_norm = f2 * s2 / radial * r + 0.5 + dv
-    elif optmod == 5:
+    elif model == 5:
         theta = np.arctan2(radial, s3)
         r = np.tan(radial_alpha * theta)
         u_norm = f1 * s1 / radial * r + 0.5 + du
         v_norm = f2 * s2 / radial * r + 0.5 + dv
-    elif optmod == 12:
+    elif model == 12:
         theta = np.arctan2(radial, s3)
         if radial_alpha > 0:
             r = np.tan(radial_alpha * theta) / radial_alpha
@@ -107,42 +137,143 @@ def az_el_to_image(az_deg, el_deg, optpar=optpar, optmod=optmod,
             r = abs(theta)
         u_norm = f1 * s1 / radial * r + 0.5 + du
         v_norm = f2 * s2 / radial * r + 0.5 + dv
-    elif optmod == ${BROWN_CONRADY_OPTMOD}:
-        safe_s3 = s3 if abs(s3) > 1e-12 else 1e-12
+    elif model == BROWN_CONRADY_OPTMOD:
+        safe_s3 = s3 if abs(s3) > 1e-12 else np.copysign(1e-12, s3 if s3 else 1.0)
         xn = s1 / safe_s3
         yn = s2 / safe_s3
         r2 = xn * xn + yn * yn
         r4 = r2 * r2
         r6 = r4 * r2
-        k1 = optpar[7] if len(optpar) > 7 else 0.0
-        k2 = optpar[8] if len(optpar) > 8 else 0.0
-        k3 = optpar[9] if len(optpar) > 9 else 0.0
-        p1 = optpar[10] if len(optpar) > 10 else 0.0
-        p2 = optpar[11] if len(optpar) > 11 else 0.0
+        k1, k2, k3, p1, p2 = p[7], p[8], p[9], p[10], p[11]
         radial_distortion = 1.0 + k1 * r2 + k2 * r4 + k3 * r6
-        x_distorted = xn * radial_distortion + 2.0 * p1 * xn * yn + p2 * (r2 + 2.0 * xn * xn)
-        y_distorted = yn * radial_distortion + p1 * (r2 + 2.0 * yn * yn) + 2.0 * p2 * xn * yn
-        u_norm = f1 * x_distorted + 0.5 + du
-        v_norm = f2 * y_distorted + 0.5 + dv
+        xd = xn * radial_distortion + 2.0 * p1 * xn * yn + p2 * (r2 + 2.0 * xn * xn)
+        yd = yn * radial_distortion + p1 * (r2 + 2.0 * yn * yn) + 2.0 * p2 * xn * yn
+        u_norm = f1 * xd + 0.5 + du
+        v_norm = f2 * yd + 0.5 + dv
     else:
-        raise ValueError(f"unsupported optmod {optmod}")
-    return np.array([u_norm * width - 1.0, v_norm * height - 1.0])
+        raise ValueError("unsupported optmod {}".format(model))
 
-def image_to_az_el(x, y, optpar=optpar, optmod=optmod,
+    return float(u_norm * float(width) - 1.0), float(v_norm * float(height) - 1.0)
+
+
+def _pixel_error_sq(az_deg, el_deg, x, y, optpar, width, height, optmod):
+    px, py = az_el_to_pixel(az_deg % 360.0, el_deg, optpar, width, height, optmod)
+    dx = px - x
+    dy = py - y
+    if not np.isfinite(dx) or not np.isfinite(dy):
+        return float("inf")
+    return dx * dx + dy * dy
+
+
+def pixel_to_az_el(x, y, optpar, width, height, optmod=None,
+                   min_el_deg=0.0, max_el_deg=90.0, return_error=False):
+    x = float(x)
+    y = float(y)
+    width = float(width)
+    height = float(height)
+    min_el = float(min_el_deg)
+    max_el = float(max_el_deg)
+    starts = []
+    for el in (max_el, 75.0, 60.0, 45.0, 30.0, 15.0, min_el):
+        if min_el <= el <= max_el:
+            for az in (0.0, 45.0, 90.0, 135.0, 180.0, 225.0, 270.0, 315.0):
+                starts.append((az, el))
+
+    best_az, best_el, best_err = 0.0, max_el, float("inf")
+    for az, el in starts:
+        err = _pixel_error_sq(az, el, x, y, optpar, width, height, optmod)
+        if err < best_err:
+            best_az, best_el, best_err = az, el, err
+
+    for step in (30.0, 12.0, 5.0, 2.0, 0.75, 0.25, 0.08, 0.025, 0.008):
+        improved = True
+        while improved:
+            improved = False
+            for daz in (-step, 0.0, step):
+                for delel in (-step, 0.0, step):
+                    if daz == 0.0 and delel == 0.0:
+                        continue
+                    cand_az = (best_az + daz) % 360.0
+                    cand_el = min(max(best_el + delel, min_el), max_el)
+                    err = _pixel_error_sq(cand_az, cand_el, x, y, optpar, width, height, optmod)
+                    if err + 1e-18 < best_err:
+                        best_az, best_el, best_err = cand_az, cand_el, err
+                        improved = True
+
+    az = best_az % 360.0
+    el = min(max(best_el, min_el), max_el)
+    err_px = float(np.sqrt(best_err))
+    if return_error:
+        return az, el, err_px
+    return az, el
+
+
+class WiscCamera:
+    def __init__(self, optpar, width, height):
+        self.optpar = np.asarray(optpar, dtype=float)
+        self.width = float(width)
+        self.height = float(height)
+
+    def az_el_to_pixel(self, az_deg, el_deg):
+        return az_el_to_pixel(az_deg, el_deg, self.optpar, self.width, self.height)
+
+    def pixel_to_az_el(self, x, y, min_el_deg=0.0, max_el_deg=90.0, return_error=False):
+        return pixel_to_az_el(
+            x,
+            y,
+            self.optpar,
+            self.width,
+            self.height,
+            min_el_deg=min_el_deg,
+            max_el_deg=max_el_deg,
+            return_error=return_error,
+        )
+`;
+    }
+
+    function pythonMapperCode(context) {
+        return `${header(context, "python", true)}# This file is a complete calibration module generated by WISC.
+import numpy as np
+
+${pythonLensModuleCode()}
+
+${optparArrayText(context, "python")}
+optpar = np.array(optpar, dtype=float)
+optmod = int(round(optpar[0]))
+image_width = ${context.width}
+image_height = ${context.height}
+
+camera = WiscCamera(optpar=optpar, width=image_width, height=image_height)
+
+
+def az_el_to_image(az_deg, el_deg, optpar=optpar, optmod=None,
                    width=image_width, height=image_height):
-    target = np.array([x, y], dtype=float)
-    def residual(q):
-        return az_el_to_image(q[0] % 360.0, q[1], optpar, optmod, width, height) - target
-    starts = [np.array([0.0, 90.0]), np.array([0.0, 60.0]), np.array([90.0, 60.0]),
-              np.array([180.0, 60.0]), np.array([270.0, 60.0]), np.array([0.0, 25.0]),
-              np.array([90.0, 25.0]), np.array([180.0, 25.0]), np.array([270.0, 25.0])]
-    best = None
-    for start in starts:
-        result = least_squares(residual, start, bounds=([-720.0, 0.0], [720.0, 90.0]))
-        err = np.linalg.norm(result.fun)
-        if best is None or err < best[0]:
-            best = (err, result.x)
-    return best[1][0] % 360.0, best[1][1]
+    """Project azimuth/elevation in degrees to 0-based image pixels."""
+    return np.array(az_el_to_pixel(az_deg, el_deg, optpar, width, height, optmod=optmod))
+
+
+def az_el_to_pixel_default(az_deg, el_deg):
+    """Project with the generated default optpar and image size."""
+    return camera.az_el_to_pixel(az_deg, el_deg)
+
+
+def image_to_az_el(x, y, optpar=optpar, optmod=None,
+                   width=image_width, height=image_height, return_error=False):
+    """Invert one image pixel to azimuth/elevation in degrees."""
+    return pixel_to_az_el(
+        x,
+        y,
+        optpar,
+        width,
+        height,
+        optmod=optmod,
+        return_error=return_error,
+    )
+
+
+def pixel_to_az_el_default(x, y, return_error=False):
+    """Invert with the generated default optpar and image size."""
+    return camera.pixel_to_az_el(x, y, return_error=return_error)
 `;
     }
 
