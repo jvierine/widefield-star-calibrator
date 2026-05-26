@@ -7,8 +7,9 @@ JavaScript wide-field star calibration tool. WISC can run star finding,
 asterism matching, and lens-model fitting as a somewhat robust automated
 process. The strength of the code, and the reason for the JavaScript
 implementation, is the interactive browser GUI for fine tuning, inspection, and
-completely manual star-pairing based optical model fitting assisted by the Yale
-Bright Star Catalogue. This is useful for difficult images that do not
+completely manual star-pairing based optical model fitting assisted by Tycho-2
+star positions and magnitudes, with Yale Bright Star Catalogue names used for
+the brightest labelled stars. This is useful for difficult images that do not
 automatically plate solve cleanly.
 However, it can also be installed and run on the command line like a normal
 Linux/Unix command-line program named `wisc`; see the command-line section
@@ -71,6 +72,9 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
   the one used by the fit.
 - Lets the user manually pick image stars with a 40x interpolated density
   estimate and pair them with catalog stars.
+- Uses a compact gzip-compressed single-precision Tycho-2 `VT < 8` catalogue
+  by default, while retaining the Yale Bright Star Catalogue as an optional
+  fallback and name source.
 - Fits the model-specific `optpar` vector: eight parameters for AIDA radial
   models, and twelve for Brown-Conrady with `k1`, `k2`, `k3`, `p1`, and `p2`.
 - Exports the fitted `optpar` and mapper code as Python, Julia, C, or MATLAB.
@@ -82,7 +86,6 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
 
 ## Views And Controls
 
-- `C`: toggle star pairing view and Stellarium-style catalog view.
 - `X`: alternate pure image view and pure Stellarium view. Labels and pairings
   are hidden, but the az/el grid remains visible if enabled.
 - `N`: show or hide star names in the current view.

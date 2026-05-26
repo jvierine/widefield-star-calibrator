@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.16";
+    const APP_VERSION = "v0.2.17";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
@@ -62,6 +62,7 @@
         altM: document.getElementById("altM"),
         brightness: document.getElementById("brightness"),
         brightnessValue: document.getElementById("brightnessValue"),
+        starCatalog: document.getElementById("starCatalog"),
         contrast: document.getElementById("contrast"),
         contrastValue: document.getElementById("contrastValue"),
         highPassImage: document.getElementById("highPassImage"),
@@ -162,6 +163,11 @@
         lastJunkStarFinderPoint: null,
         detectedStars: [],
         currentImageMetadata: null,
+        catalogs: {
+            yale: window.AIDA_STAR_CATALOG || [],
+            tycho2: null,
+        },
+        catalogStatus: "Tycho-2 catalogue loading...",
         fisheyeDetection: null,
         showAutoDetectionMarkers: true,
         deletedDetectionIds: new Set(),
@@ -170,6 +176,8 @@
         detectorStatus: "detector: no image",
         detectionGeneration: 0,
         automaticMatchingStatus: "automatic matching: not run",
+        lastIdentificationSummary: null,
+        lastLuckyFitSummary: null,
         autoIdentifyBusy: false,
         luckyFitBusy: false,
         pendingMatch: null,
@@ -179,6 +187,7 @@
         showPickedMatchMarkers: true,
         showKdePositionDots: false,
         showFitResiduals: false,
+        residualPlotDrag: null,
         showAsterismLines: true,
         asterismEdges: [],
         triangleDebugSnapshot: null,
@@ -360,6 +369,14 @@
     function rawImagePixelFromModelImagePixel(x, y) {
         const [displayedX, displayedY] = displayedImagePixelFromModelImagePixel(x, y);
         return rawImagePixelFromDisplayedImagePixel(displayedX, displayedY);
+    }
+
+    function modelImagePixelFromRawImagePixel(x, y) {
+        const [displayedX, displayedY] = displayedImagePixelFromRawImagePixel(x, y);
+        return [
+            state.flipX ? state.image.width - 1 - displayedX : displayedX,
+            state.flipY ? state.image.height - 1 - displayedY : displayedY,
+        ];
     }
 
     function isMaskedImagePixel(x, y, pad = 0) {
@@ -1093,6 +1110,14 @@
         return window.AidaExportGenerators.optparArrayText(exportContext(), language);
     }
 
+    function optparJsonArray() {
+        return [Number(controls.optmod.value) || 2, ...currentOptpar()];
+    }
+
+    function lensModelName(optmod = Number(controls.optmod.value) || 2) {
+        return optmod === BROWN_CONRADY_OPTMOD ? "Brown-Conrady" : `optmod ${optmod}`;
+    }
+
     function safeCaseId(value) {
         return String(value || "aida_case")
             .replace(/\.[^.]*$/, "")
@@ -1119,15 +1144,141 @@
             const [rawX, rawY] = rawImagePixelFromModelImagePixel(xy.x, xy.y);
             const dx = rawX - match.image.x;
             const dy = rawY - match.image.y;
+            const angular = angularResidualForMatch(match, azze, optpar, optmod);
             rows.push({
                 match,
                 model: {x: rawX, y: rawY},
                 dx,
                 dy,
                 r: Math.hypot(dx, dy),
+                angular,
             });
         }
         return rows;
+    }
+
+    function angularResidualForMatch(match, catalogAzZe, optpar, optmod) {
+        if (!state.image) {
+            return null;
+        }
+        const [targetX, targetY] = modelImagePixelFromRawImagePixel(match.image.x, match.image.y);
+        const catalogAzDeg = catalogAzZe.az * AidaTools.RAD;
+        const catalogElDeg = 90 - catalogAzZe.ze * AidaTools.RAD;
+        const inverted = invertPixelToAzElNear(
+            targetX,
+            targetY,
+            catalogAzDeg,
+            catalogElDeg,
+            optpar,
+            optmod,
+            state.image.width,
+            state.image.height,
+        );
+        if (!inverted) {
+            return null;
+        }
+        const dAzDeg = wrapDegrees180(inverted.azDeg - catalogAzDeg) *
+            Math.cos(catalogElDeg * AidaTools.DEG);
+        const dElDeg = inverted.elDeg - catalogElDeg;
+        return {
+            dAzDeg,
+            dElDeg,
+            rDeg: angularSeparationAzElDeg(
+                inverted.azDeg,
+                inverted.elDeg,
+                catalogAzDeg,
+                catalogElDeg,
+            ),
+            inverseFitPx: inverted.errPx,
+        };
+    }
+
+    function angularSeparationAzElDeg(az1Deg, el1Deg, az2Deg, el2Deg) {
+        const ze1 = (90 - el1Deg) * AidaTools.DEG;
+        const ze2 = (90 - el2Deg) * AidaTools.DEG;
+        const az1 = az1Deg * AidaTools.DEG;
+        const az2 = az2Deg * AidaTools.DEG;
+        const dot = Math.sin(ze1) * Math.sin(ze2) * Math.cos(az1 - az2) +
+            Math.cos(ze1) * Math.cos(ze2);
+        return Math.acos(Math.max(-1, Math.min(1, dot))) * AidaTools.RAD;
+    }
+
+    function invertPixelToAzElNear(targetX, targetY, startAzDeg, startElDeg, optpar, optmod, width, height) {
+        let az = ((startAzDeg % 360) + 360) % 360;
+        let el = Math.max(-5, Math.min(90, startElDeg));
+        const project = (azDeg, elDeg) => AidaTools.cameraModel(
+            azDeg * AidaTools.DEG,
+            (90 - elDeg) * AidaTools.DEG,
+            optpar,
+            optmod,
+            width,
+            height,
+        );
+        const residual = (azDeg, elDeg) => {
+            const xy = project(azDeg, elDeg);
+            if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
+                return null;
+            }
+            return {dx: xy.x - targetX, dy: xy.y - targetY};
+        };
+        let r = residual(az, el);
+        if (!r) {
+            return null;
+        }
+        for (let iter = 0; iter < 10; iter += 1) {
+            const h = 0.02;
+            const raz = residual(az + h, el);
+            const rel = residual(az, Math.max(-5, Math.min(90, el + h)));
+            if (!raz || !rel) {
+                break;
+            }
+            const j11 = (raz.dx - r.dx) / h;
+            const j21 = (raz.dy - r.dy) / h;
+            const j12 = (rel.dx - r.dx) / h;
+            const j22 = (rel.dy - r.dy) / h;
+            const a = j11 * j11 + j21 * j21 + 1e-6;
+            const b = j11 * j12 + j21 * j22;
+            const c = j12 * j12 + j22 * j22 + 1e-6;
+            const g1 = j11 * r.dx + j21 * r.dy;
+            const g2 = j12 * r.dx + j22 * r.dy;
+            const det = a * c - b * b;
+            if (Math.abs(det) < 1e-12) {
+                break;
+            }
+            let dAz = (-c * g1 + b * g2) / det;
+            let dEl = (b * g1 - a * g2) / det;
+            const step = Math.hypot(dAz, dEl);
+            if (!Number.isFinite(step) || step < 1e-5) {
+                break;
+            }
+            const limit = 5;
+            if (step > limit) {
+                dAz *= limit / step;
+                dEl *= limit / step;
+            }
+            const oldErr = r.dx * r.dx + r.dy * r.dy;
+            let accepted = false;
+            for (const scale of [1, 0.5, 0.25, 0.1]) {
+                const nextAz = ((az + dAz * scale) % 360 + 360) % 360;
+                const nextEl = Math.max(-5, Math.min(90, el + dEl * scale));
+                const nextR = residual(nextAz, nextEl);
+                if (!nextR) {
+                    continue;
+                }
+                const nextErr = nextR.dx * nextR.dx + nextR.dy * nextR.dy;
+                if (nextErr <= oldErr) {
+                    az = nextAz;
+                    el = nextEl;
+                    r = nextR;
+                    accepted = true;
+                    break;
+                }
+            }
+            if (!accepted) {
+                break;
+            }
+        }
+        return {azDeg: az, elDeg: el, errPx: Math.hypot(r.dx, r.dy)};
     }
 
     function residualSummary(rows) {
@@ -1135,6 +1286,7 @@
             return {
                 count: 0,
                 rmsPx: null,
+                rmsAngularDeg: null,
                 medianPx: null,
                 maxPx: null,
                 medianDxPx: null,
@@ -1143,14 +1295,159 @@
         }
         const sumR2 = rows.reduce((acc, row) => acc + row.r * row.r, 0);
         const sortedR = rows.map(row => row.r).sort((a, b) => a - b);
+        const angularRows = rows.filter(row => row.angular);
+        const angularSumR2 = angularRows.reduce((acc, row) => acc + row.angular.rDeg * row.angular.rDeg, 0);
         return {
             count: rows.length,
             rmsPx: Math.sqrt(sumR2 / rows.length),
+            rmsAngularDeg: angularRows.length ? Math.sqrt(angularSumR2 / angularRows.length) : null,
             medianPx: sortedR[Math.floor(sortedR.length / 2)],
             maxPx: sortedR[sortedR.length - 1],
             medianDxPx: median(rows.map(row => row.dx)),
             medianDyPx: median(rows.map(row => row.dy)),
         };
+    }
+
+    function angularResidualSummary(rows) {
+        const angularRows = rows.filter(row => row.angular);
+        if (!angularRows.length) {
+            return {
+                count: 0,
+                rmsDeg: null,
+                stdAzCosElDeg: null,
+                stdElDeg: null,
+                medianDeg: null,
+                maxDeg: null,
+            };
+        }
+        const meanAz = angularRows.reduce((acc, row) => acc + row.angular.dAzDeg, 0) / angularRows.length;
+        const meanEl = angularRows.reduce((acc, row) => acc + row.angular.dElDeg, 0) / angularRows.length;
+        const sumR2 = angularRows.reduce((acc, row) => acc + row.angular.rDeg * row.angular.rDeg, 0);
+        const varAz = angularRows.reduce((acc, row) => {
+            const d = row.angular.dAzDeg - meanAz;
+            return acc + d * d;
+        }, 0) / angularRows.length;
+        const varEl = angularRows.reduce((acc, row) => {
+            const d = row.angular.dElDeg - meanEl;
+            return acc + d * d;
+        }, 0) / angularRows.length;
+        const sorted = angularRows.map(row => row.angular.rDeg).sort((a, b) => a - b);
+        return {
+            count: angularRows.length,
+            rmsDeg: Math.sqrt(sumR2 / angularRows.length),
+            stdAzCosElDeg: Math.sqrt(varAz),
+            stdElDeg: Math.sqrt(varEl),
+            medianDeg: sorted[Math.floor(sorted.length / 2)],
+            maxDeg: sorted[sorted.length - 1],
+        };
+    }
+
+    function summarizeIdentificationResult(result, added = null, detections = null, label = "") {
+        if (!result) {
+            return null;
+        }
+        const matches = Array.isArray(result.matches) ? result.matches : [];
+        const summary = {
+            label,
+            status: result.status || "",
+            matchedStars: matches.length,
+            addedPairings: Number.isFinite(added) ? added : null,
+            detectionsUsed: Number.isFinite(detections) ? detections : null,
+            score: Number.isFinite(result.score) ? result.score : null,
+            medianResidualPx: Number.isFinite(result.medianDistance) ? result.medianDistance : null,
+            scoredTransforms: Number.isFinite(result.scoredTransforms) ? result.scoredTransforms : null,
+            scoredRotations: Number.isFinite(result.scoredRotations) ? result.scoredRotations : null,
+            unambiguousMatches: Number.isFinite(result.unambiguousMatches) ? result.unambiguousMatches : null,
+            supportTriangles: null,
+        };
+        if (result.supportTriangles && Number.isFinite(result.supportTriangles.acceptedCount)) {
+            summary.supportTriangles = result.supportTriangles.acceptedCount;
+        } else if (result.supportTriangles && Array.isArray(result.supportTriangles.acceptedEdges)) {
+            summary.supportTriangles = result.supportTriangles.acceptedEdges.length;
+        }
+        return summary;
+    }
+
+    function currentFitInfoJsonText() {
+        const rows = matchResidualRows();
+        const optmod = Number(controls.optmod.value) || 2;
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const alt = Number(controls.altM.value) || 0;
+        const residual = residualSummary(rows);
+        const angular = angularResidualSummary(rows);
+        const stars = rows.map(row => {
+            const catalogAzZe = AidaTools.radecToAzZe(
+                row.match.catalog.raHours,
+                row.match.catalog.decDeg,
+                date,
+                lat,
+                lon,
+            );
+            return {
+                name: row.match.catalog.name || row.match.catalog.key || "",
+                raHours: row.match.catalog.raHours,
+                decDeg: row.match.catalog.decDeg,
+                magnitude: row.match.catalog.mag,
+                azDeg: catalogAzZe.az * AidaTools.RAD,
+                elDeg: 90 - catalogAzZe.ze * AidaTools.RAD,
+                lensModelX: row.model.x,
+                lensModelY: row.model.y,
+                estimatedX: row.match.image.x,
+                estimatedY: row.match.image.y,
+                residualDxPx: row.dx,
+                residualDyPx: row.dy,
+                residualPx: row.r,
+                angularResidualAzCosElDeg: row.angular ? row.angular.dAzDeg : null,
+                angularResidualElDeg: row.angular ? row.angular.dElDeg : null,
+                angularResidualDeg: row.angular ? row.angular.rDeg : null,
+                imageMethod: row.match.image.method || "",
+                detectionId: row.match.detectionId ?? null,
+            };
+        });
+        const fitInfo = {
+            format: "wisc_fit_info",
+            version: 1,
+            generatedAtUtc: new Date().toISOString(),
+            fileName: state.imageName || null,
+            image: state.image ? {
+                width: state.image.width,
+                height: state.image.height,
+            } : null,
+            observation: {
+                utc: Number.isNaN(date.getTime()) ? null : date.toISOString(),
+                latitudeDeg: lat,
+                longitudeDeg: lon,
+                altitudeM: alt,
+            },
+            lens: {
+                model: lensModelName(optmod),
+                optmod,
+                optpar: optparJsonArray(),
+                parametersOnly: currentOptpar(),
+            },
+            fitMetrics: {
+                pairedStars: rows.length,
+                totalPairings: state.matches.length,
+                detectedStars: state.detectedStars.length,
+                activeDetectedStars: activeDetectedStars().length,
+                residual,
+                angularResidual: angular,
+                estimatedAzElErrorStdDeg: {
+                    azCosEl: angular.stdAzCosElDeg,
+                    el: angular.stdElDeg,
+                    radialRms: angular.rmsDeg,
+                },
+                asterismGoodness: state.lastIdentificationSummary,
+                luckyFit: state.lastLuckyFitSummary,
+                detectorStatus: state.detectorStatus,
+                automaticMatchingStatus: state.automaticMatchingStatus,
+                fitMessage: state.fitMessage,
+            },
+            stars,
+        };
+        return JSON.stringify(fitInfo, null, 2);
     }
 
     function currentTestCaseObject() {
@@ -1855,6 +2152,10 @@ end
         return optpar;
     }
 
+    function usesRectilinearDragControls(optmod = Number(controls.optmod.value) || 2) {
+        return optmod === 1 || optmod === BROWN_CONRADY_OPTMOD;
+    }
+
     function zenithCanvasPixelForCameraAngles(alphaDeg, betaDeg, gammaDeg) {
         if (!state.image) {
             return null;
@@ -1937,7 +2238,106 @@ end
     }
 
     function catalogKey(star) {
+        if (star && star.id) {
+            return String(star.id);
+        }
         return `${star.name}|${star.raHours.toFixed(7)}|${star.decDeg.toFixed(7)}`;
+    }
+
+    function selectedCatalogName() {
+        return controls.starCatalog ? controls.starCatalog.value : "tycho2";
+    }
+
+    function activeStarCatalogName() {
+        const selected = selectedCatalogName();
+        if (selected === "tycho2" && Array.isArray(state.catalogs.tycho2)) {
+            return "tycho2";
+        }
+        return "yale";
+    }
+
+    function activeStarCatalog() {
+        return state.catalogs[activeStarCatalogName()] || state.catalogs.yale || [];
+    }
+
+    function catalogRowsForName(name) {
+        if (name === "tycho2" && Array.isArray(state.catalogs.tycho2)) {
+            return state.catalogs.tycho2;
+        }
+        return state.catalogs.yale || [];
+    }
+
+    function catalogDisplayName(name) {
+        return name === "tycho2" ? "Tycho-2" : "Yale";
+    }
+
+    function angularDistanceDegBetweenRaDec(raHoursA, decDegA, raHoursB, decDegB) {
+        const raA = raHoursA * 15 * AidaTools.DEG;
+        const raB = raHoursB * 15 * AidaTools.DEG;
+        const decA = decDegA * AidaTools.DEG;
+        const decB = decDegB * AidaTools.DEG;
+        const dot = Math.sin(decA) * Math.sin(decB) +
+            Math.cos(decA) * Math.cos(decB) * Math.cos(raA - raB);
+        return Math.acos(Math.max(-1, Math.min(1, dot))) * AidaTools.RAD;
+    }
+
+    function annotateTycho2StarNames(rows) {
+        const yaleNames = (state.catalogs.yale || [])
+            .filter(row => row[3] && row[2] <= 4.0)
+            .map(row => ({
+                raHours: row[0],
+                decDeg: row[1],
+                mag: row[2],
+                name: row[3],
+            }));
+        for (const row of rows) {
+            if (row[2] > 4.0) {
+                row[3] = "";
+                continue;
+            }
+            let best = null;
+            for (const yale of yaleNames) {
+                if (Math.abs(row[1] - yale.decDeg) > 0.12) {
+                    continue;
+                }
+                const draDeg = Math.abs(wrapDegrees180((row[0] - yale.raHours) * 15));
+                if (draDeg > 0.18) {
+                    continue;
+                }
+                const distanceDeg = angularDistanceDegBetweenRaDec(row[0], row[1], yale.raHours, yale.decDeg);
+                if (!best || distanceDeg < best.distanceDeg) {
+                    best = {...yale, distanceDeg};
+                }
+            }
+            row[3] = best && best.distanceDeg <= 0.08 ? best.name : "";
+        }
+        return rows;
+    }
+
+    async function loadTycho2Catalog() {
+        if (!window.WiscCatalogs || typeof window.WiscCatalogs.loadWiscatFloat32Catalog !== "function") {
+            state.catalogStatus = "Tycho-2 catalogue unavailable: catalogue loader missing";
+            return;
+        }
+        try {
+            const rows = await window.WiscCatalogs.loadWiscatFloat32Catalog(
+                "data/tycho2_mag8.bin.gz?v=20260527-merged-j2000",
+                {cache: "no-cache"},
+            );
+            state.catalogs.tycho2 = annotateTycho2StarNames(rows);
+            state.catalogStatus = `Tycho-2 catalogue: ${rows.length} stars with VT < 8 loaded`;
+            if (controls.starCatalog && controls.starCatalog.value === "tycho2") {
+                state.pendingMatch = null;
+                updateProjection();
+                render();
+            }
+        } catch (error) {
+            state.catalogStatus = `Tycho-2 catalogue unavailable (${error.message || error}); using Yale`;
+            if (controls.starCatalog && controls.starCatalog.value === "tycho2") {
+                updateProjection();
+                render();
+            }
+        }
     }
 
     function isMatchedCatalogStar(star) {
@@ -1959,7 +2359,7 @@ end
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
-        const stars = AidaTools.visibleStars(window.AIDA_STAR_CATALOG, date, lat, lon, 7, 88);
+        const stars = AidaTools.visibleStars(activeStarCatalog(), date, lat, lon, 7, 88);
         const optpar = currentOptpar();
         const optmod = Number(controls.optmod.value);
         state.projected = [];
@@ -2015,8 +2415,12 @@ end
         }
     }
 
-    function projectedStarsForAutoIdentification() {
-        return state.projected.map(star => {
+    function projectedStarsForAutoIdentification(options = {}) {
+        const catalogName = options.catalogName || activeStarCatalogName();
+        const projectedStars = catalogName === activeStarCatalogName() ?
+            state.projected :
+            projectCatalogForMatching(catalogName, Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 7);
+        return projectedStars.map(star => {
             const [rawX, rawY] = rawImagePixelFromModelImagePixel(star.x, star.y);
             return {
                 ...star,
@@ -2027,14 +2431,42 @@ end
         });
     }
 
+    function projectCatalogForMatching(catalogName, maxMagnitude = 7) {
+        if (!state.image) {
+            return [];
+        }
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value);
+        const rows = catalogRowsForName(catalogName);
+        return AidaTools.visibleStars(rows, date, lat, lon, maxMagnitude, 88)
+            .map(star => {
+                const xy = AidaTools.cameraModel(
+                    star.az,
+                    star.ze,
+                    optpar,
+                    optmod,
+                    state.image.width,
+                    state.image.height,
+                );
+                return Number.isFinite(xy.x) && Number.isFinite(xy.y) ?
+                    {...star, x: xy.x, y: xy.y, key: catalogKey(star)} :
+                    null;
+            })
+            .filter(Boolean);
+    }
+
     function visibleStarsForMatching(maxMag, options = {}) {
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
+        const catalogName = options.catalogName || options.matchingCatalogName || activeStarCatalogName();
         const maxZenithDeg = Number.isFinite(options.maxZenithDeg) ?
             options.maxZenithDeg :
             Number.isFinite(options.catalogMaxZenithDeg) ? options.catalogMaxZenithDeg : 88;
-        return AidaTools.visibleStars(window.AIDA_STAR_CATALOG, date, lat, lon, maxMag, maxZenithDeg)
+        return AidaTools.visibleStars(catalogRowsForName(catalogName), date, lat, lon, maxMag, maxZenithDeg)
             .map(star => ({...star, key: catalogKey(star)}));
     }
 
@@ -2373,6 +2805,10 @@ end
         };
         const matcherDetections = activeDetectedStars()
             .slice(0, Math.max(1, Math.floor(Number.isFinite(options.maxDetections) ? options.maxDetections : 80)));
+        const matchingCatalogName = options.matchingCatalogName || activeStarCatalogName();
+        const blindCatalogName = options.blindCatalogName || matchingCatalogName;
+        const asterismCatalogName = options.asterismCatalogName || matchingCatalogName;
+        const projectedCatalogName = options.projectedCatalogName || matchingCatalogName;
 
         const radialAlphaProgressText = blindOptions => {
             const models = Array.isArray(blindOptions && blindOptions.preflattenModelCandidates) ?
@@ -2391,7 +2827,7 @@ end
             const alphaText = radialAlphaProgressText(options.blindOptions || {});
             setLoadingProgress(
                 Number.isFinite(options.progressBlind) ? options.progressBlind : 74,
-                `${label}: matching bright spherical asterisms with the Yale catalog${alphaText}...`
+                `${label}: matching bright spherical asterisms with the ${catalogDisplayName(blindCatalogName)} catalog${alphaText}...`
             );
             await yieldToBrowser();
             const blindMatcher = typeof window.AidaAutoIdentifier.identifyStarsBlindAsync === "function" ?
@@ -2403,7 +2839,10 @@ end
                     Number.isFinite(options.blindOptions && options.blindOptions.ambiguityMaxMagnitude) ?
                         options.blindOptions.ambiguityMaxMagnitude :
                     maxMag
-                ), options.blindOptions || options),
+                ), {
+                    ...(options.blindOptions || options),
+                    catalogName: blindCatalogName,
+                }),
                 matcherDetections,
                 {
                     ...commonOptions,
@@ -2432,7 +2871,10 @@ end
                 window.AidaAutoIdentifier.identifyStarsByAsterismsAsync :
                 window.AidaAutoIdentifier.identifyStarsByAsterisms;
             result = await skyPlaneMatcher(
-                skyPlaneStarsForAsterismIdentification(maxMag, options.asterismOptions || options),
+                skyPlaneStarsForAsterismIdentification(maxMag, {
+                    ...(options.asterismOptions || options),
+                    catalogName: asterismCatalogName,
+                }),
                 matcherDetections,
                 {
                     ...commonOptions,
@@ -2466,6 +2908,7 @@ end
                 await yieldToBrowser();
                 result = await skyPlaneMatcher(
                     skyPlaneStarsForAsterismIdentification(weakMaxMag, {
+                        catalogName: asterismCatalogName,
                         minSeparationDeg: weakAsterismOptions.catalogMinSeparationDeg,
                     }),
                     matcherDetections,
@@ -2500,9 +2943,15 @@ end
             const matchRadius = Math.max(22, Math.min(48, 0.018 * diag));
             result = window.AidaAutoIdentifier.identifyStars(
                 Number.isFinite(options.projectedOptions && options.projectedOptions.catalogMaxZenithDeg) ?
-                    projectedStarsForAutoIdentification()
+                    projectedStarsForAutoIdentification({
+                        catalogName: projectedCatalogName,
+                        maxMagnitude: maxMag,
+                    })
                         .filter(star => Number.isFinite(star.ze) && star.ze * 180 / Math.PI <= options.projectedOptions.catalogMaxZenithDeg) :
-                    projectedStarsForAutoIdentification(),
+                    projectedStarsForAutoIdentification({
+                        catalogName: projectedCatalogName,
+                        maxMagnitude: maxMag,
+                    }),
                 matcherDetections,
                 {
                     ...commonOptions,
@@ -2556,6 +3005,12 @@ end
         state.showPickedMatchMarkers = true;
         state.lastFitVector = null;
         state.automaticMatchingStatus = `${String(result.status || "").replace(/auto-identify/g, "automatic matching")}; added ${added}`;
+        state.lastIdentificationSummary = summarizeIdentificationResult(
+            result,
+            added,
+            Math.min(maxDetections, activeDetectedStars().length),
+            label,
+        );
         updateAutoMatches();
         return {result, added, detections: Math.min(maxDetections, activeDetectedStars().length)};
     }
@@ -3008,9 +3463,87 @@ end
         const rms = Math.sqrt(rows.reduce((acc, row) => acc + row.r * row.r, 0) / rows.length);
         const maxAbs = Math.max(1, ...rows.map(row => Math.max(Math.abs(row.dx), Math.abs(row.dy))));
         const span = Math.ceil(maxAbs * 1.15);
-        title.textContent = `Fit residuals: ${rows.length} stars, RMS ${rms.toFixed(2)} px, axis +/-${span} px; image vectors 20x`;
+        const angularRows = rows.filter(row => row.angular);
+        const angularRms = angularRows.length ?
+            Math.sqrt(angularRows.reduce((acc, row) => acc + row.angular.rDeg * row.angular.rDeg, 0) / angularRows.length) :
+            NaN;
+        title.textContent = angularRows.length ?
+            `Fit residuals: ${rows.length} stars, RMS ${rms.toFixed(2)} px / ${angularRms.toFixed(3)} deg; drag plot to move; image vectors 20x` :
+            `Fit residuals: ${rows.length} stars, RMS ${rms.toFixed(2)} px; drag plot to move; image vectors 20x`;
         residualHistogram.appendChild(title);
 
+        residualHistogram.appendChild(residualScatterSvg({
+            rows,
+            span,
+            xValue: row => row.dx,
+            yValue: row => row.dy,
+            xLabel: "x residual (px)",
+            yLabel: "y residual (px)",
+            tickText: value => `${value}`,
+            pointClass: "residual-scatter-point",
+        }));
+
+        if (angularRows.length) {
+            const angularMaxAbs = Math.max(
+                0.01,
+                ...angularRows.map(row => Math.max(
+                    Math.abs(row.angular.dAzDeg),
+                    Math.abs(row.angular.dElDeg),
+                )),
+            );
+            const angularSpan = Math.max(0.01, niceResidualSpan(angularMaxAbs * 1.15));
+            const angularTitle = document.createElement("div");
+            angularTitle.className = "residual-histogram-title residual-histogram-subtitle";
+            angularTitle.textContent = `Angular residuals: RMS ${angularRms.toFixed(3)} deg, axis +/-${formatResidualTick(angularSpan, 3)} deg`;
+            residualHistogram.appendChild(angularTitle);
+            residualHistogram.appendChild(residualScatterSvg({
+                rows: angularRows,
+                span: angularSpan,
+                xValue: row => row.angular.dAzDeg,
+                yValue: row => row.angular.dElDeg,
+                xLabel: "az residual cos(el) (deg)",
+                yLabel: "el residual (deg)",
+                tickText: value => formatResidualTick(value, 3),
+                pointClass: "angular-residual-scatter-point",
+            }));
+        }
+    }
+
+    function niceResidualSpan(value) {
+        if (!Number.isFinite(value) || value <= 0) {
+            return 1;
+        }
+        const exponent = Math.floor(Math.log10(value));
+        const base = value / Math.pow(10, exponent);
+        const niceBase = base <= 1 ? 1 : base <= 2 ? 2 : base <= 5 ? 5 : 10;
+        return niceBase * Math.pow(10, exponent);
+    }
+
+    function formatResidualTick(value, precision = 2) {
+        if (!Number.isFinite(value)) {
+            return "";
+        }
+        const abs = Math.abs(value);
+        if (abs >= 10) {
+            return value.toFixed(0);
+        }
+        if (abs >= 1) {
+            return value.toFixed(1);
+        }
+        return value.toFixed(precision).replace(/0+$/, "").replace(/\.$/, "");
+    }
+
+    function residualScatterSvg(options) {
+        const {
+            rows,
+            span,
+            xValue,
+            yValue,
+            xLabel,
+            yLabel,
+            tickText,
+            pointClass,
+        } = options;
         const svg = svgEl("svg");
         svg.setAttribute("viewBox", "0 0 240 180");
         svg.classList.add("residual-scatter-svg");
@@ -3035,20 +3568,20 @@ end
 
         for (const row of rows) {
             const point = svgEl("circle");
-            point.setAttribute("cx", sx(row.dx).toFixed(2));
-            point.setAttribute("cy", sy(row.dy).toFixed(2));
+            point.setAttribute("cx", sx(xValue(row)).toFixed(2));
+            point.setAttribute("cy", sy(yValue(row)).toFixed(2));
             point.setAttribute("r", "3.4");
-            point.classList.add("residual-scatter-point");
+            point.classList.add(pointClass);
             svg.appendChild(point);
         }
 
         const labels = [
-            [`x residual (px)`, plot.x0 + plot.w / 2, 174, "middle"],
-            [`y residual (px)`, 10, plot.y0 + plot.h / 2, "middle", -90],
-            [`-${span}`, plot.x0, 164, "middle"],
-            [`+${span}`, plot.x0 + plot.w, 164, "middle"],
-            [`+${span}`, 22, plot.y0 + 3, "end"],
-            [`-${span}`, 22, plot.y0 + plot.h + 3, "end"],
+            [xLabel, plot.x0 + plot.w / 2, 174, "middle"],
+            [yLabel, 10, plot.y0 + plot.h / 2, "middle", -90],
+            [`-${tickText(span)}`, plot.x0, 164, "middle"],
+            [`+${tickText(span)}`, plot.x0 + plot.w, 164, "middle"],
+            [`+${tickText(span)}`, 22, plot.y0 + 3, "end"],
+            [`-${tickText(span)}`, 22, plot.y0 + plot.h + 3, "end"],
         ];
         for (const [text, x, y, anchor, rotate] of labels) {
             const label = svgEl("text");
@@ -3062,7 +3595,7 @@ end
             label.classList.add("residual-scatter-label");
             svg.appendChild(label);
         }
-        residualHistogram.appendChild(svg);
+        return svg;
     }
 
     function setTriangleDebugSnapshot(snapshot) {
@@ -3201,11 +3734,11 @@ end
         }
         const offset = 12 * (window.devicePixelRatio || 1);
         for (const star of visibleCatalogStars()) {
+            if (star.mag > 4.0 || !star.name || !star.name.trim()) {
+                continue;
+            }
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
-            const label = star.name && star.name.trim()
-                ? star.name.trim()
-                : `mag ${star.mag.toFixed(1)}`;
-            addOverlayLabel(label, [x + offset, y - offset], "star-name-label");
+            addOverlayLabel(star.name.trim(), [x + offset, y - offset], "star-name-label");
         }
     }
 
@@ -3227,10 +3760,8 @@ end
             }
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
             addOverlayCircle([x, y], `catalog-pairing-marker ${starMagnitudeClass(star.mag)}`);
-            if (state.showStarNames) {
-                const label = star.name && star.name.trim()
-                    ? star.name.trim()
-                    : `mag ${star.mag.toFixed(1)}`;
+            if (state.showStarNames && star.mag <= 4.0 && star.name && star.name.trim()) {
+                const label = star.name.trim();
                 addOverlayLabel(label, [x + offset, y - offset], "catalog-pairing-label");
             }
         }
@@ -3242,14 +3773,14 @@ end
         const lon = Number(controls.lonDeg.value) || 0;
         const labelOffset = 16 * (window.devicePixelRatio || 1);
         for (const match of state.matches) {
-            const matchLabel = match.catalog.name && match.catalog.name.trim()
-                ? match.catalog.name.trim()
-                : `mag ${match.catalog.mag.toFixed(1)}`;
+            const matchLabel = match.catalog.name && match.catalog.name.trim() && match.catalog.mag <= 4.0 ?
+                match.catalog.name.trim() :
+                "";
             const markerClass = `paired-marker ${starMagnitudeClass(match.catalog.mag)}`;
             if (state.showPickedMatchMarkers) {
                 const imagePoint = imageMarkerCanvasPixel(match.image.x, match.image.y);
                 const visible = addOverlayCircle(imagePoint, markerClass);
-                if (visible && state.showStarNames) {
+                if (visible && state.showStarNames && matchLabel) {
                     addOverlayLabel(matchLabel, [imagePoint[0] + labelOffset, imagePoint[1] - labelOffset],
                         "match-label");
                 }
@@ -3266,7 +3797,7 @@ end
                 false
             );
             if (catalogPoint && addOverlayCircle(catalogPoint, markerClass)) {
-                if (state.showStarNames) {
+                if (state.showStarNames && matchLabel) {
                     addOverlayLabel(matchLabel, [catalogPoint[0] + labelOffset, catalogPoint[1] - labelOffset],
                         "match-label");
                 }
@@ -3469,6 +4000,7 @@ end
             `site: lat ${controls.latDeg.value} deg, lon ${controls.lonDeg.value} deg, alt ${controls.altM.value} m\n` +
             `optpar: [${optparWithModel}]\n` +
             `image high-pass: ${controls.highPassImage.checked ? `${controls.highPassWidth.value} px Gaussian` : "off"}\n` +
+            `star catalogue: ${activeStarCatalogName()} (${state.catalogStatus})\n` +
             `catalog stars <= mag ${controls.maxMag.value}: ` +
             `${state.projected.filter(star => star.mag <= Number(controls.maxMag.value)).length}\n` +
             `f1/f2: ${optpar[0].toFixed(6)}, ${optpar[1].toFixed(6)}\n` +
@@ -3519,7 +4051,7 @@ end
 
     function matchInstructionText() {
         if (!state.image) {
-            return "Load an image first. Press s for star picking, or c to switch between pairing and Stellarium views.";
+            return "Load an image first. Press s for star picking, or x to compare the image and catalog views.";
         }
         if (state.showFitResiduals) {
             return "Fit residual mode: normal markings are hidden. Red lines connect each identified image star to its fitted catalog position; press r to return.";
@@ -3543,7 +4075,7 @@ end
             if (state.showKdePositionDots) {
                 return "KDE dot inspection: all other markings are hidden. Press k to return to the normal overlay.";
             }
-            return "Star pairing view: left-drag moves the 90 deg elevation point in x/y. Right-drag rotates the azimuth grid around that point. Wheel edits f1/f2 together. Press c for Stellarium view, x for pure image/Stellarium views, s to pick an image star, h to show/hide detected stars, k for KDE sub-pixel dots, n to show/hide star names, d to delete a star pairing, hold m to mark bad yellow detections, or z to zoom.";
+            return "Star pairing view: left-drag moves the 90 deg elevation point in x/y. Right-drag rotates the azimuth grid around that point. Wheel edits f1/f2 together. Press x for pure image/Stellarium comparison, s to pick an image star, h to show/hide detected stars, k for KDE sub-pixel dots, n to show/hide star names, d to delete a star pairing, hold m to mark bad yellow detections, or z to zoom.";
         }
         if (!state.pendingMatch) {
             return "Star pairing: hold s and click the image star. A KDE centroid fit will select the sub-pixel star position.";
@@ -3590,7 +4122,11 @@ end
         const maxR = sortedR[sortedR.length - 1];
         const medianDx = median(rows.map(row => row.dx));
         const medianDy = median(rows.map(row => row.dy));
-        return `fit residual scatter: ${rows.length} stars, RMS ${rms.toFixed(2)} px, ` +
+        const angularRows = rows.filter(row => row.angular);
+        const angularText = angularRows.length ?
+            `, angular RMS ${Math.sqrt(angularRows.reduce((acc, row) => acc + row.angular.rDeg * row.angular.rDeg, 0) / angularRows.length).toFixed(3)} deg` :
+            "";
+        return `fit residual scatter: ${rows.length} stars, RMS ${rms.toFixed(2)} px${angularText}, ` +
             `median ${medianR.toFixed(2)} px, max ${maxR.toFixed(2)} px, ` +
             `median dx/dy ${medianDx.toFixed(2)}/${medianDy.toFixed(2)} px, ` +
             `mean dx/dy ${meanDx.toFixed(2)}/${meanDy.toFixed(2)} px, ` +
@@ -6316,6 +6852,10 @@ end
             minAsterismChecksForNewStars: stage.minAsterismChecksForNewStars,
             maxAsterismCheckPartners: stage.maxAsterismCheckPartners,
             newStarAsterismSignatureTolerance: stage.newStarAsterismSignatureTolerance,
+            matchingCatalogName: stage.matchingCatalogName,
+            blindCatalogName: stage.blindCatalogName,
+            asterismCatalogName: stage.asterismCatalogName,
+            projectedCatalogName: stage.projectedCatalogName,
             methodLabel: "lucky auto star finder",
         });
         let seeded = false;
@@ -6336,6 +6876,12 @@ end
                         `${String(pass.result.status || "").replace(/auto-identify/g, "automatic matching")}; ` +
                         `added ${fallbackAdded} provisional blind bootstrap pairing` +
                         `${fallbackAdded === 1 ? "" : "s"} for fitting`;
+                    state.lastIdentificationSummary = summarizeIdentificationResult(
+                        pass.result,
+                        pass.added,
+                        pass.detections,
+                        `I'm feeling lucky ${stageIndex}/${totalStages}`,
+                    );
                     updateAutoMatches();
                     render();
                     await yieldToBrowser();
@@ -6347,6 +6893,12 @@ end
                 await yieldToBrowser();
             }
         }
+        state.lastIdentificationSummary = summarizeIdentificationResult(
+            pass.result,
+            pass.added,
+            pass.detections,
+            `I'm feeling lucky ${stageIndex}/${totalStages}`,
+        );
         return {...pass, seeded};
     }
 
@@ -7196,6 +7748,13 @@ end
             });
         }
 
+        for (const stage of stages) {
+            stage.matchingCatalogName = "yale";
+            stage.blindCatalogName = "yale";
+            stage.asterismCatalogName = "yale";
+            stage.projectedCatalogName = "yale";
+        }
+
         let totalAdded = 0;
         let totalPruned = 0;
         let rejectedExpansionStars = 0;
@@ -7306,6 +7865,23 @@ end
                 `${rejectedExpansionStars} rejected by RMSE guard, ` +
                 `${totalPruned} pruned, ` +
                 `${acceptedFits} accepted fit step${acceptedFits === 1 ? "" : "s"}; undo is available`;
+            state.lastLuckyFitSummary = {
+                model: modelName,
+                stagesRun,
+                addedPairings: totalAdded,
+                startingPairings: startingMatchCount,
+                finalPairings: state.matches.length,
+                removedBadAreaMatches,
+                rejectedExpansionStars,
+                prunedOutliers: totalPruned,
+                acceptedFits,
+                seededFromBlindAsterisms: seeded,
+                stoppedAfterEmptyFirstStage,
+                stoppedAfterPoorBrownConradyFit,
+                finalRmsPx: Number.isFinite(rms) ? rms : null,
+                fittingPairs: fitCount,
+                lastIdentification: state.lastIdentificationSummary,
+            };
             state.asterismEdges = [];
             state.triangleDebugSnapshot = null;
             state.showAsterismLines = false;
@@ -7403,6 +7979,8 @@ end
         state.lastFitVector = null;
         state.lastAcceptedFitVector = null;
         state.automaticMatchingStatus = "automatic matching: not run";
+        state.lastIdentificationSummary = null;
+        state.lastLuckyFitSummary = null;
         state.fitMessage = "lens fit: not run";
     }
 
@@ -7748,7 +8326,7 @@ end
 
     function updateDetectionCircleButton() {
         controls.toggleDetectionCircles.textContent =
-            state.displayMode === "stellarium" ? "Star pairing view (C)" : "Stellarium view (C)";
+            state.displayMode === "stellarium" ? "Star pairing view" : "Stellarium view";
         controls.toggleDetectionCircles.classList.toggle("toggle-on", state.displayMode === "stellarium");
     }
 
@@ -8615,7 +9193,7 @@ end
     for (const el of document.querySelectorAll(".controls input, .controls select")) {
         if (el !== controls.file &&
                 el !== controls.highPassImage && el !== controls.highPassWidth &&
-                el !== controls.maxMag && el !== controls.optmod &&
+                el !== controls.maxMag && el !== controls.optmod && el !== controls.starCatalog &&
                 el !== controls.exportLanguage) {
             el.addEventListener("input", () => {
                 syncModelOptparFromControls();
@@ -8625,6 +9203,15 @@ end
     }
     controls.highPassImage.addEventListener("change", refreshDisplayImage);
     controls.highPassWidth.addEventListener("input", refreshDisplayImage);
+    if (controls.starCatalog) {
+        controls.starCatalog.addEventListener("change", () => {
+            state.pendingMatch = null;
+            state.lastIdentificationSummary = null;
+            state.automaticMatchingStatus = `star catalogue switched to ${activeStarCatalogName()}`;
+            playInteractionSound("mode");
+            recomputeAndRender();
+        });
+    }
     controls.maxMag.addEventListener("input", () => {
         if (Object.prototype.hasOwnProperty.call(state.maxMagByMode, state.displayMode)) {
             state.maxMagByMode[state.displayMode] = Number(controls.maxMag.value) || 4.0;
@@ -8680,6 +9267,66 @@ end
     });
     controls.toggleAmbientMusic.addEventListener("click", toggleAmbientMusic);
     controls.toggleFitResiduals.addEventListener("click", toggleFitResiduals);
+    function moveResidualPlot(clientX, clientY) {
+        if (!state.residualPlotDrag || !residualHistogram) {
+            return;
+        }
+        const parentRect = residualHistogram.parentElement.getBoundingClientRect();
+        const panelRect = residualHistogram.getBoundingClientRect();
+        const margin = 8;
+        const left = Math.min(
+            Math.max(clientX - parentRect.left - state.residualPlotDrag.dx, margin),
+            Math.max(margin, parentRect.width - panelRect.width - margin),
+        );
+        const top = Math.min(
+            Math.max(clientY - parentRect.top - state.residualPlotDrag.dy, margin),
+            Math.max(margin, parentRect.height - panelRect.height - margin),
+        );
+        residualHistogram.style.left = `${left}px`;
+        residualHistogram.style.top = `${top}px`;
+        residualHistogram.style.right = "auto";
+    }
+
+    if (residualHistogram) {
+        residualHistogram.addEventListener("pointerdown", event => {
+            if (event.button !== 0) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = residualHistogram.getBoundingClientRect();
+            state.residualPlotDrag = {
+                dx: event.clientX - rect.left,
+                dy: event.clientY - rect.top,
+            };
+            residualHistogram.setPointerCapture(event.pointerId);
+            moveResidualPlot(event.clientX, event.clientY);
+        });
+        residualHistogram.addEventListener("pointermove", event => {
+            if (!state.residualPlotDrag) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            moveResidualPlot(event.clientX, event.clientY);
+        });
+        residualHistogram.addEventListener("pointerup", event => {
+            if (!state.residualPlotDrag) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            state.residualPlotDrag = null;
+            if (residualHistogram.hasPointerCapture(event.pointerId)) {
+                residualHistogram.releasePointerCapture(event.pointerId);
+            }
+            focusImageWindowSoon();
+        });
+        residualHistogram.addEventListener("pointercancel", () => {
+            state.residualPlotDrag = null;
+        });
+    }
+
     function moveStarPickingLegend(clientX, clientY) {
         if (!state.starPickingLegendDrag || !starPickingLegend) {
             return;
@@ -8702,7 +9349,42 @@ end
 
     if (starPickingLegend) {
         starPickingLegend.addEventListener("pointerdown", event => {
+            if (event.button !== 0 || event.target === starPickingLegendClose) {
+                event.stopPropagation();
+                return;
+            }
+            event.preventDefault();
             event.stopPropagation();
+            const rect = starPickingLegend.getBoundingClientRect();
+            state.starPickingLegendDrag = {
+                dx: event.clientX - rect.left,
+                dy: event.clientY - rect.top,
+            };
+            starPickingLegend.setPointerCapture(event.pointerId);
+            moveStarPickingLegend(event.clientX, event.clientY);
+        });
+        starPickingLegend.addEventListener("pointermove", event => {
+            if (!state.starPickingLegendDrag) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            moveStarPickingLegend(event.clientX, event.clientY);
+        });
+        starPickingLegend.addEventListener("pointerup", event => {
+            if (!state.starPickingLegendDrag) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            state.starPickingLegendDrag = null;
+            if (starPickingLegend.hasPointerCapture(event.pointerId)) {
+                starPickingLegend.releasePointerCapture(event.pointerId);
+            }
+            focusImageWindowSoon();
+        });
+        starPickingLegend.addEventListener("pointercancel", () => {
+            state.starPickingLegendDrag = null;
         });
     }
     if (starPickingLegendClose) {
@@ -8785,8 +9467,7 @@ end
     });
     controls.copyOptpar.addEventListener("click", () => {
         playInteractionSound("click");
-        const language = selectedExportLanguage();
-        copyTextToClipboard(optparArrayText(language), `optpar ${language} array`);
+        copyTextToClipboard(currentFitInfoJsonText(), "fit info JSON");
     });
     controls.copyPythonMapper.addEventListener("click", () => {
         playInteractionSound("click");
@@ -8843,7 +9524,9 @@ end
         }
         playPingSound();
         state.dragging = true;
-        state.lensDragMode = event.button === 0 ? "zenithPosition" : "azimuthGridRoll";
+        state.lensDragMode = event.button === 0 ?
+            (usesRectilinearDragControls() ? "rectilinearElevationRoll" : "zenithPosition") :
+            "azimuthGridRoll";
         state.lastMouse = [event.clientX, event.clientY];
         canvas.setPointerCapture(event.pointerId);
     });
@@ -8881,6 +9564,14 @@ end
                 beta,
                 gamma
             );
+            syncModelOptparFromControls();
+            recomputeAndRender();
+        } else if (state.lensDragMode === "rectilinearElevationRoll") {
+            const boresight = boresightAzElFromCameraAngles(alpha, beta);
+            const newEl = clamp(boresight.el + dyCss * 0.06, -5, 90);
+            const newGamma = wrapDegrees180(gamma - dxCss * 0.06);
+            setCameraAnglesFromBoresightAzEl(boresight.az, newEl);
+            controls.rotGamma.value = newGamma.toPrecision(12);
             syncModelOptparFromControls();
             recomputeAndRender();
         } else if (state.lensDragMode === "azimuthGridRoll") {
@@ -8984,10 +9675,6 @@ end
             state.pendingMatch = null;
             playInteractionSound("mode");
             render();
-        } else if ((event.key === "c" || event.key === "C") && !event.repeat) {
-            event.preventDefault();
-            toggleDetectionCircles();
-            playInteractionSound("mode");
         } else if ((event.key === "x" || event.key === "X") && !event.repeat) {
             event.preventDefault();
             togglePureView();
@@ -9089,6 +9776,7 @@ end
         }
         initializeApp.done = true;
         state.lastLensEquation = "";
+        loadTycho2Catalog();
         updateLensEquation(currentOptpar(), Number(controls.optmod.value));
         refreshTestCaseList();
         if (!state.image) {

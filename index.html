@@ -23,7 +23,6 @@
             <kbd>D</kbd> delete pairing,
             <kbd>M</kbd> mark bad detections,
             <kbd>Z</kbd> zoom,
-            <kbd>C</kbd> pairing/Stellarium view,
             <kbd>X</kbd> pure image/Stellarium,
             <kbd>N</kbd> star names,
             <kbd>H</kbd> detected stars,
@@ -127,13 +126,19 @@
                 </select>
             </label>
             <div class="button-row button-row-2">
-                <button id="copyOptpar" type="button">Copy optpar</button>
+                <button id="copyOptpar" type="button">Copy fit info</button>
                 <button id="copyPythonMapper" type="button">Copy mapper code</button>
             </div>
         </section>
 
         <section>
             <h2>Stars</h2>
+            <label>Star catalogue
+                <select id="starCatalog">
+                    <option value="tycho2" selected>Tycho-2 VT &lt; 8</option>
+                    <option value="yale">Yale Bright Star</option>
+                </select>
+            </label>
             <label>Image brightness <span id="brightnessValue">0.06</span>
                 <input id="brightness" type="range" min="-1" max="1" value="0.06" step="0.01">
             </label>
@@ -161,7 +166,7 @@
             </div>
             <button id="toggleRaDecGrid" type="button">Show RA/Dec grid</button>
             <button id="toggleAzElGrid" type="button">Hide az/el grid</button>
-            <button id="toggleDetectionCircles" type="button">Stellarium view (C)</button>
+            <button id="toggleDetectionCircles" type="button">Stellarium view</button>
             <button id="toggleStarNames" type="button">Hide star names (N)</button>
         </section>
 
@@ -267,8 +272,9 @@ window.MathJax = {
 <script src="js/aidatools.js?v=20260526h"></script>
 <script src="js/centroid.js?v=20260526a"></script>
 <script src="js/export_generators.js?v=20260524b"></script>
+<script src="js/catalogs.js?v=20260527a"></script>
 <script src="js/star_detector.js?v=20260525b"></script>
 <script src="js/auto_identifier.js?v=20260526a"></script>
-<script src="js/app.js?v=0.2.16"></script>
+<script src="js/app.js?v=0.2.17"></script>
 </body>
 </html>
