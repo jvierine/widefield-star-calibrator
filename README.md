@@ -196,11 +196,11 @@ WISC first writes the local sky direction as an east/north/up unit vector:
 
 $$
 \mathbf{e} =
-\begin{bmatrix}
-\sin(\mathrm{ze})\sin(\mathrm{az}) \\
-\sin(\mathrm{ze})\cos(\mathrm{az}) \\
+\left[
+\sin(\mathrm{ze})\sin(\mathrm{az}),
+\sin(\mathrm{ze})\cos(\mathrm{az}),
 \cos(\mathrm{ze})
-\end{bmatrix}.
+\right]^T .
 $$
 
 The camera pointing parameters rotate this direction into the camera frame:
@@ -208,12 +208,7 @@ The camera pointing parameters rotate this direction into the camera frame:
 $$
 \mathbf{s}
 = R(\alpha_\mathrm{cam}, \beta_\mathrm{cam}, \gamma_\mathrm{cam})\mathbf{e}
-=
-\begin{bmatrix}
-s_1 \\
-s_2 \\
-s_3
-\end{bmatrix}.
+= \left[s_1, s_2, s_3\right]^T .
 $$
 
 The final image coordinates are normalized coordinates multiplied by image
@@ -229,7 +224,7 @@ For the radial AIDA-style models, define
 
 $$
 \rho = \sqrt{s_1^2 + s_2^2}, \qquad
-\theta = \operatorname{atan2}(\rho, s_3),
+\theta = \mathrm{atan2}(\rho, s_3),
 $$
 
 $$
@@ -249,7 +244,7 @@ function $q(\theta)$ defined as:
 | --- | --- |
 | `optmod 1` | Rectilinear/pinhole projection: $u = \frac{1}{2} + d_x + f_1s_1/s_3$, $v = \frac{1}{2} + d_y + f_2s_2/s_3$. |
 | `optmod 2` | Sinusoidal radial projection: $q(\theta) = \sin(a\theta)$. This is often useful for fisheye and all-sky lenses. |
-| `optmod 3` | Hybrid rectilinear/equidistant projection: $\mathbf{p} = (1-a)\begin{bmatrix}s_1/s_3 \\ s_2/s_3\end{bmatrix} + a\theta\begin{bmatrix}s_1/\rho \\ s_2/\rho\end{bmatrix}$. |
+| `optmod 3` | Hybrid rectilinear/equidistant projection: $p_x = (1-a)s_1/s_3 + a\theta s_1/\rho$, $p_y = (1-a)s_2/s_3 + a\theta s_2/\rho$. |
 | `optmod 4` | Power-law equidistant-style projection: $q(\theta) = |\theta|^a$. |
 | `optmod 5` | Scaled rectilinear projection: $q(\theta) = \tan(a\theta)$. |
 | `optmod 12` | Unified radial projection: $q(\theta)=\tan(a\theta)/a$ for $a>0$, $q(\theta)=\theta$ for $a=0$, and $q(\theta)=\sin(a\theta)/a$ for $a<0$. |
@@ -270,17 +265,11 @@ D(r) = 1 + k_1r^2 + k_2r^4 + k_3r^6,
 $$
 
 $$
-x_d =
-x_nD(r)
-+ 2p_1x_ny_n
-+ p_2(r^2 + 2x_n^2),
+x_d = x_nD(r) + 2p_1x_ny_n + p_2(r^2 + 2x_n^2),
 $$
 
 $$
-y_d =
-y_nD(r)
-+ p_1(r^2 + 2y_n^2)
-+ 2p_2x_ny_n,
+y_d = y_nD(r) + p_1(r^2 + 2y_n^2) + 2p_2x_ny_n,
 $$
 
 $$
