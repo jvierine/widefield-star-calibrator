@@ -352,6 +352,95 @@
         return minValue + (bestIdx + 0.5) * width;
     }
 
+    function solve3x3(matrix, vector) {
+        const a = matrix.map(row => row.slice());
+        const b = vector.slice();
+        for (let col = 0; col < 3; col += 1) {
+            let pivot = col;
+            for (let row = col + 1; row < 3; row += 1) {
+                if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) {
+                    pivot = row;
+                }
+            }
+            if (Math.abs(a[pivot][col]) < 1e-12) {
+                return null;
+            }
+            if (pivot !== col) {
+                [a[col], a[pivot]] = [a[pivot], a[col]];
+                [b[col], b[pivot]] = [b[pivot], b[col]];
+            }
+            const denom = a[col][col];
+            for (let j = col; j < 3; j += 1) {
+                a[col][j] /= denom;
+            }
+            b[col] /= denom;
+            for (let row = 0; row < 3; row += 1) {
+                if (row === col) {
+                    continue;
+                }
+                const factor = a[row][col];
+                for (let j = col; j < 3; j += 1) {
+                    a[row][j] -= factor * a[col][j];
+                }
+                b[row] -= factor * b[col];
+            }
+        }
+        return b;
+    }
+
+    function fitCircleToEdgePoints(points) {
+        if (!Array.isArray(points) || points.length < 8) {
+            return null;
+        }
+        const ata = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+        const atb = [0, 0, 0];
+        for (const point of points) {
+            const x = point[0];
+            const y = point[1];
+            const row = [x, y, 1];
+            const rhs = -(x * x + y * y);
+            for (let i = 0; i < 3; i += 1) {
+                atb[i] += row[i] * rhs;
+                for (let j = 0; j < 3; j += 1) {
+                    ata[i][j] += row[i] * row[j];
+                }
+            }
+        }
+        const solution = solve3x3(ata, atb);
+        if (!solution) {
+            return null;
+        }
+        const [d, e, f] = solution;
+        const centerX = -0.5 * d;
+        const centerY = -0.5 * e;
+        const r2 = centerX * centerX + centerY * centerY - f;
+        if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !(r2 > 0)) {
+            return null;
+        }
+        return {centerX, centerY, radiusPx: Math.sqrt(r2)};
+    }
+
+    function robustFitCircleToEdgePoints(points, iterations = 5) {
+        let kept = Array.isArray(points) ? points.slice() : [];
+        let fit = null;
+        for (let i = 0; i < iterations; i += 1) {
+            fit = fitCircleToEdgePoints(kept);
+            if (!fit) {
+                return null;
+            }
+            const residuals = kept.map(point => Math.abs(Math.hypot(point[0] - fit.centerX, point[1] - fit.centerY) - fit.radiusPx));
+            const sorted = residuals.slice().sort((a, b) => a - b);
+            const q75 = sorted[Math.min(sorted.length - 1, Math.floor(0.75 * sorted.length))];
+            const limit = Math.max(4, 2.0 * q75 + 2);
+            const next = kept.filter((point, idx) => residuals[idx] <= limit);
+            if (next.length === kept.length || next.length < 8) {
+                break;
+            }
+            kept = next;
+        }
+        return fit ? {...fit, edgePoints: points.length, usedEdgePoints: kept.length} : null;
+    }
+
     function estimateFisheyeCircleFromThreshold(imageData, options = {}) {
         const width = imageData.width;
         const height = imageData.height;
@@ -366,6 +455,7 @@
         const centersY = [];
         const radiiX = [];
         const radiiY = [];
+        const edgePoints = [];
         for (let y = 0; y < height; y += step) {
             let first = null;
             let last = null;
@@ -382,6 +472,7 @@
                 if (run >= minRun && run <= maxRun && first > 1 && last < width - 2) {
                     centersX.push(0.5 * (first + last));
                     radiiX.push(0.5 * run);
+                    edgePoints.push([first, y], [last, y]);
                 }
             }
         }
@@ -401,15 +492,20 @@
                 if (run >= minRun && run <= maxRun && first > 1 && last < height - 2) {
                     centersY.push(0.5 * (first + last));
                     radiiY.push(0.5 * run);
+                    edgePoints.push([x, first], [x, last]);
                 }
             }
         }
         if (centersX.length < 6 || centersY.length < 6) {
             return null;
         }
-        const centerX = peakModeValue(centersX, Math.max(2, minSide / 160));
-        const centerY = peakModeValue(centersY, Math.max(2, minSide / 160));
-        const radiusPx = peakModeValue(radiiX.concat(radiiY), Math.max(2, minSide / 160));
+        const modeCenterX = peakModeValue(centersX, Math.max(2, minSide / 160));
+        const modeCenterY = peakModeValue(centersY, Math.max(2, minSide / 160));
+        const modeRadiusPx = peakModeValue(radiiX.concat(radiiY), Math.max(2, minSide / 160));
+        const circleFit = robustFitCircleToEdgePoints(edgePoints, 5);
+        const centerX = circleFit ? circleFit.centerX : modeCenterX;
+        const centerY = circleFit ? circleFit.centerY : modeCenterY;
+        const radiusPx = circleFit ? circleFit.radiusPx : modeRadiusPx;
         const cx0 = 0.5 * (width - 1);
         const cy0 = 0.5 * (height - 1);
         const centerOffsetFraction = Math.hypot(centerX - cx0, centerY - cy0) / minSide;
@@ -427,6 +523,12 @@
             rows: centersX.length,
             cols: centersY.length,
             threshold,
+            modeCenterX,
+            modeCenterY,
+            modeRadiusPx,
+            edgePoints: circleFit ? circleFit.edgePoints : edgePoints.length,
+            usedEdgePoints: circleFit ? circleFit.usedEdgePoints : edgePoints.length,
+            circleFit: Boolean(circleFit),
         };
     }
 
@@ -538,7 +640,7 @@
             Math.round(minSide / 1400));
         const samples = Number.isFinite(options.radialProfileSamples) ?
             Math.max(96, Math.floor(options.radialProfileSamples)) :
-            minSide >= 1200 ? 720 : 192;
+            minSide >= 1200 ? 360 : 192;
         const binWidth = Number.isFinite(options.radialDensityBinWidth) ? options.radialDensityBinWidth : 2;
         const blackThreshold = Number.isFinite(options.radialBlackThreshold) ? options.radialBlackThreshold : 25;
         const profile = [];

@@ -240,15 +240,18 @@ function scoreAgainstManual(matches, metadata, radiusPx = 18) {
 }
 
 async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
+    const totalStart = process.hrtime.bigint();
     const caseDir = path.join(ROOT, "test_cases", caseId);
     const metadata = JSON.parse(fs.readFileSync(path.join(caseDir, "metadata.json"), "utf8"));
     const imagePath = path.join(caseDir, metadata.image);
     const imageData = await readPngImageData(imagePath);
+    const detectionStart = process.hrtime.bigint();
     const detection = AidaTools.detectFisheyeAnnulus(imageData, {
         filename: metadata.image || caseId,
         alpha: 0.46,
         samples: 128,
     });
+    const detectionEnd = process.hrtime.bigint();
     const reference = horizonFromOptpar(metadata, imageData.width, imageData.height);
     const maxMagnitude = Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 4.5;
     const catalogMaxZenithDeg = Number.isFinite(options.catalogMaxZenithDeg) ? options.catalogMaxZenithDeg : 80;
@@ -260,6 +263,7 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
         maxZenithDeg: catalogMaxZenithDeg,
     }, maxMagnitude);
     const horizonMask = fisheyeHorizonMask(detection, 0.10);
+    const starDetectionStart = process.hrtime.bigint();
     const detectedStars = await StarDetector.detectBrightStars(imageData, {
         maxDetections: Number.isFinite(options.maxDetections) ? options.maxDetections : 90,
         thresholdSigma: 2.1,
@@ -274,6 +278,7 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
         maskPredicate: horizonMask ? horizonMask.maskPredicate : null,
         ...(options.detectorOptions || {}),
     });
+    const starDetectionEnd = process.hrtime.bigint();
     const preflatten = detection.detected ? AidaTools.fisheyePreflattenFromAnnulus(detection) : {};
     if (preflatten && Array.isArray(preflatten.preflattenRadialAlphaCandidates)) {
         preflatten.preflattenRadialAlphaCandidates = [0.42, 0.46, 0.50, 0.54];
@@ -281,6 +286,7 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
             Number((detection.radiusPx / imageData.width / Math.sin(alpha * Math.PI / 2)).toFixed(4))
         );
     }
+    const identificationStart = process.hrtime.bigint();
     const identification = AutoIdentifier.identifyStarsBlind(visible, detectedStars.detections, {
         imageWidth: imageData.width,
         imageHeight: imageData.height,
@@ -309,7 +315,16 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
         preflattenSignCandidates: [[1, 1], [-1, -1], [1, -1], [-1, 1]],
         ...preflatten,
     });
+    const identificationEnd = process.hrtime.bigint();
     const score = scoreAgainstManual(identification.matches || [], metadata, options.manualRadiusPx || 18);
+    const totalEnd = process.hrtime.bigint();
+    const toMs = (a, b) => Number(b - a) / 1e6;
+    const benchmarks = {
+        horizonDetectionMs: toMs(detectionStart, detectionEnd),
+        starDetectionMs: toMs(starDetectionStart, starDetectionEnd),
+        blindIdentificationMs: toMs(identificationStart, identificationEnd),
+        totalMs: toMs(totalStart, totalEnd),
+    };
     const result = {
         caseId,
         metadata,
@@ -322,6 +337,7 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
         horizonMask,
         identification,
         score,
+        benchmarks,
     };
     if (options.writeReport !== false) {
         result.report = writeReport(result, options);
@@ -362,6 +378,9 @@ function writeReport(result, options = {}) {
         ["Threshold circle seed", ann.thresholdCircle ?
             `${ann.thresholdCircle.centerX.toFixed(1)}, ${ann.thresholdCircle.centerY.toFixed(1)} px; r=${ann.thresholdCircle.radiusPx.toFixed(1)} px` :
             "n/a"],
+        ["Threshold edge points", ann.thresholdCircle ?
+            `${ann.thresholdCircle.usedEdgePoints || 0}/${ann.thresholdCircle.edgePoints || 0} used` :
+            "n/a"],
         ["Bootstrap usable radius", result.horizonMask ? `${result.horizonMask.usableRadius.toFixed(1)} px` : "n/a"],
         ["Bootstrap catalog zenith limit", "80 deg (stars >=10 deg elevation)"],
         ["Reference center", ref ? `${ref.centerX.toFixed(1)}, ${ref.centerY.toFixed(1)} px` : "n/a"],
@@ -370,6 +389,10 @@ function writeReport(result, options = {}) {
         ["Visible catalog stars", result.visible.length],
         ["Blind lucky matches", (result.identification.matches || []).length],
         ["Manual overlap", `${result.score.correct} correct, ${result.score.wrong} wrong, ${result.score.unknown} unknown`],
+        ["Horizon detection time", `${result.benchmarks.horizonDetectionMs.toFixed(1)} ms (target <1000 ms)`],
+        ["Star detection time", `${result.benchmarks.starDetectionMs.toFixed(1)} ms`],
+        ["Blind identification time", `${result.benchmarks.blindIdentificationMs.toFixed(1)} ms`],
+        ["Total report calculation time", `${result.benchmarks.totalMs.toFixed(1)} ms`],
     ];
     const width = result.imageData.width;
     const height = result.imageData.height;
