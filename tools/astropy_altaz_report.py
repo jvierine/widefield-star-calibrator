@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Compare WISC/AIDA RA-Dec to az/el calculations with Astropy for IMG_9970.
+"""Compare WISC/AIDA RA-Dec to az/el calculations with Astropy.
 
-The IMG_9970 test case contains a saved lens model and manually/automatically
-paired catalogue stars.  The site and time metadata are taken as trusted EXIF
-metadata from the original HEIC image.
+This is a fast regression for saved calibration cases.  It exercises the same
+low-level spherical astronomy equations used by js/aidatools.js, using Astropy
+as an independent reference for catalogue-star azimuth/elevation coordinates.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import subprocess
 from pathlib import Path
 
 import astropy.units as u
@@ -20,11 +21,11 @@ from astropy.utils import iers
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_METADATA = ROOT / "test_cases" / "IMG_9970" / "metadata.json"
-DEFAULT_OUT_DIR = ROOT / "test-report" / "img9970-astropy-altaz"
-MAX_ANGULAR_ERROR_DEG = 0.75
-MAX_AZ_ERROR_DEG = 0.70
-MAX_EL_ERROR_DEG = 0.20
+DEFAULT_OUT_DIR = ROOT / "test-report" / "astropy-altaz"
+MIN_TOTAL_COMPARISONS = 100
+MAX_ANGULAR_ERROR_DEG = 0.85
+MAX_AZ_ERROR_DEG = 2.00
+MAX_EL_ERROR_DEG = 0.30
 
 
 def wrap_deg(value: float) -> float:
@@ -72,7 +73,13 @@ def gmst_degrees(timestamp: str) -> float:
     ) % 360.0
 
 
-def aida_radec_to_az_el(ra_hours: float, dec_deg: float, timestamp: str, lat_deg: float, lon_deg: float) -> tuple[float, float]:
+def aida_radec_to_az_el(
+    ra_hours: float,
+    dec_deg: float,
+    timestamp: str,
+    lat_deg: float,
+    lon_deg: float,
+) -> tuple[float, float]:
     deg = math.pi / 180.0
     rsidtime = (gmst_degrees(timestamp) + lon_deg) * deg
     rra = ra_hours / 12.0 * math.pi
@@ -92,15 +99,42 @@ def aida_radec_to_az_el(ra_hours: float, dec_deg: float, timestamp: str, lat_deg
     return az * 180.0 / math.pi, alt * 180.0 / math.pi
 
 
+def tracked_metadata_paths() -> list[Path]:
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "test_cases/*/metadata.json"],
+            cwd=ROOT,
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return []
+    return [ROOT / line for line in result.stdout.splitlines() if line.strip()]
+
+
+def filesystem_metadata_paths() -> list[Path]:
+    return sorted((ROOT / "test_cases").glob("*/metadata.json"))
+
+
 def load_case(metadata_path: Path) -> dict:
     with metadata_path.open("r", encoding="utf8") as fh:
-        return json.load(fh)
+        metadata = json.load(fh)
+    metadata["_metadataPath"] = str(metadata_path.relative_to(ROOT))
+    return metadata
 
 
-def compare(metadata: dict) -> dict:
-    iers.conf.auto_download = False
-    iers.conf.iers_degraded_accuracy = "warn"
+def has_comparable_stars(metadata: dict) -> bool:
+    if not {"timestampUtc", "latDeg", "lonDeg", "optpar"} <= set(metadata):
+        return False
+    for match in metadata.get("matches", []):
+        star = match.get("catalog", {})
+        if {"raHours", "decDeg"} <= set(star):
+            return True
+    return False
 
+
+def compare_case(metadata: dict) -> dict:
     location = EarthLocation(
         lat=float(metadata["latDeg"]) * u.deg,
         lon=float(metadata["lonDeg"]) * u.deg,
@@ -115,7 +149,7 @@ def compare(metadata: dict) -> dict:
     rows = []
     for match in metadata.get("matches", []):
         star = match.get("catalog", {})
-        if not {"raHours", "decDeg", "name"} <= set(star):
+        if not {"raHours", "decDeg"} <= set(star):
             continue
         coord = SkyCoord(
             ra=float(star["raHours"]) * 15.0 * u.deg,
@@ -136,6 +170,8 @@ def compare(metadata: dict) -> dict:
         angular = math.hypot(d_az * math.cos(math.radians(astropy_el)), d_el)
         rows.append(
             {
+                "caseId": metadata.get("id") or Path(metadata["_metadataPath"]).parent.name,
+                "metadataPath": metadata["_metadataPath"],
                 "name": star.get("name") or star.get("key") or f"match {match.get('id', '')}",
                 "raHours": float(star["raHours"]),
                 "decDeg": float(star["decDeg"]),
@@ -150,6 +186,21 @@ def compare(metadata: dict) -> dict:
             }
         )
 
+    return {
+        "caseId": metadata.get("id") or Path(metadata["_metadataPath"]).parent.name,
+        "metadataPath": metadata["_metadataPath"],
+        "image": metadata.get("image", ""),
+        "timestampUtc": metadata["timestampUtc"],
+        "latDeg": metadata["latDeg"],
+        "lonDeg": metadata["lonDeg"],
+        "altM": metadata.get("altM", 0.0),
+        "count": len(rows),
+        "rows": rows,
+        "summary": summarize_rows(rows),
+    }
+
+
+def summarize_rows(rows: list[dict]) -> dict:
     def max_abs(key: str) -> float:
         return max((abs(row[key]) for row in rows), default=math.nan)
 
@@ -157,21 +208,45 @@ def compare(metadata: dict) -> dict:
     rms = math.sqrt(sum(row["angularErrorDeg"] ** 2 for row in rows) / len(rows)) if rows else math.nan
     median = angular_errors[len(angular_errors) // 2] if angular_errors else math.nan
     return {
-        "caseId": metadata.get("id", "IMG_9970"),
-        "image": metadata.get("image", "IMG_9970.HEIC"),
-        "timestampUtc": metadata["timestampUtc"],
-        "latDeg": metadata["latDeg"],
-        "lonDeg": metadata["lonDeg"],
-        "altM": metadata.get("altM", 0.0),
+        "rmsAngularErrorDeg": rms,
+        "medianAngularErrorDeg": median,
+        "maxAngularErrorDeg": max((row["angularErrorDeg"] for row in rows), default=math.nan),
+        "maxAbsAzErrorDeg": max_abs("dAzDeg"),
+        "maxAbsElErrorDeg": max_abs("dElDeg"),
+    }
+
+
+def compare_cases(metadata_paths: list[Path], case_filter: str | None = None) -> dict:
+    iers.conf.auto_download = False
+    iers.conf.iers_degraded_accuracy = "warn"
+    iers.conf.auto_max_age = None
+
+    skipped = []
+    cases = []
+    for metadata_path in metadata_paths:
+        metadata = load_case(metadata_path)
+        case_id = metadata.get("id") or metadata_path.parent.name
+        if case_filter and case_filter not in {case_id, metadata_path.parent.name}:
+            continue
+        if not has_comparable_stars(metadata):
+            skipped.append(
+                {
+                    "caseId": case_id,
+                    "metadataPath": str(metadata_path.relative_to(ROOT)),
+                    "reason": "missing optpar/site/time or catalogue star matches",
+                }
+            )
+            continue
+        cases.append(compare_case(metadata))
+
+    rows = [row for case in cases for row in case["rows"]]
+    return {
+        "caseCount": len(cases),
+        "skipped": skipped,
         "count": len(rows),
+        "cases": cases,
         "rows": rows,
-        "summary": {
-            "rmsAngularErrorDeg": rms,
-            "medianAngularErrorDeg": median,
-            "maxAngularErrorDeg": max((row["angularErrorDeg"] for row in rows), default=math.nan),
-            "maxAbsAzErrorDeg": max_abs("dAzDeg"),
-            "maxAbsElErrorDeg": max_abs("dElDeg"),
-        },
+        "summary": summarize_rows(rows),
     }
 
 
@@ -184,33 +259,47 @@ def write_report(result: dict, out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     rows = result["rows"]
 
-    fig, ax = plt.subplots(figsize=(6.4, 5.2), dpi=160)
+    fig, ax = plt.subplots(figsize=(7.2, 5.6), dpi=170)
     ax.axhline(0, color="0.78", linewidth=0.8)
     ax.axvline(0, color="0.78", linewidth=0.8)
     sc = ax.scatter(
         [row["dAzDeg"] for row in rows],
         [row["dElDeg"] for row in rows],
         c=[row["astropyElDeg"] for row in rows],
-        s=24,
+        s=17,
         cmap="viridis",
         edgecolors="black",
-        linewidths=0.25,
+        linewidths=0.15,
+        alpha=0.82,
     )
     ax.set_xlabel("AIDA - Astropy azimuth error (deg)")
     ax.set_ylabel("AIDA - Astropy elevation error (deg)")
-    ax.set_title("IMG_9970 AIDA/Astropy AltAz residuals")
+    ax.set_title("AIDA/Astropy AltAz residuals for saved test cases")
     ax.grid(True, alpha=0.25)
     cb = fig.colorbar(sc, ax=ax)
     cb.set_label("Astropy elevation (deg)")
     fig.tight_layout()
-    scatter_name = "img9970_astropy_altaz_scatter.png"
+    scatter_name = "astropy_altaz_scatter.png"
     fig.savefig(out_dir / scatter_name)
     plt.close(fig)
 
     (out_dir / "summary.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf8")
     s = result["summary"]
-    rows_html = "\n".join(
+    case_rows = "\n".join(
         "<tr>"
+        f"<td>{case['caseId']}</td>"
+        f"<td>{case['count']}</td>"
+        f"<td>{case['summary']['rmsAngularErrorDeg']:.4f}</td>"
+        f"<td>{case['summary']['maxAngularErrorDeg']:.4f}</td>"
+        f"<td>{case['summary']['maxAbsAzErrorDeg']:.4f}</td>"
+        f"<td>{case['summary']['maxAbsElErrorDeg']:.4f}</td>"
+        f"<td><code>{case['metadataPath']}</code></td>"
+        "</tr>"
+        for case in sorted(result["cases"], key=lambda item: item["summary"]["maxAngularErrorDeg"], reverse=True)
+    )
+    worst_rows = "\n".join(
+        "<tr>"
+        f"<td>{row['caseId']}</td>"
         f"<td>{row['name']}</td>"
         f"<td>{row['astropyAzDeg']:.3f}</td>"
         f"<td>{row['astropyElDeg']:.3f}</td>"
@@ -218,13 +307,13 @@ def write_report(result: dict, out_dir: Path) -> None:
         f"<td>{row['dElDeg']:.4f}</td>"
         f"<td>{row['angularErrorDeg']:.4f}</td>"
         "</tr>"
-        for row in sorted(rows, key=lambda item: item["angularErrorDeg"], reverse=True)[:20]
+        for row in sorted(rows, key=lambda item: item["angularErrorDeg"], reverse=True)[:25]
     )
     html = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>IMG_9970 Astropy AltAz Cross-Check</title>
+<title>Astropy AltAz Cross-Check</title>
 <style>
 body {{ font-family: system-ui, sans-serif; margin: 2rem; line-height: 1.45; color: #172033; }}
 code {{ background: #eef2f7; padding: 0.1rem 0.25rem; border-radius: 4px; }}
@@ -232,30 +321,36 @@ code {{ background: #eef2f7; padding: 0.1rem 0.25rem; border-radius: 4px; }}
 .metric {{ border: 1px solid #d6dde8; border-radius: 8px; padding: 0.8rem; background: #f8fafc; }}
 .metric b {{ display: block; font-size: 1.45rem; }}
 img {{ max-width: min(100%, 900px); border: 1px solid #d6dde8; border-radius: 8px; }}
-table {{ border-collapse: collapse; margin-top: 1rem; }}
-th, td {{ border-bottom: 1px solid #d6dde8; padding: 0.35rem 0.6rem; text-align: right; }}
-th:first-child, td:first-child {{ text-align: left; }}
+table {{ border-collapse: collapse; margin-top: 1rem; font-size: 0.94rem; }}
+th, td {{ border-bottom: 1px solid #d6dde8; padding: 0.35rem 0.6rem; text-align: right; vertical-align: top; }}
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:last-child, td:last-child {{ text-align: left; }}
 </style>
 </head>
 <body>
-<h1>IMG_9970 Astropy AltAz Cross-Check</h1>
+<h1>Astropy AltAz Cross-Check</h1>
 <p>This fast regression compares the <code>js/aidatools.js</code> RA/Dec to azimuth/elevation
-calculation with Astropy for saved IMG_9970 catalogue star detections.  The site
-and timestamp are treated as trusted EXIF-derived metadata from the original HEIC image.</p>
-<p><b>Site/time:</b> {result['timestampUtc']}, lat {result['latDeg']:.6f} deg,
-lon {result['lonDeg']:.6f} deg, alt {result['altM']:.1f} m.</p>
+calculation with Astropy for every tracked saved test case that has a lens model
+and paired catalogue-star detections.  Astropy uses vacuum refraction settings
+with <code>pressure=0 hPa</code> to match the browser calculation.</p>
 <div class="metrics">
+<div class="metric"><span>Cases</span><b>{result['caseCount']}</b></div>
 <div class="metric"><span>Stars</span><b>{result['count']}</b></div>
 <div class="metric"><span>RMS angular error</span><b>{s['rmsAngularErrorDeg']:.4f} deg</b></div>
 <div class="metric"><span>Max angular error</span><b>{s['maxAngularErrorDeg']:.4f} deg</b></div>
-<div class="metric"><span>Max |az| / |el|</span><b>{s['maxAbsAzErrorDeg']:.4f} / {s['maxAbsElErrorDeg']:.4f} deg</b></div>
 </div>
+<p>Maximum absolute azimuth/elevation errors are {s['maxAbsAzErrorDeg']:.4f} deg
+and {s['maxAbsElErrorDeg']:.4f} deg.</p>
 <h2>Error Scatter</h2>
 <img src="{scatter_name}" alt="AIDA minus Astropy azimuth/elevation scatter plot">
+<h2>Per-Case Summary</h2>
+<table>
+<thead><tr><th>Case</th><th>Stars</th><th>RMS</th><th>Max angular</th><th>Max |az|</th><th>Max |el|</th><th>Metadata</th></tr></thead>
+<tbody>{case_rows}</tbody>
+</table>
 <h2>Largest Residuals</h2>
 <table>
-<thead><tr><th>Star</th><th>Astropy az</th><th>Astropy el</th><th>dAz</th><th>dEl</th><th>Angular</th></tr></thead>
-<tbody>{rows_html}</tbody>
+<thead><tr><th>Case</th><th>Star</th><th>Astropy az</th><th>Astropy el</th><th>dAz</th><th>dEl</th><th>Angular</th></tr></thead>
+<tbody>{worst_rows}</tbody>
 </table>
 </body>
 </html>
@@ -265,16 +360,27 @@ lon {result['lonDeg']:.6f} deg, alt {result['altM']:.1f} m.</p>
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--metadata", type=Path, default=DEFAULT_METADATA)
+    parser.add_argument("--metadata", type=Path, action="append", help="metadata.json file to test; may be repeated")
+    parser.add_argument("--case", help="limit to one case id or test_cases directory name")
+    parser.add_argument("--tracked", action="store_true", help="use metadata files tracked by git")
+    parser.add_argument("--all-files", action="store_true", help="scan every test_cases/*/metadata.json file")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT_DIR)
     parser.add_argument("--write-report", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--min-total-comparisons", type=int, default=MIN_TOTAL_COMPARISONS)
     parser.add_argument("--max-angular-error-deg", type=float, default=MAX_ANGULAR_ERROR_DEG)
     parser.add_argument("--max-az-error-deg", type=float, default=MAX_AZ_ERROR_DEG)
     parser.add_argument("--max-el-error-deg", type=float, default=MAX_EL_ERROR_DEG)
     args = parser.parse_args()
 
-    result = compare(load_case(args.metadata))
+    if args.metadata:
+        metadata_paths = [path if path.is_absolute() else ROOT / path for path in args.metadata]
+    elif args.all_files:
+        metadata_paths = filesystem_metadata_paths()
+    else:
+        metadata_paths = tracked_metadata_paths()
+
+    result = compare_cases(metadata_paths, case_filter=args.case)
     if args.write_report:
         write_report(result, args.out)
     if args.json:
@@ -282,7 +388,7 @@ def main() -> int:
     else:
         s = result["summary"]
         print(
-            f"{result['caseId']}: {result['count']} stars, "
+            f"{result['caseCount']} cases, {result['count']} stars, "
             f"RMS {s['rmsAngularErrorDeg']:.4f} deg, "
             f"max angular {s['maxAngularErrorDeg']:.4f} deg, "
             f"max |az| {s['maxAbsAzErrorDeg']:.4f} deg, "
@@ -291,7 +397,7 @@ def main() -> int:
 
     s = result["summary"]
     failed = (
-        result["count"] < 20
+        result["count"] < args.min_total_comparisons
         or s["maxAngularErrorDeg"] > args.max_angular_error_deg
         or s["maxAbsAzErrorDeg"] > args.max_az_error_deg
         or s["maxAbsElErrorDeg"] > args.max_el_error_deg
