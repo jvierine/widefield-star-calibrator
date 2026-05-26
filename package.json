@@ -13,6 +13,7 @@
     "report:allsky010031-sensitivity": "node tools/allsky010031_ams0221_preundistortion_sensitivity.js",
     "report:star-detector-oracle": "node tools/star_detector_oracle_report.js",
     "train:star-nn": "node tools/train_star_patch_nn.js",
+    "help:generate": "node tools/generate_help_from_readme.js",
     "report:case": "node tools/generate_test_report.js",
     "lucky:report": "node tools/run_lucky_report.js",
     "serve": "node tools/serve_calibrator.js",

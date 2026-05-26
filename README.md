@@ -104,10 +104,9 @@ pairings after an automatic run.
 3. Check UTC time, latitude, longitude, and altitude.
 4. Select the optical model to fit: an AIDA radial model (`optmod 1`, `2`,
    `3`, `4`, `5`, or `12`) or Brown-Conrady.
-5. Roughly align the star field:
-   - left-drag to move the zenith point,
-   - right-drag to rotate the field,
-   - mouse wheel to scale `f1` and `f2` together.
+5. Roughly align the star field: left-drag to move the zenith point,
+   right-drag to rotate the field, and use the mouse wheel to scale `f1` and
+   `f2` together.
 6. Click `I'm feeling lucky...` or press `L` to run the automatic detector,
    asterism matcher, and staged lens fit. Re-running it respects any masked
    image tiles.
@@ -120,6 +119,40 @@ pairings after an automatic run.
    Levenberg-Marquardt.
 11. Press `R` to inspect residuals and remove bad pairs if needed.
 12. Export the fitted model with the copy buttons.
+
+## Field Of View Adjustment
+
+The first alignment step is meant to be visual and approximate. Drag with the
+left mouse button until the catalog zenith is near the image zenith. Drag with
+the right mouse button to rotate the star field so bright catalog stars line up
+with the image orientation. Use the mouse wheel if the projected catalog field
+is too wide or too narrow. After the field is close, use `S` to create accurate
+star pairs and let the lens optimizer refine the selected model parameters.
+
+## Star Picking Details
+
+When `S` is held, a magnified view follows the mouse. Click near the image
+star; the magnifier disappears and a density-estimate popup is placed away from
+the click area. The selected star position is found from a 40x interpolated
+local image patch smoothed with a Gaussian kernel, and the popup shows the
+unfiltered interpolated bitmap underneath contour lines of the smoothed density
+estimate.
+
+Press `K` to inspect only the picked subpixel image-star positions. In this
+KDE-dot mode all other overlays are hidden, which is useful for checking
+whether centroiding is landing on the intended stars.
+
+## Residuals And Undo
+
+Residual mode draws the fitted catalog location and the selected image location
+for each pair. The suggested removal marker is based on the star whose residual
+is furthest from the main residual pattern, rather than simply the largest
+absolute residual.
+
+Accepted fits and automatic pairing batches are stored in an undo stack. Use
+the Undo button or `Cmd/Ctrl Z` to restore the state from before the latest
+accepted fit or automatic pairing run. Loading a new image or removing all star
+pairings clears the undo history.
 
 ## Automatic Command-Line Lens Calibration
 
@@ -172,6 +205,21 @@ For scripted meteor-camera operation, run the command after each image or
 stacked frame is available, then read `calibration.json`. A failed solve keeps
 `solved: false` and `optpar: null`, so automation can reject it without parsing
 the visual HTML report.
+
+## Export Notes
+
+The copied `optpar` array always starts with the optical model number. For AIDA
+radial models it contains
+`[optmod, f1, f2, alpha, beta, gamma, du, dv, radial_alpha]`. For
+Brown-Conrady (`optmod 20`), it contains
+`[20, f1, f2, alpha, beta, gamma, du, dv, k1, k2, k3, p1, p2]`.
+
+The export language selector can copy the array and mapper code as Python,
+Julia, C, or MATLAB. The generated mapper code reads the model number from the
+first element before applying the parameter vector. The Python mapper includes a
+numerical `image_to_az_el` inverse; the Julia, C, and MATLAB exports provide
+the same forward `az_el_to_image` projection so they can be embedded in
+analysis code and inverted numerically when needed.
 
 ## Why JavaScript?
 
