@@ -2371,6 +2371,8 @@ end
             matches: [],
             status: "automatic matching: no matcher stage was enabled",
         };
+        const matcherDetections = activeDetectedStars()
+            .slice(0, Math.max(1, Math.floor(Number.isFinite(options.maxDetections) ? options.maxDetections : 80)));
 
         const radialAlphaProgressText = blindOptions => {
             const models = Array.isArray(blindOptions && blindOptions.preflattenModelCandidates) ?
@@ -2400,9 +2402,9 @@ end
                     maxMag,
                     Number.isFinite(options.blindOptions && options.blindOptions.ambiguityMaxMagnitude) ?
                         options.blindOptions.ambiguityMaxMagnitude :
-                        maxMag
+                    maxMag
                 ), options.blindOptions || options),
-                activeDetectedStars(),
+                matcherDetections,
                 {
                     ...commonOptions,
                     maxDetections: 80,
@@ -2431,7 +2433,7 @@ end
                 window.AidaAutoIdentifier.identifyStarsByAsterisms;
             result = await skyPlaneMatcher(
                 skyPlaneStarsForAsterismIdentification(maxMag, options.asterismOptions || options),
-                activeDetectedStars(),
+                matcherDetections,
                 {
                     ...commonOptions,
                     maxDetections: 50,
@@ -2466,7 +2468,7 @@ end
                     skyPlaneStarsForAsterismIdentification(weakMaxMag, {
                         minSeparationDeg: weakAsterismOptions.catalogMinSeparationDeg,
                     }),
-                    activeDetectedStars(),
+                    matcherDetections,
                     {
                         ...commonOptions,
                         maxMagnitude: weakMaxMag,
@@ -2501,7 +2503,7 @@ end
                     projectedStarsForAutoIdentification()
                         .filter(star => Number.isFinite(star.ze) && star.ze * 180 / Math.PI <= options.projectedOptions.catalogMaxZenithDeg) :
                     projectedStarsForAutoIdentification(),
-                activeDetectedStars(),
+                matcherDetections,
                 {
                     ...commonOptions,
                     maxDetections: 50,
@@ -2555,7 +2557,7 @@ end
         state.lastFitVector = null;
         state.automaticMatchingStatus = `${String(result.status || "").replace(/auto-identify/g, "automatic matching")}; added ${added}`;
         updateAutoMatches();
-        return {result, added, detections: activeDetectedStars().length};
+        return {result, added, detections: Math.min(maxDetections, activeDetectedStars().length)};
     }
 
     function autoIdentifyCurrentMaxMagnitude() {
