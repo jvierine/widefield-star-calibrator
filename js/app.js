@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.8";
+    const APP_VERSION = "v0.2.9";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
@@ -4157,15 +4157,31 @@ end
 
     function positionDensityPopupAwayFromEvent(event) {
         const panel = canvas.parentElement.getBoundingClientRect();
-        const popupWidth = Math.min(620, Math.max(280, panel.width - 36));
-        const popupHeight = Math.min(560, Math.max(360, panel.height - 36));
+        const margin = 14;
+        const availableWidth = Math.max(220, panel.width - 2 * margin);
+        const availableHeight = Math.max(220, panel.height - 2 * margin);
+        const popupWidth = Math.min(440, Math.max(260, Math.min(availableWidth, panel.width * 0.34)));
+        const popupHeight = Math.min(360, Math.max(250, Math.min(availableHeight, panel.height * 0.38)));
         let clickX = panel.width / 2;
         let clickY = panel.height / 2;
         if (event) {
             clickX = event.clientX - panel.left;
             clickY = event.clientY - panel.top;
         }
-        const margin = 18;
+        const protectedRadius = Math.max(110, Math.min(190, 0.16 * Math.hypot(panel.width, panel.height)));
+        const protectedRect = {
+            left: clickX - protectedRadius,
+            right: clickX + protectedRadius,
+            top: clickY - protectedRadius,
+            bottom: clickY + protectedRadius,
+        };
+        const overlapArea = candidate => {
+            const left = Math.max(candidate.left, protectedRect.left);
+            const right = Math.min(candidate.left + popupWidth, protectedRect.right);
+            const top = Math.max(candidate.top, protectedRect.top);
+            const bottom = Math.min(candidate.top + popupHeight, protectedRect.bottom);
+            return Math.max(0, right - left) * Math.max(0, bottom - top);
+        };
         const candidates = [
             {left: margin, top: margin},
             {left: panel.width - popupWidth - margin, top: margin},
@@ -4180,7 +4196,9 @@ end
             const acy = a.top + popupHeight / 2;
             const bcx = b.left + popupWidth / 2;
             const bcy = b.top + popupHeight / 2;
-            return Math.hypot(bcx - clickX, bcy - clickY) - Math.hypot(acx - clickX, acy - clickY);
+            const aScore = Math.hypot(acx - clickX, acy - clickY) - 3 * overlapArea(a);
+            const bScore = Math.hypot(bcx - clickX, bcy - clickY) - 3 * overlapArea(b);
+            return bScore - aScore;
         });
         densityPopup.style.width = `${popupWidth}px`;
         densityPopup.style.left = `${candidates[0].left}px`;
@@ -4202,8 +4220,8 @@ end
         densityContext.fillStyle = "#020617";
         densityContext.fillRect(0, 0, w, h);
         densityContext.fillStyle = "#dbeafe";
-        densityContext.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-        densityContext.fillText("Gaussian-smoothed density contours from 40x interpolated image patch", plot.x0, 16);
+        densityContext.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+        densityContext.fillText("40x interpolated KDE contours", plot.x0, 16);
 
         const sx = fineX => plot.x0 + (fineX / (density.width - 1)) * plot.w;
         const sy = fineY => plot.y0 + (fineY / (density.height - 1)) * plot.h;
@@ -4259,15 +4277,15 @@ end
         densityContext.fillStyle = "rgba(15, 23, 42, 0.88)";
         densityContext.fillRect(plot.x0, h - 46, plot.w, 30);
         densityContext.fillStyle = "#e5e7eb";
-        densityContext.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+        densityContext.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
         densityContext.fillText(
-            `selected interpolated pixel: (${density.selectedFineX}, ${density.selectedFineY}), value ${density.selectedValue.toFixed(3)}`,
+            `fine px (${density.selectedFineX}, ${density.selectedFineY}), value ${density.selectedValue.toFixed(3)}`,
             plot.x0 + 8,
             h - 27
         );
         densityContext.fillStyle = "#a7f3d0";
         densityContext.fillText(
-            `image x/y ${selected.x.toFixed(4)}, ${selected.y.toFixed(4)}; background ${density.background.toFixed(2)}; Gaussian support ${density.gaussianSupportPx} fine px`,
+            `image x/y ${selected.x.toFixed(4)}, ${selected.y.toFixed(4)}; bg ${density.background.toFixed(2)}; support ${density.gaussianSupportPx}`,
             plot.x0 + 8,
             h - 12
         );

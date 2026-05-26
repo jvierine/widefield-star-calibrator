@@ -212,12 +212,12 @@ h2 {
     position: absolute;
     z-index: 35;
     display: none;
-    width: min(620px, calc(100% - 36px));
-    padding: 12px;
+    width: min(440px, calc(100% - 24px));
+    padding: 8px;
     border: 1px solid rgba(148, 163, 184, 0.55);
     border-radius: 8px;
     background: rgba(8, 13, 24, 0.96);
-    box-shadow: 0 20px 46px rgba(0, 0, 0, 0.58);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.52);
     color: #e5e7eb;
 }
 
@@ -229,12 +229,12 @@ h2 {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 8px;
+    gap: 8px;
+    margin-bottom: 6px;
 }
 
 .density-popup-title {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 800;
 }
 
@@ -247,10 +247,11 @@ h2 {
 
 .density-popup button {
     flex: 0 0 auto;
-    padding: 4px 8px;
+    padding: 3px 7px;
     border-color: rgba(148, 163, 184, 0.6);
     background: rgba(15, 23, 42, 0.92);
     color: #e5e7eb;
+    font-size: 12px;
 }
 
 #densityCanvas {
