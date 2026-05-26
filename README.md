@@ -14,18 +14,18 @@ However, it can also be installed and run on the command line like a normal
 Linux/Unix command-line program named `wisc`; see the command-line section
 below.
 
-Author: Juha Vierinen. More authors can be added later. Merge requests are
-welcome!
+Authors: Juha Vierinen and Björn Gustavsson. More authors can be added later.
+Merge requests are welcome!
 
 Acknowledgements: The tool was inspired by the legendary aurora image data
-analysis (AIDA) tools, a useful set of MATLAB scripts developed by Björn
-Gustavsson. This repository only implements the lens-model calibration parts
-needed by the browser and command-line calibrator. Original AIDA_tools MATLAB
-toolbox: https://github.com/jvierine/AIDA_tools. Thank you to Daniel Kastinen
-for suggesting making this a web page. The blind asterism-search ideas are also
-informed by astrometry.net. The star-detection experiments and reports were
-also informed by SExtractor and [SEP](https://sep.readthedocs.io/). Björn
-Gustavsson and Codex are gratefully acknowledged for their contributions.
+analysis (AIDA) MATLAB tools. This repository only implements the lens-model
+calibration parts needed by the browser and command-line calibrator. Original
+AIDA_tools MATLAB toolbox: https://github.com/jvierine/AIDA_tools. Thank you
+to Daniel Kastinen for suggesting making this a web page. The blind
+asterism-search ideas are also informed by astrometry.net. The star-detection
+experiments and reports were also informed by SExtractor and
+[SEP](https://sep.readthedocs.io/). Codex is gratefully acknowledged for
+contributions to implementation and testing.
 
 License: Creative Commons Attribution 4.0 International (CC BY 4.0). See
 [`LICENSE.md`](LICENSE.md).

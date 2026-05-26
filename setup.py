@@ -9,5 +9,5 @@ setup(
     install_requires=["numpy"],
     python_requires=">=3.8",
     license="CC-BY-4.0",
-    author="Juha Vierinen",
+    author="Juha Vierinen and Björn Gustavsson",
 )
