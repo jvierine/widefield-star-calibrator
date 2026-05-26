@@ -456,7 +456,7 @@ pre { background: #eef2f7; border-radius: 6px; padding: 12px; overflow-x: auto; 
 <main>
 <h1>IMG_9953 Pre-Undistortion Sensitivity</h1>
 <p>This report perturbs the pre-undistortion lens parameters around the saved Brown-Conrady calibration, then reruns the asterism matcher on the same oracle-validated automatic detections.</p>
-${commandSnippetHtml("cd /Users/j/src/AIDA_tools/aida_js_calibrator && npm run report:img9953-sensitivity")}
+${commandSnippetHtml("cd /Users/j/src/widefield-star-calibrator && npm run report:img9953-sensitivity")}
 <div class="metrics">
 <div class="metric"><span>Baseline correct matches</span><b>${data.baseline.correct}</b></div>
 <div class="metric"><span>Default BC matches</span><b>${data.brownConradyDefault.correct}</b></div>

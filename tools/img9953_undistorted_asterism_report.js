@@ -269,7 +269,7 @@ function pageHtml(result) {
     const score = result.identificationScore;
     const imageName = path.basename(result.case.imagePath);
     const generated = new Date().toISOString();
-    const command = "cd /Users/j/src/AIDA_tools/aida_js_calibrator && npm run report:img9953-asterisms";
+    const command = "cd /Users/j/src/widefield-star-calibrator && npm run report:img9953-asterisms";
     return `<!doctype html>
 <html lang="en">
 <head>

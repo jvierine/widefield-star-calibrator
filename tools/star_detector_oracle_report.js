@@ -407,7 +407,7 @@ pre { background: #eef2f7; border-radius: 6px; padding: 10px; overflow-x: auto; 
 <main>
 <h1>Star Detector Oracle Report</h1>
 <p class="note">Generated ${escapeHtml(generated)}. A known lens model and Yale catalogue act as the oracle: detections within the case match radius of projected catalogue stars count as correct. This evaluates the detector only, before any asterism identification.</p>
-${commandSnippetHtml("cd /Users/j/src/AIDA_tools/aida_js_calibrator && npm run report:star-detector-oracle")}
+${commandSnippetHtml("cd /Users/j/src/widefield-star-calibrator && npm run report:star-detector-oracle")}
 ${results.map(result => `<section class="case">
 <h2>${escapeHtml(result.title)}</h2>
 <p>${escapeHtml(result.image)}; ${result.catalogStars} catalogue stars to mag ${fmt(result.maxMag, 1)}; match radius ${result.matchRadiusPx} px.</p>

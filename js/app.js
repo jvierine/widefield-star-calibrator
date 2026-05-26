@@ -30,8 +30,17 @@
         appVersionEl.textContent = APP_VERSION;
     }
     const defaultImage = {
-        url: "calibration_images/2025_02_19_03_47_01_000_010881_ams0882_first1s.png",
-        name: "2025_02_19_03_47_01_000_010881_ams0882_first1s.png",
+        url: "calibration_images/IMG_0180.png",
+        name: "IMG_0180.png",
+        metadataName: "IMG_0180.HEIC",
+        metadata: {
+            timestampUtc: new Date("2024-12-31T22:37:51.000Z"),
+            latDeg: 69.64423333333335,
+            lonDeg: 18.925919444444446,
+            altM: 94.9608493696085,
+            cameraMake: "Apple",
+            cameraModel: "iPhone 15 Pro",
+        },
     };
     const BROWN_CONRADY_OPTMOD = 20;
     const controls = {
@@ -1382,12 +1391,12 @@
             "Includes a numerical image_to_az_el inverse." :
             "Forward az_el_to_image export; invert numerically if image_to_az_el is needed.";
         if (language === "matlab") {
-            return `% AIDA browser calibrator export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
+            return `% WISC export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
         }
         if (language === "c") {
-            return `/* AIDA browser calibrator export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note} */\n`;
+            return `/* WISC export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note} */\n`;
         }
-        return `# AIDA browser calibrator export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
+        return `# WISC export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
     }
 
     function pythonImageToAzElFunctionText() {
@@ -3347,7 +3356,7 @@ end
         updateLensEquation(optpar, optmod);
         drawRotationVisualization();
         statusEl.textContent =
-            `AIDA calibrator version: ${APP_VERSION}\n` +
+            `WISC version: ${APP_VERSION}\n` +
             `image: ${state.imageName || "none"}\n` +
             `timestamp: ${date.toISOString()}\n` +
             `site: lat ${controls.latDeg.value} deg, lon ${controls.lonDeg.value} deg, alt ${controls.altM.value} m\n` +
@@ -6878,7 +6887,7 @@ end
             if (loadId !== state.imageLoadId) {
                 return;
             }
-            state.fitMessage = `image load failed: ${name}. If using a web server, serve the AIDA_tools directory rather than only aida_js_calibrator/.`;
+            state.fitMessage = `image load failed: ${name}. If using a web server, serve the WISC repository root.`;
             hideLoadingProgress();
             render();
         };
@@ -8233,18 +8242,28 @@ end
         }
     });
 
-    window.addEventListener("resize", render);
-    window.addEventListener("beforeunload", stopAmbientMusic);
-    window.addEventListener("load", () => {
+    function initializeApp() {
+        if (initializeApp.done) {
+            return;
+        }
+        initializeApp.done = true;
         state.lastLensEquation = "";
         updateLensEquation(currentOptpar(), Number(controls.optmod.value));
         refreshTestCaseList();
         if (!state.image) {
             resetForNewImage();
             applyOptpar(null);
-            loadImageSource(defaultImage.url, defaultImage.name);
+            loadImageSource(defaultImage.url, defaultImage.name, null, false, defaultImage.metadata, defaultImage.metadataName);
         }
-    });
+    }
+
+    window.addEventListener("resize", render);
+    window.addEventListener("beforeunload", stopAmbientMusic);
+    if (document.readyState === "complete") {
+        initializeApp();
+    } else {
+        window.addEventListener("load", initializeApp, {once: true});
+    }
     updateDetectionCircleButton();
     updateStarNameButton();
     updateAmbientMusicButton();

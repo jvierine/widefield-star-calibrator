@@ -26,12 +26,12 @@
             "Includes a numerical image_to_az_el inverse." :
             "Forward az_el_to_image export; invert numerically if image_to_az_el is needed.";
         if (language === "c") {
-            return `/* AIDA browser calibrator export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note} */\n`;
+            return `/* WISC export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note} */\n`;
         }
         if (language === "matlab") {
-            return `% AIDA browser calibrator export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
+            return `% WISC export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
         }
-        return `# AIDA browser calibrator export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
+        return `# WISC export. optmod=${context.optmod}, image ${context.width}x${context.height}. ${note}\n`;
     }
 
     function pythonMapperCode(context) {

@@ -4,7 +4,7 @@ set -eu
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 prefix=${PREFIX:-"$HOME/.local"}
 bindir=${BINDIR:-"$prefix/bin"}
-command_name=${COMMAND_NAME:-widefield-star-calibrate}
+command_name=${COMMAND_NAME:-wisc}
 target="$bindir/$command_name"
 
 if ! command -v node >/dev/null 2>&1; then
@@ -12,11 +12,16 @@ if ! command -v node >/dev/null 2>&1; then
     exit 1
 fi
 
-mkdir -p "$bindir"
-chmod +x "$repo_root/bin/widefield-star-calibrate"
-ln -sf "$repo_root/bin/widefield-star-calibrate" "$target"
+if [ ! -d "$repo_root/node_modules" ]; then
+    echo "Installing Node dependencies..."
+    (cd "$repo_root" && npm install)
+fi
 
-echo "Installed $command_name -> $repo_root/bin/widefield-star-calibrate"
+mkdir -p "$bindir"
+chmod +x "$repo_root/bin/wisc"
+ln -sf "$repo_root/bin/wisc" "$target"
+
+echo "Installed $command_name -> $repo_root/bin/wisc"
 echo "Install directory: $bindir"
 
 case ":$PATH:" in
@@ -27,12 +32,6 @@ case ":$PATH:" in
         echo "  export PATH=\"$bindir:\$PATH\""
         ;;
 esac
-
-if ! command -v sips >/dev/null 2>&1; then
-    echo
-    echo "warning: macOS 'sips' was not found."
-    echo "         PNG inputs can still work, but HEIC/JPEG normalization needs sips."
-fi
 
 echo
 echo "Try:"

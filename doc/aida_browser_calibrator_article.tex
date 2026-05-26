@@ -25,9 +25,9 @@
   columns=fullflexible
 }
 
-\title{A Browser-Based Wide-Field Star Calibration Tool for AIDA Camera Models}
-\author{Juha Vierinen \and Bjorn Gustavsson \and Codex}
-\date{Draft for AIDA Browser Calibrator v0.2.6}
+\title{WISC: A Browser-Based Widefield Star Calibrator}
+\author{Juha Vierinen}
+\date{Draft for WISC v0.2.6}
 
 \begin{document}
 \maketitle
@@ -55,7 +55,7 @@ sky directions. Examples include all-sky auroral imaging, meteor cameras,
 planetarium-style camera alignment, and phone-camera photographs of bright
 stars. Traditional calibration workflows often combine several separate tools:
 image viewers, star catalogs, custom fitting scripts, and hand-written export
-code. The AIDA browser calibrator packages these steps into one application.
+code. WISC packages these steps into one application.
 
 The application is intentionally local and transparent. Images are loaded in the
 browser. The bright-star catalog is embedded in JavaScript. The lens model,
@@ -580,7 +580,7 @@ better architecture.
 
 \section{Conclusion}
 
-The AIDA browser calibrator provides a practical, inspectable workflow for
+WISC provides a practical, inspectable workflow for
 turning wide-field star images into calibrated camera models. It combines
 manual control with automatic assistance, keeps the calibration state visible,
 and exports model code that can be used outside the browser. Version 0.2.6
@@ -590,10 +590,11 @@ development.
 
 \section*{Acknowledgments}
 
-This software and article draft were prepared by Juha Vierinen, Bjorn
-Gustavsson, and Codex. The implementation builds on practical calibration
-workflows developed for all-sky camera analysis and on the historical parameter
-conventions used by AIDA-compatible calibration tools.
+This software and article draft were prepared by Juha Vierinen. Bjorn
+Gustavsson and Codex are gratefully acknowledged for their contributions. The
+implementation builds on practical calibration workflows developed for all-sky
+camera analysis and on the historical parameter conventions used by
+AIDA-compatible calibration tools.
 
 \begin{thebibliography}{9}
 
@@ -609,6 +610,12 @@ K. Barbary.
 \newblock SEP: Source Extractor as a library.
 \newblock \emph{Journal of Open Source Software}, 1(6):58, 2016.
 \newblock doi:10.21105/joss.00058.
+
+\bibitem{lang2010astrometry}
+D. Lang, D. W. Hogg, K. Mierle, M. Blanton, and S. Roweis.
+\newblock Astrometry.net: Blind astrometric calibration of arbitrary
+astronomical images.
+\newblock \emph{The Astronomical Journal}, 139(5):1782--1800, 2010.
 
 \end{thebibliography}
 

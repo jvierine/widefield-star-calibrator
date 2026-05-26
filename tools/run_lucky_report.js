@@ -4,9 +4,11 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const childProcess = require("node:child_process");
 const {performance} = require("node:perf_hooks");
 const vm = require("node:vm");
+const exifr = require("exifr");
+const heicConvert = require("heic-convert");
+const sharp = require("sharp");
 
 const AutoIdentifier = require("../js/auto_identifier.js");
 const StarDetector = require("../js/star_detector.js");
@@ -102,10 +104,10 @@ function parseArgs(argv) {
 
 function usage() {
     console.log(`Usage:
-  widefield-star-calibrate calibration_images/IMG_9953.HEIC
-  widefield-star-calibrate calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
-  widefield-star-calibrate --filter IMG_0537
-  widefield-star-calibrate --limit 5
+  wisc calibration_images/IMG_9953.HEIC
+  wisc calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
+  wisc --filter IMG_0537
+  wisc --limit 5
 
 Without installation, use:
   npm run lucky:report -- calibration_images/IMG_9953.HEIC
@@ -116,7 +118,7 @@ metadata are used when available before falling back to filename/fallback values
 The script logs progress and timing, and writes lucky-report/index.html. Add
 --optpar-out FILE to write a compact machine-readable calibration result, and
 --code python|julia|c|matlab to also write mapper source files.
-HEIC/JPEG inputs are converted to PNG report assets with macOS sips.`);
+HEIC/JPEG inputs are converted to PNG report assets with Node image decoding.`);
 }
 
 function sanitizeId(value) {
@@ -163,6 +165,48 @@ function optparText(result) {
     ).join(", ")}]`;
 }
 
+function bufferToArrayBuffer(buffer) {
+    return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+}
+
+function mergeImageMetadata(primary, secondary) {
+    if (!primary) {
+        return secondary || null;
+    }
+    if (!secondary) {
+        return primary;
+    }
+    return {
+        timestampUtc: secondary.timestampUtc || primary.timestampUtc,
+        latDeg: Number.isFinite(secondary.latDeg) ? secondary.latDeg : primary.latDeg,
+        lonDeg: Number.isFinite(secondary.lonDeg) ? secondary.lonDeg : primary.lonDeg,
+        altM: Number.isFinite(secondary.altM) ? secondary.altM : primary.altM,
+        cameraMake: secondary.cameraMake || primary.cameraMake,
+        cameraModel: secondary.cameraModel || primary.cameraModel,
+    };
+}
+
+async function readImageMetadata(filename) {
+    let metadata = null;
+    try {
+        metadata = AidaTools.parseExifMetadata(bufferToArrayBuffer(fs.readFileSync(filename)));
+    } catch {
+        metadata = null;
+    }
+    try {
+        const external = await exifr.parse(filename, {
+            tiff: true,
+            exif: true,
+            gps: true,
+            mergeOutput: true,
+        });
+        metadata = mergeImageMetadata(metadata, AidaTools.normalizeExternalExifMetadata(external));
+    } catch {
+        // Metadata improves defaults but must never block image calibration.
+    }
+    return metadata;
+}
+
 function exportContext(result) {
     return {
         optmod: result.testCase.optmod,
@@ -190,24 +234,6 @@ function writeMapperCodeOutputs(results, options) {
         fs.writeFileSync(absolutePath, code);
         result.codePath = path.relative(options.outDir, absolutePath).replace(/\\/g, "/");
         result.codeLanguage = options.codeLanguage;
-    }
-}
-
-function run(command, args, options = {}) {
-    const result = childProcess.spawnSync(command, args, {
-        encoding: "utf8",
-        stdio: options.quiet ? ["ignore", "pipe", "pipe"] : ["ignore", "inherit", "pipe"],
-    });
-    if (result.status !== 0) {
-        throw new Error(`${command} ${args.join(" ")} failed: ${result.stderr || result.stdout || result.status}`);
-    }
-    return result.stdout || "";
-}
-
-function ensureSips() {
-    const result = childProcess.spawnSync("which", ["sips"], {encoding: "utf8"});
-    if (result.status !== 0) {
-        throw new Error("sips not found; HEIC/JPEG normalization on macOS needs /usr/bin/sips");
     }
 }
 
@@ -270,33 +296,7 @@ function testCaseMetadataMap() {
     return map;
 }
 
-function sipsProperties(filename) {
-    try {
-        const text = run("sips", ["-g", "pixelWidth", "-g", "pixelHeight", "-g", "creation", filename], {quiet: true});
-        const out = {};
-        for (const line of text.split(/\r?\n/)) {
-            const match = line.match(/^\s*([^:]+):\s*(.+)$/);
-            if (match) {
-                out[match[1].trim()] = match[2].trim();
-            }
-        }
-        return out;
-    } catch {
-        return {};
-    }
-}
-
-function parseSipsCreation(value) {
-    const match = String(value || "").match(/^(\d{4}):(\d{2}):(\d{2})\s+(\d{2}):(\d{2}):(\d{2})/);
-    if (!match) {
-        return null;
-    }
-    const [, y, mo, d, h, mi, s] = match.map(Number);
-    const date = new Date(y, mo - 1, d, h, mi, s);
-    return Number.isFinite(date.getTime()) ? date : null;
-}
-
-function timestampFromNameOrMetadata(filename, metadata, props, options) {
+function timestampFromNameOrMetadata(filename, metadata, imageMetadata, options) {
     if (options.timestampUtc) {
         const date = new Date(options.timestampUtc);
         if (Number.isFinite(date.getTime())) {
@@ -309,18 +309,28 @@ function timestampFromNameOrMetadata(filename, metadata, props, options) {
             return {date, source: "test case metadata"};
         }
     }
+    if (imageMetadata && imageMetadata.timestampUtc) {
+        const date = new Date(imageMetadata.timestampUtc);
+        if (Number.isFinite(date.getTime())) {
+            return {date, source: "image EXIF metadata"};
+        }
+    }
     const guessed = AidaTools.guessTimestampFromAllsky7Name(path.basename(filename));
     if (guessed) {
         return {date: guessed, source: "allsky7 filename"};
     }
-    const created = parseSipsCreation(props.creation);
-    if (created) {
-        return {date: created, source: "sips creation time"};
+    try {
+        const stats = fs.statSync(filename);
+        if (stats.mtime && Number.isFinite(stats.mtime.getTime())) {
+            return {date: stats.mtime, source: "file modification time fallback"};
+        }
+    } catch {
+        // Fall through to current time below.
     }
     return {date: new Date(), source: "current time fallback"};
 }
 
-function siteFromNameOrMetadata(filename, metadata, options) {
+function siteFromNameOrMetadata(filename, metadata, imageMetadata, options) {
     if (Number.isFinite(options.lat) && Number.isFinite(options.lon)) {
         return {latDeg: options.lat, lonDeg: options.lon, altM: options.alt || 0, source: "command line"};
     }
@@ -330,6 +340,14 @@ function siteFromNameOrMetadata(filename, metadata, options) {
             lonDeg: Number(metadata.lonDeg),
             altM: Number(metadata.altM) || 0,
             source: "test case metadata",
+        };
+    }
+    if (imageMetadata && Number.isFinite(imageMetadata.latDeg) && Number.isFinite(imageMetadata.lonDeg)) {
+        return {
+            latDeg: Number(imageMetadata.latDeg),
+            lonDeg: Number(imageMetadata.lonDeg),
+            altM: Number(imageMetadata.altM) || 0,
+            source: "image EXIF metadata",
         };
     }
     const station = AidaTools.guessAllsky7StationMetadata(path.basename(filename));
@@ -344,16 +362,25 @@ function siteFromNameOrMetadata(filename, metadata, options) {
     return {latDeg: 69.65, lonDeg: 18.95, altM: 0, source: "Tromso fallback"};
 }
 
-function normalizeImage(filename, outAssetDir) {
+async function normalizeImage(filename, outAssetDir) {
     fs.mkdirSync(outAssetDir, {recursive: true});
     const ext = path.extname(filename).toLowerCase();
     const id = sanitizeId(path.basename(filename));
     const outPng = path.join(outAssetDir, `${id}.png`);
     if (ext === ".png") {
         fs.copyFileSync(filename, outPng);
+    } else if (ext === ".heic" || ext === ".heif") {
+        const png = await heicConvert({
+            buffer: fs.readFileSync(filename),
+            format: "PNG",
+            quality: 1,
+        });
+        fs.writeFileSync(outPng, Buffer.from(png));
     } else {
-        ensureSips();
-        run("sips", ["-s", "format", "png", filename, "--out", outPng], {quiet: true});
+        await sharp(filename, {limitInputPixels: false})
+            .rotate()
+            .png()
+            .toFile(outPng);
     }
     return outPng;
 }
@@ -927,11 +954,11 @@ async function runLucky(testCase, imageData, log) {
     };
 }
 
-function buildTestCase(filename, metadataMap, imagePng, imageData, props, options) {
+function buildTestCase(filename, metadataMap, imagePng, imageData, imageMetadata, options) {
     const id = sanitizeId(path.basename(filename));
     const metadata = metadataMap.get(id);
-    const timestamp = timestampFromNameOrMetadata(filename, metadata, props, options);
-    const site = siteFromNameOrMetadata(filename, metadata, options);
+    const timestamp = timestampFromNameOrMetadata(filename, metadata, imageMetadata, options);
+    const site = siteFromNameOrMetadata(filename, metadata, imageMetadata, options);
     const optmod = Number.isFinite(options.optmod) ? options.optmod :
         metadata && Array.isArray(metadata.optpar) && Number.isFinite(Number(metadata.optpar[0])) ? Number(metadata.optpar[0]) :
             metadata && /iphone|img_/i.test(id) ? BROWN_CONRADY_OPTMOD : 2;
@@ -957,6 +984,7 @@ function buildTestCase(filename, metadataMap, imagePng, imageData, props, option
         initialOptpar: defaultOptparForCase({width: imageData.width, height: imageData.height, optmod}),
         knownOptpar,
         metadataFound: Boolean(metadata),
+        exifMetadataFound: Boolean(imageMetadata),
     };
 }
 
@@ -1215,12 +1243,12 @@ async function analyzeImage(filename, index, total, metadataMap, options) {
     log(`[${index + 1}/${total}] ${base}`);
     const result = {timings: {decode: 0, detection: 0, blind: 0, asterism: 0, projected: 0, fit: 0}};
     const tDecode = performance.now();
-    const props = sipsProperties(filename);
+    const imageMetadata = await readImageMetadata(filename);
     const assetDir = path.join(options.outDir, "assets");
-    const imagePng = normalizeImage(filename, assetDir);
+    const imagePng = await normalizeImage(filename, assetDir);
     const imageData = readPngImageData(imagePng);
     result.timings.decode = performance.now() - tDecode;
-    const testCase = buildTestCase(filename, metadataMap, imagePng, imageData, props, options);
+    const testCase = buildTestCase(filename, metadataMap, imagePng, imageData, imageMetadata, options);
     try {
         const lucky = await runLucky(testCase, imageData, log);
         lucky.timings.decode = result.timings.decode;

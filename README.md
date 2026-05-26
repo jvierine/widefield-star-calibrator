@@ -1,23 +1,28 @@
-# AIDA Browser Star Calibration
+# WISC - Widefield Star Calibrator
 
 [![Fast Unit Tests](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg)](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml)
 
-This repository contains a JavaScript wide-field star calibration tool. The
-strength of the code, and the reason for the JavaScript implementation, is the
-interactive browser GUI for aligning catalog stars with sky images, fitting lens
-models, inspecting residuals, and exporting calibrated optical parameters.
+This repository contains WISC, the Widefield Star Calibrator, a stand-alone
+JavaScript wide-field star calibration tool. The strength of the code, and the
+reason for the JavaScript implementation, is the interactive browser GUI for
+aligning catalog stars with sky images, fitting lens models, inspecting
+residuals, and exporting calibrated optical parameters.
 However, it can also be installed and run on the command line like a normal
-Linux/Unix command-line program; see the installation instructions below.
+Linux/Unix command-line program named `wisc`; see the command-line section
+below.
 
-The tool was inspired by the legendary aurora image data analysis (AIDA) tools,
-a useful set of MATLAB scripts developed by Björn Gustavsson. This repository
-only implements the lens-model calibration parts needed by the browser and
-command-line calibrator.
+Author: Juha Vierinen. More authors can be added later. Merge requests are
+welcome!
 
-Original AIDA_tools MATLAB toolbox:
-https://github.com/jvierine/AIDA_tools
-
-Authors: Juha Vierinen, Björn Gustavsson, and Codex.
+Acknowledgements: The tool was inspired by the legendary aurora image data
+analysis (AIDA) tools, a useful set of MATLAB scripts developed by Björn
+Gustavsson. This repository only implements the lens-model calibration parts
+needed by the browser and command-line calibrator. Original AIDA_tools MATLAB
+toolbox: https://github.com/jvierine/AIDA_tools. Thank you to Daniel Kastinen
+for suggesting making this a web page. The blind asterism-search ideas are also
+informed by astrometry.net. The star-detection experiments and reports were
+also informed by SExtractor and [SEP](https://sep.readthedocs.io/). Björn
+Gustavsson and Codex are gratefully acknowledged for their contributions.
 
 License: Creative Commons Attribution 4.0 International (CC BY 4.0). See
 [`LICENSE.md`](LICENSE.md).
@@ -26,32 +31,28 @@ Try the hosted version here:
 
 http://4.235.86.214/aida/
 
-![Wide-field star calibrator GUI](docs/gui-screenshot.png)
+![WISC GUI](docs/gui-screenshot.png)
 
 The tool is fully client-side JavaScript, with the GUI rendered in WebGL. For
 normal GUI use, no installation is required: open the hosted link above in a
-browser, or open `index.html` directly from a local checkout.
-
-## Installation
-
-Installation is only required if you want to run the calibrator from the command
-line. Clone the repository and install the wrapper:
+browser, or open `index.html` directly from a local checkout:
 
 ```bash
 git clone https://github.com/jvierine/widefield-star-calibrator.git
-cd widefield-star-calibrator
-scripts/install.sh
+code widefield-star-calibrator
+# open index.html
 ```
 
-The installer links `widefield-star-calibrate` into `~/.local/bin` by default.
-Set `PREFIX=/usr/local` or `BINDIR=/some/bin` before running the script to
-choose another install location. The command-line calibrator needs Node.js; HEIC
-and JPEG input conversion uses macOS `sips`.
+DDR data policy disclaimer: all data goes directly to STASI main archives. Just
+kidding, the tool is purely client-side JavaScript code. No data is ever
+transmitted to an external server.
+
+Kudos to the person who finds all the easter eggs hidden in the GUI.
 
 ## What It Does
 
 - Loads PNG, JPEG, HEIC, and HEIF images.
-- Loads a bundled allsky7 example image automatically on startup.
+- Loads a bundled iPhone HEIC example image automatically on startup.
 - Reads UTC time and observer position from EXIF metadata when available.
 - Falls back to known allsky7 filename/station metadata when possible.
 - Uses the embedded bright-star catalog and AIDA camera projection code.
@@ -122,14 +123,30 @@ pairings after an automatic run.
 
 ## Automatic Command-Line Lens Calibration
 
+Installation is only required for command-line use. The browser GUI works
+without installing anything. To install the `wisc` command-line wrapper, clone
+the repository and run:
+
+```bash
+git clone https://github.com/jvierine/widefield-star-calibrator.git
+cd widefield-star-calibrator
+scripts/install.sh
+```
+
+The installer links `wisc` into `~/.local/bin` by default.
+Set `PREFIX=/usr/local` or `BINDIR=/some/bin` before running the script to
+choose another install location. The command-line calibrator needs
+[Node.js](https://nodejs.org/), and the installer fetches the Node
+image-decoding dependencies used for PNG, JPEG, HEIC, and HEIF input.
+
 Run the browser-style "I'm feeling lucky" calibration from the command line by
-giving an image filename. Latitude, longitude, altitude, and UTC time may be
-provided as flags; if they are omitted, saved test-case metadata and image
+giving `wisc` an image filename. Latitude, longitude, altitude, and UTC time may
+be provided as flags; if they are omitted, saved test-case metadata and image
 EXIF-derived metadata are used by default when available, followed by filename
 or fallback values.
 
 ```bash
-widefield-star-calibrate calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
+wisc calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
 ```
 
 The script runs the same automatic star finding and asterism matching strategy
@@ -149,49 +166,104 @@ as the GUI, fits the selected lens model, and writes:
 Saved `test_cases/*/metadata.json` files are used when available. Otherwise
 the script infers allsky7 timestamps and station metadata from filenames, and
 falls back to a Tromso default. HEIC and JPEG inputs are normalized to PNG
-report assets with macOS `sips`.
+report assets by the Node command-line tool, without relying on macOS `sips`.
 
 For scripted meteor-camera operation, run the command after each image or
 stacked frame is available, then read `calibration.json`. A failed solve keeps
 `solved: false` and `optpar: null`, so automation can reject it without parsing
 the visual HTML report.
 
-## FAQ
+## Why JavaScript?
 
-### Why JavaScript?
-
-JavaScript is not a beautiful language for mathematical software, but it is
-extremely well optimized because it runs software for a huge fraction of the
+JavaScript is not a beautiful language for mathematical software. In fact, I
+truly hate this language with a passion; there are only a few worse programming
+languages in the world to program in: Brainfuck, and normal Java. But JavaScript
+is extremely well optimized because it runs software for a huge fraction of the
 world's internet users. It is also very well suited for graphical user
-interfaces that can be shared over the internet without asking users to install
-a desktop application. WebGL is fast enough for the interactive image display
-and overlay work this tool needs.
+interfaces that can be shared over the internet without asking users to install a
+desktop application. WebGL is fast enough for the interactive image display and
+overlay work this tool needs.
 
 The GUI is optional, because the same calibrator can be installed as
-`widefield-star-calibrate` and run like any other command-line program. Still,
+`wisc` and run like any other command-line program. Still,
 the GUI is a major advantage when a difficult star field does not automatically
 plate solve and needs a few manual corrections.
 
 ## Coordinates And Camera Models
 
+For a catalog star at azimuth `az` and zenith angle `ze`, WISC first writes the
+local sky direction as an east/north/up unit vector:
+
+```text
+e = [sin(ze) sin(az), sin(ze) cos(az), cos(ze)].
+```
+
+The camera pointing parameters rotate this direction into the camera frame:
+
+```text
+s = R(alpha_cam, beta_cam, gamma_cam) e
+  = [s1, s2, s3].
+```
+
+The final image coordinates are normalized coordinates multiplied by image
+size:
+
+```text
+x = width  * u - 1
+y = height * v - 1.
+```
+
+For the radial AIDA-style models, define
+
+```text
+rho   = sqrt(s1^2 + s2^2)
+theta = atan2(rho, s3)
+u     = 0.5 + dx + f1 * (s1/rho) * r(theta)
+v     = 0.5 + dy + f2 * (s2/rho) * r(theta).
+```
+
+At the optical axis, `rho = 0`, the code uses `u = 0.5 + dx` and
+`v = 0.5 + dy`.
+
 The AIDA radial models are based on tried-and-true, robust lens models from
 the original AIDA_tools MATLAB code, where they have been used on a range of
-wide-field and all-sky lenses. The GUI exposes these options:
+wide-field and all-sky lenses. The GUI exposes these options, with the radial
+function `r(theta)` defined as:
 
-- `optmod 1`: rectilinear/pinhole projection.
+- `optmod 1`: rectilinear/pinhole projection,
+  `u = 0.5 + dx + f1 s1/s3`, `v = 0.5 + dy + f2 s2/s3`.
 - `optmod 2`: sinusoidal radial projection, a good common choice for fisheye
-  and all-sky lenses.
-- `optmod 3`: hybrid tangent/equidistant radial projection.
-- `optmod 4`: power-law equidistant-style radial projection.
-- `optmod 5`: scaled rectilinear projection.
+  and all-sky lenses, `r(theta) = sin(a theta)`.
+- `optmod 3`: hybrid tangent/equidistant radial projection,
+  `(1 - a) [s1/s3, s2/s3] + a theta [s1/rho, s2/rho]`.
+- `optmod 4`: power-law equidistant-style radial projection,
+  `r(theta) = |theta|^a`.
+- `optmod 5`: scaled rectilinear projection, `r(theta) = tan(a theta)`.
 - `optmod 12`: unified radial projection that can smoothly move between
-  sine-like, equidistant, and tangent-like behavior.
+  sine-like, equidistant, and tangent-like behavior:
+  `r(theta) = tan(a theta)/a` for `a > 0`, `r(theta) = theta` for `a = 0`,
+  and `r(theta) = sin(a theta)/a` for `a < 0`.
 - `Brown-Conrady` (`optmod 20`): the standard radial/tangential distortion
   model, usually a good starting point for ordinary phone-camera lenses,
-  including iPhone images. See Nowakowski and Skarbek (2013), "Analysis of
-  Brown camera distortion model", in Photonics Applications in Astronomy,
-  Communications, Industry, and High-Energy Physics Experiments 2013, SPIE
-  volume 8903, pages 248-257.
+  including iPhone images.
+
+For Brown-Conrady, the undistorted pinhole coordinates are
+
+```text
+xn = s1/s3
+yn = s2/s3
+r2 = xn^2 + yn^2.
+```
+
+The distorted normalized coordinates are
+
+```text
+rad = 1 + k1 r2 + k2 r2^2 + k3 r2^3
+xd  = xn rad + 2 p1 xn yn + p2 (r2 + 2 xn^2)
+yd  = yn rad + p1 (r2 + 2 yn^2) + 2 p2 xn yn
+u   = 0.5 + dx + f1 xd
+v   = 0.5 + dy + f2 yd.
+```
 
 ## Test Data
 
@@ -226,3 +298,21 @@ write into ignored directories such as `test-report/`, `lucky-report/`, and
 The camera-model cross-check starts Python and imports `aida_tools_py`. Set
 `PYTHON=/path/to/python` if the default `/opt/miniconda3/bin/python` is not the
 right environment.
+
+## References
+
+- Warren Jr., W. H., and Hoffleit, D. (1987). The Bright Star Catalogue.
+  *Bulletin of the American Astronomical Society*, 19, 733.
+- Nowakowski, A., and Skarbek, W. (2013). Analysis of Brown camera distortion
+  model. In *Photonics Applications in Astronomy, Communications, Industry,
+  and High-Energy Physics Experiments 2013*, SPIE Vol. 8903, 248-257.
+- Lang, D., Hogg, D. W., Mierle, K., Blanton, M., and Roweis, S. (2010).
+  Astrometry.net: Blind astrometric calibration of arbitrary astronomical
+  images. *The Astronomical Journal*, 139(5), 1782-1800.
+- Bertin, E., and Arnouts, S. (1996). SExtractor: Software for source
+  extraction. *Astronomy and Astrophysics Supplement Series*, 117, 393-404.
+  doi:10.1051/aas:1996164.
+- Barbary, K. (2016). [SEP: Source Extractor as a
+  library](https://doi.org/10.21105/joss.00058). *Journal of Open Source
+  Software*, 1(6), 58. Project documentation:
+  https://sep.readthedocs.io/.

@@ -468,7 +468,7 @@ function shellQuote(value) {
 
 function reportCommand(args = []) {
     const suffix = args.length ? ` -- ${args.map(shellQuote).join(" ")}` : "";
-    return `cd /Users/j/src/AIDA_tools/aida_js_calibrator && npm run report${suffix}`;
+    return `cd /Users/j/src/widefield-star-calibrator && npm run report${suffix}`;
 }
 
 function paethPredictor(a, b, c) {
@@ -1634,7 +1634,7 @@ h2 { margin: 0 0 8px; font-size: 20px; }
 <body>
 <header>
 <h1>AIDA Calibrator Star-Fit Test Report</h1>
-<p class="intro">Generated ${escapeHtml(generated)} for ${results.length} ${plural}. The report reads JSON cases from <code>aida_js_calibrator/test_cases/</code>; each case contains image metadata and an <code>[optmod, ...optpar]</code> vector. A known-good lens model creates an oracle truth map between Yale catalogue stars and image detections; this validates the detector and shows the best available fit if the star identities are known. Each case also reports a separate GUI-style auto-identify simulation that starts from the default lens state, uses blind asterisms to seed the model, and then expands with projected matching. Green circles are oracle-certified detections used for the validation fit, cyan circles are fitted lens-model positions, red circles are catalogue stars under the known-good optpar model, and yellow dots are raw automatic detections. Brown-Conrady cases use light coefficient regularization.</p>
+<p class="intro">Generated ${escapeHtml(generated)} for ${results.length} ${plural}. The report reads JSON cases from <code>widefield-star-calibrator/test_cases/</code>; each case contains image metadata and an <code>[optmod, ...optpar]</code> vector. A known-good lens model creates an oracle truth map between Yale catalogue stars and image detections; this validates the detector and shows the best available fit if the star identities are known. Each case also reports a separate GUI-style auto-identify simulation that starts from the default lens state, uses blind asterisms to seed the model, and then expands with projected matching. Green circles are oracle-certified detections used for the validation fit, cyan circles are fitted lens-model positions, red circles are catalogue stars under the known-good optpar model, and yellow dots are raw automatic detections. Brown-Conrady cases use light coefficient regularization.</p>
 <section class="reproduce">
 <h2>Repeat From Command Line</h2>
 <pre><code>${escapeHtml(command)}</code></pre>

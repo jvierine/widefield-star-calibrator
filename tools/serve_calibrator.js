@@ -240,7 +240,7 @@ function main() {
         handle(req, res);
     });
     server.listen(options.port, options.host, () => {
-        console.log(`AIDA calibrator: http://${options.host}:${options.port}/`);
+        console.log(`WISC: http://${options.host}:${options.port}/`);
     });
 }
 

@@ -86,7 +86,7 @@ function casePanel(testCase, index) {
 
 function pageHtml(cases) {
     const generated = new Date().toISOString();
-    const command = "cd /Users/j/src/AIDA_tools/aida_js_calibrator && npm run report:saved-overlays";
+    const command = "cd /Users/j/src/widefield-star-calibrator && npm run report:saved-overlays";
     return `<!doctype html>
 <html lang="en">
 <head>

@@ -508,7 +508,7 @@ ${paths}
 }
 
 function pageHtml(report) {
-    const command = "cd /Users/j/src/AIDA_tools/aida_js_calibrator && npm run train:star-nn";
+    const command = "cd /Users/j/src/widefield-star-calibrator && npm run train:star-nn";
     return `<!doctype html>
 <html lang="en">
 <head>
