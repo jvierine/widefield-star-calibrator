@@ -299,6 +299,33 @@
         return 1.4826 * median(values.map(value => Math.abs(value - center)));
     }
 
+    function peakDensityValue(values, binWidth = 2) {
+        if (!values.length) {
+            return NaN;
+        }
+        const width = Math.max(1, Number(binWidth) || 2);
+        const bins = Math.ceil(256 / width);
+        const hist = new Array(bins).fill(0);
+        for (const value of values) {
+            const idx = Math.max(0, Math.min(bins - 1, Math.floor(Math.max(0, Math.min(255, value)) / width)));
+            hist[idx] += 1;
+        }
+        let bestIdx = 0;
+        let bestCount = -Infinity;
+        for (let i = 0; i < bins; i += 1) {
+            const count = hist[i] + 0.5 * (hist[i - 1] || 0) + 0.5 * (hist[i + 1] || 0);
+            if (count > bestCount) {
+                bestCount = count;
+                bestIdx = i;
+            }
+        }
+        return (bestIdx + 0.5) * width;
+    }
+
+    function mean(values) {
+        return values.length ? values.reduce((acc, value) => acc + value, 0) / values.length : NaN;
+    }
+
     function ringEdgeScore(imageData, cx, cy, radius, options) {
         const width = imageData.width;
         const height = imageData.height;
@@ -390,7 +417,7 @@
         };
     }
 
-    function medianRadialHorizonEdge(imageData, options = {}) {
+    function peakDensityRadialHorizonEdge(imageData, options = {}) {
         const width = imageData.width;
         const height = imageData.height;
         const minSide = Math.min(width, height);
@@ -404,6 +431,8 @@
         const samples = Number.isFinite(options.radialProfileSamples) ?
             Math.max(96, Math.floor(options.radialProfileSamples)) :
             minSide >= 1200 ? 720 : 192;
+        const binWidth = Number.isFinite(options.radialDensityBinWidth) ? options.radialDensityBinWidth : 2;
+        const blackThreshold = Number.isFinite(options.radialBlackThreshold) ? options.radialBlackThreshold : 25;
         const profile = [];
         for (let radius = radiusMin; radius <= radiusMax + 1e-9; radius += radiusStep) {
             const values = [];
@@ -416,7 +445,12 @@
                 }
             }
             if (values.length >= samples * 0.80) {
-                profile.push({radius, median: median(values), validFraction: values.length / samples});
+                profile.push({
+                    radius,
+                    peakDensity: peakDensityValue(values, binWidth),
+                    blackFraction: values.filter(value => value <= blackThreshold).length / values.length,
+                    validFraction: values.length / samples,
+                });
             }
         }
         if (profile.length < 12) {
@@ -427,8 +461,8 @@
             Math.max(5, 0.004 * minSide)) / radiusStep));
         let best = null;
         for (let i = halfWindow; i < profile.length - halfWindow - 1; i += 1) {
-            const inside = median(profile.slice(i - halfWindow, i).map(row => row.median));
-            const outside = median(profile.slice(i + 1, i + halfWindow + 1).map(row => row.median));
+            const inside = mean(profile.slice(i - halfWindow, i).map(row => row.peakDensity));
+            const outside = mean(profile.slice(i + 1, i + halfWindow + 1).map(row => row.peakDensity));
             const drop = inside - outside;
             if (!best || drop > best.drop) {
                 best = {
@@ -440,24 +474,41 @@
                 };
             }
         }
+        let crossing = null;
+        for (let i = 1; i < profile.length; i += 1) {
+            const prev = profile[i - 1];
+            const curr = profile[i];
+            if (prev.blackFraction < 0.50 && curr.blackFraction >= 0.50) {
+                const denom = curr.blackFraction - prev.blackFraction;
+                const frac = Math.max(0, Math.min(1, denom > 1e-9 ? (0.50 - prev.blackFraction) / denom : 0));
+                crossing = {
+                    radius: prev.radius + frac * (curr.radius - prev.radius),
+                    index: i,
+                    validFraction: curr.validFraction,
+                };
+                break;
+            }
+        }
         if (!best) {
             return null;
         }
-        const innerRows = profile.filter(row => row.radius >= radiusMin && row.radius <= best.radius - 2 * halfWindow * radiusStep);
-        const outerRows = profile.filter(row => row.radius >= best.radius + 2 * halfWindow * radiusStep && row.radius <= radiusMax);
-        const innerLevel = median(innerRows.map(row => row.median));
-        const outerLevel = median(outerRows.map(row => row.median));
-        const spread = robustSpread(profile.map(row => row.median), median(profile.map(row => row.median)));
+        const edgeRadius = crossing ? crossing.radius : best.radius;
+        const edgeIndex = crossing ? crossing.index : profile.findIndex(row => row.radius >= best.radius);
+        const innerRows = profile.filter(row => row.radius >= radiusMin && row.radius <= edgeRadius - 2 * halfWindow * radiusStep);
+        const outerRows = profile.filter(row => row.radius >= edgeRadius + 2 * halfWindow * radiusStep && row.radius <= radiusMax);
+        const innerLevel = mean(innerRows.map(row => row.peakDensity));
+        const outerLevel = mean(outerRows.map(row => row.peakDensity));
+        const spread = robustSpread(profile.map(row => row.peakDensity), median(profile.map(row => row.peakDensity)));
         const normalizedDrop = best.drop / Math.max(6, spread || 0);
         const score = normalizedDrop + 0.01 * best.drop;
-        const detected = best.drop > 24 && innerLevel > outerLevel + 20 && outerLevel < Math.max(45, innerLevel * 0.45);
+        const detected = (crossing || best.drop > 24) && innerLevel > outerLevel + 20 && outerLevel < Math.max(55, innerLevel * 0.55);
         return {
             detected,
-            reason: detected ? "centered median radial horizon edge" : "weak centered radial edge",
+            reason: detected ? "centered peak-density radial horizon edge" : "weak centered peak-density radial edge",
             centerX: cx,
             centerY: cy,
-            radiusPx: best.radius,
-            radiusFraction: best.radius / minSide,
+            radiusPx: edgeRadius,
+            radiusFraction: edgeRadius / minSide,
             centerOffsetFraction: 0,
             score,
             contrast: best.drop,
@@ -465,11 +516,15 @@
             medOutside: best.outside,
             innerLevel,
             outerLevel,
+            blackFraction: edgeIndex >= 0 && profile[edgeIndex] ? profile[edgeIndex].blackFraction : NaN,
             spread,
-            validFraction: best.validFraction,
-            method: "median-radial-edge",
+            validFraction: crossing ? crossing.validFraction : best.validFraction,
+            method: "peak-density-radial-edge",
+            statistic: "peak-density",
             profileStepPx: radiusStep,
             profileSamples: samples,
+            densityBinWidth: binWidth,
+            blackThreshold,
         };
     }
 
@@ -481,7 +536,7 @@
         }
         const minSide = Math.min(width, height);
         const filenameHint = looksLikeIrfFisheyeName(options.filename || options.name || "");
-        const centered = medianRadialHorizonEdge(imageData, options);
+        const centered = peakDensityRadialHorizonEdge(imageData, options);
         if (centered && centered.detected) {
             const alpha = Number.isFinite(Number(options.alpha)) ? Number(options.alpha) : 0.46;
             const detection = {

@@ -35,6 +35,29 @@ function median(values) {
     return sorted.length % 2 ? sorted[mid] : 0.5 * (sorted[mid - 1] + sorted[mid]);
 }
 
+function peakDensityValue(values, binWidth = 2) {
+    if (!values.length) {
+        return NaN;
+    }
+    const width = Math.max(1, Number(binWidth) || 2);
+    const bins = Math.ceil(256 / width);
+    const hist = new Array(bins).fill(0);
+    for (const value of values) {
+        const idx = Math.max(0, Math.min(bins - 1, Math.floor(Math.max(0, Math.min(255, value)) / width)));
+        hist[idx] += 1;
+    }
+    let bestIdx = 0;
+    let bestCount = -Infinity;
+    for (let i = 0; i < bins; i += 1) {
+        const count = hist[i] + 0.5 * (hist[i - 1] || 0) + 0.5 * (hist[i + 1] || 0);
+        if (count > bestCount) {
+            bestCount = count;
+            bestIdx = i;
+        }
+    }
+    return (bestIdx + 0.5) * width;
+}
+
 function luminanceAt(imageData, x, y) {
     const width = imageData.width;
     const height = imageData.height;
@@ -53,6 +76,8 @@ function radialHorizonDiagnostic(imageData, detection, reference = null) {
     const cy = Number.isFinite(detection && detection.centerY) ? detection.centerY : 0.5 * (height - 1);
     const step = Number.isFinite(detection && detection.profileStepPx) ? detection.profileStepPx : Math.max(1, Math.round(minSide / 1400));
     const samples = Number.isFinite(detection && detection.profileSamples) ? detection.profileSamples : minSide >= 1200 ? 720 : 192;
+    const binWidth = Number.isFinite(detection && detection.densityBinWidth) ? detection.densityBinWidth : 2;
+    const blackThreshold = Number.isFinite(detection && detection.blackThreshold) ? detection.blackThreshold : 25;
     const r0 = 0.40 * minSide;
     const r1 = 0.505 * minSide;
     const profile = [];
@@ -67,14 +92,21 @@ function radialHorizonDiagnostic(imageData, detection, reference = null) {
             }
         }
         if (values.length >= samples * 0.80) {
-            profile.push({radius, median: median(values), validFraction: values.length / samples});
+            profile.push({
+                radius,
+                peakDensity: peakDensityValue(values, binWidth),
+                blackFraction: values.filter(value => value <= blackThreshold).length / values.length,
+                validFraction: values.length / samples,
+            });
         }
     }
     const halfWindow = Math.max(2, Math.round(Math.max(5, 0.004 * minSide) / step));
     const drops = [];
     for (let i = halfWindow; i < profile.length - halfWindow - 1; i += 1) {
-        const inside = median(profile.slice(i - halfWindow, i).map(row => row.median));
-        const outside = median(profile.slice(i + 1, i + halfWindow + 1).map(row => row.median));
+        const insideRows = profile.slice(i - halfWindow, i);
+        const outsideRows = profile.slice(i + 1, i + halfWindow + 1);
+        const inside = insideRows.reduce((acc, row) => acc + row.peakDensity, 0) / insideRows.length;
+        const outside = outsideRows.reduce((acc, row) => acc + row.peakDensity, 0) / outsideRows.length;
         drops.push({
             radius: profile[i].radius,
             drop: inside - outside,
@@ -87,6 +119,8 @@ function radialHorizonDiagnostic(imageData, detection, reference = null) {
         centerY: cy,
         step,
         samples,
+        binWidth,
+        blackThreshold,
         profile,
         drops,
         detectedRadius: Number(detection && detection.radiusPx),
@@ -177,7 +211,7 @@ function horizonFromOptpar(metadata, width, height) {
     return {
         centerX: (0.5 + optpar[5]) * width - 1,
         centerY: (0.5 + optpar[6]) * height - 1,
-        radiusPx: optpar[0] * Math.sin(alpha * Math.PI / 2) * width,
+        radiusPx: Math.abs(optpar[0] * Math.sin(alpha * Math.PI / 2) * width),
         alpha,
     };
 }
@@ -302,18 +336,18 @@ function writeReport(result, options = {}) {
     const ref = result.reference;
     const horizonDiagnostic = radialHorizonDiagnostic(result.imageData, ann, ref);
     const radialPlot = svgScatterPlot({
-        title: "Median radial intensity profile used for horizon detection",
+        title: "Peak-density radial intensity profile used for horizon detection",
         xLabel: "Radius from image center (px)",
-        yLabel: "Median intensity",
+        yLabel: "Peak density intensity",
         points: horizonDiagnostic.profile,
-        yAccessor: point => point.median,
+        yAccessor: point => point.peakDensity,
         detectedRadius: horizonDiagnostic.detectedRadius,
         referenceRadius: horizonDiagnostic.referenceRadius,
     });
     const dropPlot = svgScatterPlot({
         title: "Radial matched-filter edge response",
         xLabel: "Radius from image center (px)",
-        yLabel: "Inside minus outside median",
+        yLabel: "Inside minus outside peak",
         points: horizonDiagnostic.drops,
         yAccessor: point => point.drop,
         detectedRadius: horizonDiagnostic.detectedRadius,
@@ -377,8 +411,9 @@ ${matched}
 </div>
 <h2>Horizon Detection Diagnostics</h2>
 <p class="note">The fisheye detector assumes the image midpoint is the optical center and looks for the
-large median intensity drop between the illuminated circular field and the nearly black pixels outside it.
-Median radial statistics make the estimate insensitive to station labels, timestamps, and cardinal-direction text.</p>
+large drop in the peak value of the pixel-intensity density between the illuminated circular field and the
+nearly black pixels outside it. The peak-density statistic is insensitive to sparse station labels,
+timestamps, and cardinal-direction text.</p>
 <div class="plots">
 ${radialPlot}
 ${dropPlot}
@@ -395,6 +430,7 @@ ${dropPlot}
             centerY: horizonDiagnostic.centerY,
             step: horizonDiagnostic.step,
             samples: horizonDiagnostic.samples,
+            binWidth: horizonDiagnostic.binWidth,
             profile: horizonDiagnostic.profile,
             drops: horizonDiagnostic.drops,
         },

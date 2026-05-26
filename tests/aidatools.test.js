@@ -335,7 +335,7 @@ test("default focal ratios follow image width and height", () => {
     assert.equal(brown[7], 0.0);
 });
 
-function syntheticFisheyeImage(width = 320, height = 320, cx = 159.5, cy = 159.5, radius = 150) {
+function syntheticFisheyeImage(width = 320, height = 320, cx = 159.5, cy = 159.5, radius = 138) {
     const data = new Uint8Array(width * height * 4);
     for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
@@ -365,10 +365,10 @@ test("fisheye annulus detector finds a circular horizon and initial optmod 2 gue
         samples: 96,
     });
     assert.equal(detection.detected, true);
-    assert.equal(detection.method, "median-radial-edge");
+    assert.equal(detection.method, "peak-density-radial-edge");
     assert.ok(Math.abs(detection.centerX - 159.5) < 1e-9, `center x ${detection.centerX}`);
     assert.ok(Math.abs(detection.centerY - 159.5) < 1e-9, `center y ${detection.centerY}`);
-    assert.ok(Math.abs(detection.radiusPx - 150) < 8, `radius ${detection.radiusPx}`);
+    assert.ok(Math.abs(detection.radiusPx - 138) < 8, `radius ${detection.radiusPx}`);
     assert.equal(detection.initialOptpar.length, 8);
     assertNear(detection.initialOptpar[7], 0.46, 1e-12);
     assert.deepEqual(Array.from(detection.preflatten.preflattenModelCandidates), ["fisheye"]);
