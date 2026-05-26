@@ -27,7 +27,7 @@
 
 \title{WISC: A Browser-Based Widefield Star Calibrator}
 \author{Juha Vierinen \and Bjorn Gustavsson}
-\date{Draft for WISC v0.2.6}
+\date{Draft for WISC v0.2.7}
 
 \begin{document}
 \maketitle
@@ -45,7 +45,10 @@ wide-field cameras, including fisheye lenses used in auroral research, and it
 also supports a Brown-Conrady model for ordinary phone cameras. The tool
 emphasizes practical calibration under imperfect observing conditions,
 including aurora, buildings, image noise, nonlinear lens effects, and spurious
-star detections.
+star detections. Recent development has focused on making full-horizon fisheye
+images easier to initialize automatically by detecting the circular horizon
+annulus, inferring approximate camera center and scale, and using those
+quantities to seed the fisheye model before star association.
 \end{abstract}
 
 \section{Introduction}
@@ -72,6 +75,8 @@ lens model, and roughly aligns the sky projection. The application supports
 manual pairing through a keyboard-modified click workflow. Holding \texttt{S}
 and clicking near an image star opens a local density estimate; the centroid is
 refined at subpixel resolution and can then be paired with a catalog star.
+If the same modified click is performed over an existing pair, the pair can be
+removed without entering a separate editing mode.
 
 The ``I'm feeling lucky'' path automates the same idea. It detects bright image
 features, attempts a blind spherical asterism match, seeds the selected optical
@@ -79,6 +84,43 @@ model, expands the number of candidate matches, fits the lens parameters, and
 rejects obvious outliers. The user can paint bad star-finder regions with
 \texttt{M}+click. These marked regions remove yellow automatic detections from
 future automatic matching and are saved with submitted test-case metadata.
+
+For all-sky fisheye images, the application also tries to recognize the dark
+outside-of-horizon annulus when the image is loaded. If a circular horizon is
+detected, the browser switches to the fisheye model and initializes the optical
+center, focal scale, and radial parameter from the measured horizon circle.
+This is particularly useful for ALIS-style and similar all-sky images where the
+image contains a nearly complete horizon ring.
+
+\section{Metadata Inference}
+
+Correct time and observer location are critical because the catalog sky is
+local. WISC therefore tries several metadata sources before requiring manual
+entry. The preferred source is EXIF metadata, including GPS position, altitude,
+image direction, and timestamp when these fields are present. When EXIF data
+are missing or incomplete, the browser falls back to filename conventions for
+known image sources. Supported patterns include allsky7-style names with
+underscore-separated timestamps and camera identifiers, IRF/ALIS-style names
+such as \texttt{2026-01-23T20.05.00.000KRN.jpeg}, and compact station names
+such as \texttt{20260112173523\_RAM.jpg}. In the latter example, \texttt{RAM}
+is interpreted as Ramfjordmoen, with site coordinates \(69.5860^\circ\) N,
+\(19.2247^\circ\) E and altitude \(0\ \mathrm{m}\).
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lll}
+\toprule
+Filename form & Parsed fields & Example station metadata \\
+\midrule
+\texttt{YYYY\_MM\_DD\_hh\_mm\_ss\_ID} & UTC time, allsky7 ID & coarsened allsky7 site \\
+\texttt{YYYY-MM-DDThh.mm.ss.sssKRN} & UTC time, ALIS code & Kiruna IRF \\
+\texttt{YYYYMMDDhhmmss\_RAM} & UTC time, compact code & Ramfjordmoen \\
+\bottomrule
+\end{tabular}
+\caption{Filename metadata conventions currently understood by WISC. Manual
+metadata entry remains available and overrides inferred values.}
+\label{tab:metadata-inference}
+\end{table}
 
 \section{Coordinate Systems}
 
@@ -174,6 +216,48 @@ Brown-Conrady & phone and ordinary lenses & radial plus tangential distortion \\
 \end{tabular}
 \caption{Common model choices in the browser calibrator.}
 \end{table}
+
+\section{Fisheye Horizon Initialization}
+
+For full-horizon fisheye images, WISC includes a fast horizon-annulus detector.
+The detector uses the fact that many all-sky images contain a bright circular
+field surrounded by nearly black pixels. Sparse text labels, cardinal-direction
+annotations, and timestamps can be present, so the detector does not simply use
+a mean edge profile. It first scans horizontal and vertical lines to find
+threshold crossings between the illuminated field and the black outside region.
+The resulting edge points are fitted with a robust circle fit. Outlying edge
+points are iteratively trimmed, which makes the estimate insensitive to
+annotation text and small non-circular artifacts.
+
+The fitted circle provides an initial optical center and horizon radius. The
+center search is allowed to move by up to roughly \(10\%\) of the image size
+from the image midpoint. This matters because real all-sky camera images are
+not always perfectly centered in the stored pixel array. After the robust
+circle fit, a radial peak-density profile is evaluated around the fitted center
+to measure the horizon edge. The relevant score is the drop in the modal
+intensity density between samples just inside and just outside the horizon:
+\begin{equation}
+  S(r) =
+  \mathrm{mode}\{I(\rho < r)\} -
+  \mathrm{mode}\{I(\rho > r)\},
+\end{equation}
+where the modes are estimated from small radial windows around the candidate
+edge. The correct center makes the horizon circle coherent, and therefore
+maximizes this radial density drop more sharply than an offset center.
+
+The detected radius is converted to an initial \texttt{optmod 2} focal scale
+using the sine fisheye model. If the fitted horizon radius is \(R_h\), image
+width is \(W\), and the initial radial parameter is \(a_r\), the initial
+horizontal focal parameter is
+\begin{equation}
+  f_1 \approx \frac{R_h/W}{\sin(a_r\pi/2)}.
+\end{equation}
+The vertical focal parameter follows from the image aspect ratio. On the KRN
+fisheye validation case, the horizon detector runs in about one second on a
+standard development machine and places the center within a few tenths of a
+pixel of the manually saved horizon center. The validation report records this
+runtime explicitly so that later changes do not silently make image loading
+slow.
 
 \section{Star Detection}
 
@@ -439,6 +523,15 @@ and emphasizes bright all-sky stars before later projected refinements. This
 keeps the radial search from wandering through lens shapes that are plausible
 for ordinary photographs but poor for allsky7 fisheye geometry.
 
+When a fisheye horizon annulus has been detected, the all-sky path is further
+specialized. The horizon circle supplies the initial focal scale and radial
+parameter candidates, and the first stages ignore stars within about
+\(10^\circ\) of the horizon. This removes the part of the image where optical
+distortion, clouds, terrain, and auroral structure are most likely to corrupt
+the first associations. In image space this is roughly the outer ten percent of
+the detected fisheye diameter. Later projected stages can use more of the field
+after the model has become stable.
+
 For ordinary phone-camera images, including iPhone photographs, the generic
 lucky path starts with a deeper blind catalog limit, allows both pinhole and
 fisheye pre-flattening hypotheses, and later widens the radial grid. This is
@@ -545,10 +638,14 @@ only if they do not substantially increase the root-mean-square error.
 \section{Residual Inspection and Undo}
 
 Residual view draws the displacement between each picked image coordinate and
-the fitted catalog projection. The application highlights a suggested outlier
-based on deviation from the median residual pattern. Accepted fits and
-automatic pairing batches are stored on an undo stack, so the user can safely
-try automatic expansion and return to the previous state.
+the fitted catalog projection. In this mode the normal star overlays are hidden
+and red line segments connect each measured image star to its fitted catalog
+position. A compact residual scatter plot is shown in the corner of the image,
+with \(x\)-axis and \(y\)-axis pixel residuals for the paired stars. The
+application highlights a suggested outlier based on deviation from the median
+residual pattern. Accepted fits and automatic pairing batches are stored on an
+undo stack, so the user can safely try automatic expansion and return to the
+previous state.
 
 \section{Test Cases and Reproducibility}
 
@@ -559,6 +656,14 @@ painted bad star-finder positions. JavaScript unit tests cover coordinate
 conversion, camera model behavior, star matching utilities, export generators,
 and selected synthetic asterism cases. Heavier image-based tests are skipped by
 default and are intended for explicit full-test runs.
+
+The repository also contains report generators for saved overlays, lucky-fit
+diagnostics, star-detector oracle comparisons, and fisheye horizon validation.
+The fisheye validation report includes the detected horizon annulus, the manual
+reference annulus when available, radial density-drop plots, edge-point counts,
+manual-overlap star-association statistics, and benchmark timings. These
+reports are deliberately not run on every commit because they depend on larger
+image fixtures and can take several seconds.
 
 \section{Exports}
 
@@ -584,9 +689,11 @@ WISC provides a practical, inspectable workflow for
 turning wide-field star images into calibrated camera models. It combines
 manual control with automatic assistance, keeps the calibration state visible,
 and exports model code that can be used outside the browser. Version 0.2.6
-stabilizes the asterism diagnostics, allsky7 lucky recipe, and
-whole-image Brown-Conrady phone-camera bootstrap path used for further
-development.
+stabilized the asterism diagnostics, allsky7 lucky recipe, and whole-image
+Brown-Conrady phone-camera bootstrap path used for further development.
+Version 0.2.7 adds co-author metadata, compact station filename parsing,
+full-horizon fisheye initialization, and benchmarked fisheye validation
+reports.
 
 \section*{Acknowledgments}
 
