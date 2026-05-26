@@ -49,6 +49,14 @@ test("AIDA az/el coordinates agree with Astropy for saved star matches", async (
     assert.ok(summary.caseCount >= 10, `expected at least 10 comparable cases, got ${summary.caseCount}`);
     assert.ok(summary.count >= 100, `expected at least 100 star comparisons, got ${summary.count}`);
     assert.ok(
+        summary.summary.pixelResidualCount >= 100,
+        `expected at least 100 pixel residuals, got ${summary.summary.pixelResidualCount}`,
+    );
+    assert.ok(
+        Number.isFinite(summary.summary.rmsPixelError),
+        `expected finite RMS pixel error, got ${summary.summary.rmsPixelError}`,
+    );
+    assert.ok(
         summary.summary.maxAngularErrorDeg <= 0.85,
         `max angular error ${summary.summary.maxAngularErrorDeg} deg exceeds tolerance`,
     );

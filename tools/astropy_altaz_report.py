@@ -168,6 +168,10 @@ def compare_case(metadata: dict) -> dict:
         d_az = wrap_deg(aida_az - astropy_az)
         d_el = aida_el - astropy_el
         angular = math.hypot(d_az * math.cos(math.radians(astropy_el)), d_el)
+        residual = match.get("residual") or {}
+        pixel_dx = residual.get("dx", math.nan)
+        pixel_dy = residual.get("dy", math.nan)
+        pixel_error = residual.get("r", math.nan)
         rows.append(
             {
                 "caseId": metadata.get("id") or Path(metadata["_metadataPath"]).parent.name,
@@ -183,6 +187,9 @@ def compare_case(metadata: dict) -> dict:
                 "dAzDeg": d_az,
                 "dElDeg": d_el,
                 "angularErrorDeg": angular,
+                "pixelDx": float(pixel_dx) if pixel_dx is not None else math.nan,
+                "pixelDy": float(pixel_dy) if pixel_dy is not None else math.nan,
+                "pixelError": float(pixel_error) if pixel_error is not None else math.nan,
             }
         )
 
@@ -202,17 +209,30 @@ def compare_case(metadata: dict) -> dict:
 
 def summarize_rows(rows: list[dict]) -> dict:
     def max_abs(key: str) -> float:
-        return max((abs(row[key]) for row in rows), default=math.nan)
+        values = [abs(row[key]) for row in rows if math.isfinite(row.get(key, math.nan))]
+        return max(values, default=math.nan)
+
+    def finite_values(key: str) -> list[float]:
+        return [row[key] for row in rows if math.isfinite(row.get(key, math.nan))]
 
     angular_errors = sorted(row["angularErrorDeg"] for row in rows)
     rms = math.sqrt(sum(row["angularErrorDeg"] ** 2 for row in rows) / len(rows)) if rows else math.nan
     median = angular_errors[len(angular_errors) // 2] if angular_errors else math.nan
+    pixel_errors = sorted(finite_values("pixelError"))
+    pixel_rms = math.sqrt(sum(value * value for value in pixel_errors) / len(pixel_errors)) if pixel_errors else math.nan
+    pixel_median = pixel_errors[len(pixel_errors) // 2] if pixel_errors else math.nan
     return {
         "rmsAngularErrorDeg": rms,
         "medianAngularErrorDeg": median,
         "maxAngularErrorDeg": max((row["angularErrorDeg"] for row in rows), default=math.nan),
         "maxAbsAzErrorDeg": max_abs("dAzDeg"),
         "maxAbsElErrorDeg": max_abs("dElDeg"),
+        "pixelResidualCount": len(pixel_errors),
+        "rmsPixelError": pixel_rms,
+        "medianPixelError": pixel_median,
+        "maxPixelError": max(pixel_errors, default=math.nan),
+        "maxAbsPixelDx": max_abs("pixelDx"),
+        "maxAbsPixelDy": max_abs("pixelDy"),
     }
 
 
@@ -283,6 +303,33 @@ def write_report(result: dict, out_dir: Path) -> None:
     fig.savefig(out_dir / scatter_name)
     plt.close(fig)
 
+    pixel_rows = [row for row in rows if math.isfinite(row.get("pixelError", math.nan))]
+    pixel_scatter_name = "pixel_residual_scatter.png"
+    if pixel_rows:
+        fig, ax = plt.subplots(figsize=(6.2, 5.6), dpi=170)
+        ax.axhline(0, color="0.78", linewidth=0.8)
+        ax.axvline(0, color="0.78", linewidth=0.8)
+        sc = ax.scatter(
+            [row["pixelDx"] for row in pixel_rows],
+            [row["pixelDy"] for row in pixel_rows],
+            c=[row["pixelError"] for row in pixel_rows],
+            s=17,
+            cmap="magma",
+            edgecolors="black",
+            linewidths=0.15,
+            alpha=0.82,
+        )
+        ax.set_aspect("equal", adjustable="box")
+        ax.set_xlabel("Model - image x residual (px)")
+        ax.set_ylabel("Model - image y residual (px)")
+        ax.set_title("Saved star-pair pixel residuals")
+        ax.grid(True, alpha=0.25)
+        cb = fig.colorbar(sc, ax=ax)
+        cb.set_label("Pixel residual radius (px)")
+        fig.tight_layout()
+        fig.savefig(out_dir / pixel_scatter_name)
+        plt.close(fig)
+
     (out_dir / "summary.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf8")
     s = result["summary"]
     case_rows = "\n".join(
@@ -291,6 +338,8 @@ def write_report(result: dict, out_dir: Path) -> None:
         f"<td>{case['count']}</td>"
         f"<td>{case['summary']['rmsAngularErrorDeg']:.4f}</td>"
         f"<td>{case['summary']['maxAngularErrorDeg']:.4f}</td>"
+        f"<td>{case['summary']['rmsPixelError']:.3f}</td>"
+        f"<td>{case['summary']['maxPixelError']:.3f}</td>"
         f"<td>{case['summary']['maxAbsAzErrorDeg']:.4f}</td>"
         f"<td>{case['summary']['maxAbsElErrorDeg']:.4f}</td>"
         f"<td><code>{case['metadataPath']}</code></td>"
@@ -306,6 +355,7 @@ def write_report(result: dict, out_dir: Path) -> None:
         f"<td>{row['dAzDeg']:.4f}</td>"
         f"<td>{row['dElDeg']:.4f}</td>"
         f"<td>{row['angularErrorDeg']:.4f}</td>"
+        f"<td>{row['pixelError']:.3f}</td>"
         "</tr>"
         for row in sorted(rows, key=lambda item: item["angularErrorDeg"], reverse=True)[:25]
     )
@@ -337,19 +387,24 @@ with <code>pressure=0 hPa</code> to match the browser calculation.</p>
 <div class="metric"><span>Stars</span><b>{result['count']}</b></div>
 <div class="metric"><span>RMS angular error</span><b>{s['rmsAngularErrorDeg']:.4f} deg</b></div>
 <div class="metric"><span>Max angular error</span><b>{s['maxAngularErrorDeg']:.4f} deg</b></div>
+<div class="metric"><span>RMS pixel error</span><b>{s['rmsPixelError']:.3f} px</b></div>
+<div class="metric"><span>Max pixel error</span><b>{s['maxPixelError']:.3f} px</b></div>
 </div>
 <p>Maximum absolute azimuth/elevation errors are {s['maxAbsAzErrorDeg']:.4f} deg
-and {s['maxAbsElErrorDeg']:.4f} deg.</p>
-<h2>Error Scatter</h2>
+and {s['maxAbsElErrorDeg']:.4f} deg. Maximum absolute pixel dx/dy residuals are
+{s['maxAbsPixelDx']:.3f} px and {s['maxAbsPixelDy']:.3f} px.</p>
+<h2>Angular Error Scatter</h2>
 <img src="{scatter_name}" alt="AIDA minus Astropy azimuth/elevation scatter plot">
+<h2>Pixel Error Scatter</h2>
+<img src="{pixel_scatter_name}" alt="Model minus image pixel residual scatter plot">
 <h2>Per-Case Summary</h2>
 <table>
-<thead><tr><th>Case</th><th>Stars</th><th>RMS</th><th>Max angular</th><th>Max |az|</th><th>Max |el|</th><th>Metadata</th></tr></thead>
+<thead><tr><th>Case</th><th>Stars</th><th>RMS angular</th><th>Max angular</th><th>RMS px</th><th>Max px</th><th>Max |az|</th><th>Max |el|</th><th>Metadata</th></tr></thead>
 <tbody>{case_rows}</tbody>
 </table>
 <h2>Largest Residuals</h2>
 <table>
-<thead><tr><th>Case</th><th>Star</th><th>Astropy az</th><th>Astropy el</th><th>dAz</th><th>dEl</th><th>Angular</th></tr></thead>
+<thead><tr><th>Case</th><th>Star</th><th>Astropy az</th><th>Astropy el</th><th>dAz</th><th>dEl</th><th>Angular</th><th>Pixel</th></tr></thead>
 <tbody>{worst_rows}</tbody>
 </table>
 </body>
@@ -392,7 +447,9 @@ def main() -> int:
             f"RMS {s['rmsAngularErrorDeg']:.4f} deg, "
             f"max angular {s['maxAngularErrorDeg']:.4f} deg, "
             f"max |az| {s['maxAbsAzErrorDeg']:.4f} deg, "
-            f"max |el| {s['maxAbsElErrorDeg']:.4f} deg"
+            f"max |el| {s['maxAbsElErrorDeg']:.4f} deg, "
+            f"RMS pixel {s['rmsPixelError']:.3f} px, "
+            f"max pixel {s['maxPixelError']:.3f} px"
         )
 
     s = result["summary"]
