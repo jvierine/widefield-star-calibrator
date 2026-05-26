@@ -1,11 +1,12 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.14";
+    const APP_VERSION = "v0.2.15";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
     const MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION = 8 / 4032;
+    const FISHEYE_AUTO_MIN_ELEVATION_DEG = 10;
     const canvas = document.getElementById("glCanvas");
     const rotationCanvas = document.getElementById("rotationCanvas");
     const rotationContext = rotationCanvas.getContext("2d");
@@ -636,6 +637,18 @@
         return {
             catalogMaxZenithDeg: 90 - Math.max(0, Number(degAboveHorizon) || 0),
         };
+    }
+
+    function automaticFisheyeStarAllowed(star) {
+        if (!state.fisheyeDetection || !state.fisheyeDetection.detected) {
+            return true;
+        }
+        const ze = Number(star && star.ze);
+        if (!Number.isFinite(ze)) {
+            return false;
+        }
+        const elevationDeg = 90 - ze / AidaTools.DEG;
+        return elevationDeg >= FISHEYE_AUTO_MIN_ELEVATION_DEG;
     }
 
     function detectAndApplyFisheyeInitialGuess(name, exifMetadata = null) {
@@ -2211,6 +2224,9 @@ end
         for (const match of result.matches || []) {
             if (added >= maxAdditions) {
                 break;
+            }
+            if (!automaticFisheyeStarAllowed(match.star)) {
+                continue;
             }
             if (!ignoreDistanceGuards && Number.isFinite(match.distance) && match.distance > maxAddDistancePx) {
                 continue;
