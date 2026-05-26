@@ -61,6 +61,26 @@ test("density centroid stores the unfiltered interpolated patch for display", ()
     assert.notEqual(smoothValue, rawValue);
 });
 
+test("density centroid patch radius can follow image-width fraction", () => {
+    const sample = gaussianStar(10.2, 10.7, 1.2, 700, 33);
+    const result = AidaCentroid.estimateCentroid(10.0, 11.0, sample, {
+        imageWidth: 1000,
+        patchRadiusWidthFraction: 8 / 4032,
+    });
+    assert.equal(result.density.width, 5 * 40);
+    assert.equal(result.density.height, 5 * 40);
+});
+
+test("density centroid image-width patch radius preserves HEIC preset", () => {
+    const sample = gaussianStar(17.35, 18.65, 1.5, 700, 33);
+    const result = AidaCentroid.estimateCentroid(17.0, 19.0, sample, {
+        imageWidth: 4032,
+        patchRadiusWidthFraction: 8 / 4032,
+    });
+    assert.equal(result.density.width, 17 * 40);
+    assert.equal(result.density.height, 17 * 40);
+});
+
 test("fast density centroid remains fast enough for interactive picking", () => {
     const sample = gaussianStar(19.42, 21.73, 1.7, 900, 28);
     const start = performance.now();

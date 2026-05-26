@@ -1,10 +1,11 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.13";
+    const APP_VERSION = "v0.2.14";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
+    const MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION = 8 / 4032;
     const canvas = document.getElementById("glCanvas");
     const rotationCanvas = document.getElementById("rotationCanvas");
     const rotationContext = rotationCanvas.getContext("2d");
@@ -3681,6 +3682,17 @@ end
         loadingText.textContent = text;
     }
 
+    function shouldUpdateFitProgress(iteration, maxIter, visualStride, minIntervalMs, lastUpdateTime) {
+        if (iteration === 0 || iteration + 1 >= maxIter) {
+            return true;
+        }
+        const stride = Math.max(1, Math.round(visualStride || 20));
+        if (iteration % stride !== 0) {
+            return false;
+        }
+        return performance.now() - lastUpdateTime >= Math.max(0, minIntervalMs || 0);
+    }
+
     function hideLoadingProgress() {
         loadingBar.style.width = "100%";
         window.setTimeout(() => {
@@ -4750,7 +4762,10 @@ end
         if (!state.imagePixels) {
             return {x: clickX, y: clickY, sigma: 0, method: "click"};
         }
-        const result = AidaCentroid.estimateCentroid(clickX, clickY, imageGrayInterpolated);
+        const result = AidaCentroid.estimateCentroid(clickX, clickY, imageGrayInterpolated, {
+            imageWidth: state.image ? state.image.width : 4032,
+            patchRadiusWidthFraction: MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION,
+        });
         state.centroidDensity = result.density;
         return {x: result.x, y: result.y, sigma: result.sigma, method: result.method};
     }
@@ -5341,12 +5356,16 @@ end
         const p0 = Number.isFinite(progress.start) ? progress.start : 20;
         const p1 = Number.isFinite(progress.end) ? progress.end : 90;
         const label = progress.label || "Nelder-Mead lens fit";
+        const visualStride = Number.isFinite(progress.visualStride) ? progress.visualStride : 25;
+        const minIntervalMs = Number.isFinite(progress.minIntervalMs) ? progress.minIntervalMs : 120;
+        let lastProgressUpdate = -Infinity;
         let iterations = 0;
 
         for (; iterations < maxIter; iterations++) {
-            if (iterations % 10 === 0) {
+            if (shouldUpdateFitProgress(iterations, maxIter, visualStride, minIntervalMs, lastProgressUpdate)) {
                 const percent = p0 + (p1 - p0) * iterations / Math.max(1, maxIter);
                 setLoadingProgress(percent, `${label}: iteration ${iterations}/${maxIter}`);
+                lastProgressUpdate = performance.now();
                 await yieldToBrowser();
             }
             simplex.sort((a, b) => a.fx - b.fx);
@@ -5404,7 +5423,29 @@ end
         return {x: simplex[0].x, fx: simplex[0].fx, iterations};
     }
 
-    function fitStartCandidates(objective, start, optmod = Number(controls.optmod.value) || 2) {
+    function useFastFisheyeFit(optmod = Number(controls.optmod.value) || 2) {
+        return Number(optmod) === 2 && state.fisheyeDetection && state.fisheyeDetection.detected;
+    }
+
+    function fisheyeNelderMeadPreset(optmod = Number(controls.optmod.value) || 2) {
+        return useFastFisheyeFit(optmod) ? {
+            randomStarts: 10,
+            maxStarts: 6,
+            maxIter: 180,
+            visualStride: 60,
+            progressMinIntervalMs: 300,
+            label: "fast fisheye",
+        } : {
+            randomStarts: 120,
+            maxStarts: 32,
+            maxIter: 800,
+            visualStride: 30,
+            progressMinIntervalMs: 140,
+            label: "robust",
+        };
+    }
+
+    function fitStartCandidates(objective, start, optmod = Number(controls.optmod.value) || 2, options = {}) {
         const starts = [];
         const seen = new Set();
         const addStart = x => {
@@ -5442,7 +5483,8 @@ end
         addStart([start[0], -start[1], ...start.slice(2)]);
         addStart([-start[0], -start[1], ...start.slice(2)]);
 
-        for (let i = 0; i < 120; i++) {
+        const randomStarts = Number.isFinite(options.randomStarts) ? options.randomStarts : 120;
+        for (let i = 0; i < randomStarts; i++) {
             const f1Factor = Math.exp((Math.random() * 2 - 1) * 0.25);
             const f2Factor = Math.exp((Math.random() * 2 - 1) * 0.25);
             addStart([
@@ -5463,7 +5505,8 @@ end
         }
 
         starts.sort((a, b) => a.fx - b.fx);
-        return starts.slice(0, Math.min(32, starts.length));
+        const maxStarts = Number.isFinite(options.maxStarts) ? options.maxStarts : 32;
+        return starts.slice(0, Math.min(maxStarts, starts.length));
     }
 
     function solveLinearSystem(a, b) {
@@ -5595,10 +5638,16 @@ end
         const p0 = Number.isFinite(progress.start) ? progress.start : 20;
         const p1 = Number.isFinite(progress.end) ? progress.end : 90;
         const label = progress.label || "Levenberg-Marquardt lens fit";
+        const visualStride = Number.isFinite(progress.visualStride) ? progress.visualStride : 8;
+        const minIntervalMs = Number.isFinite(progress.minIntervalMs) ? progress.minIntervalMs : 120;
+        let lastProgressUpdate = -Infinity;
         for (; iterations < maxIter; iterations++) {
-            const percent = p0 + (p1 - p0) * iterations / Math.max(1, maxIter);
-            setLoadingProgress(percent, `${label}: iteration ${iterations}/${maxIter}, accepted ${accepted}`);
-            await yieldToBrowser();
+            if (shouldUpdateFitProgress(iterations, maxIter, visualStride, minIntervalMs, lastProgressUpdate)) {
+                const percent = p0 + (p1 - p0) * iterations / Math.max(1, maxIter);
+                setLoadingProgress(percent, `${label}: iteration ${iterations}/${maxIter}, accepted ${accepted}`);
+                lastProgressUpdate = performance.now();
+                await yieldToBrowser();
+            }
             if (!residuals || !Number.isFinite(fx)) {
                 break;
             }
@@ -5732,11 +5781,12 @@ end
         const steps = optmod === BROWN_CONRADY_OPTMOD
             ? [0.05, 0.05, 1.5, 1.5, 2.0, 0.006, 0.006, 0.02, 0.006, 0.003, 0.001, 0.001]
             : [0.05, 0.05, 1.5, 1.5, 2.0, 0.006, 0.006, 0.03];
-        const starts = fitStartCandidates(objective, start, optmod);
+        const nmPreset = fisheyeNelderMeadPreset(optmod);
+        const starts = fitStartCandidates(objective, start, optmod, nmPreset);
         let result = null;
         let totalIterations = 0;
         for (const candidate of starts) {
-            const candidateResult = nelderMead(objective, candidate.x, steps, 800, optmod);
+            const candidateResult = nelderMead(objective, candidate.x, steps, nmPreset.maxIter, optmod);
             totalIterations += candidateResult.iterations;
             if (!result || candidateResult.fx < result.fx) {
                 result = candidateResult;
@@ -5752,7 +5802,7 @@ end
             start,
             residualFn,
             options.methodLabel || "Nelder-Mead lens fit",
-            `${starts.length} starts including random perturbations, ${totalIterations} iterations`,
+            `${nmPreset.label} ${starts.length} starts including random perturbations, ${totalIterations} iterations`,
             fitCount,
             optmod === BROWN_CONRADY_OPTMOD ? "Brown-Conrady monotonic robust Huber objective" : "robust Huber objective",
             options.fitScopeText || null
@@ -5779,16 +5829,19 @@ end
             : [0.05, 0.05, 1.5, 1.5, 2.0, 0.006, 0.006, 0.03];
         setLoadingProgress(5, "Nelder-Mead lens fit: choosing start points...");
         await yieldToBrowser();
-        const starts = fitStartCandidates(objective, start, optmod);
+        const nmPreset = fisheyeNelderMeadPreset(optmod);
+        const starts = fitStartCandidates(objective, start, optmod, nmPreset);
         let result = null;
         let totalIterations = 0;
         for (let i = 0; i < starts.length; i += 1) {
             const p0 = 8 + 86 * i / Math.max(1, starts.length);
             const p1 = 8 + 86 * (i + 1) / Math.max(1, starts.length);
-            const candidateResult = await nelderMeadAsync(objective, starts[i].x, steps, 800, optmod, {
+            const candidateResult = await nelderMeadAsync(objective, starts[i].x, steps, nmPreset.maxIter, optmod, {
                 start: p0,
                 end: p1,
                 label: `Nelder-Mead lens fit start ${i + 1}/${starts.length}`,
+                visualStride: nmPreset.visualStride,
+                minIntervalMs: nmPreset.progressMinIntervalMs,
             });
             totalIterations += candidateResult.iterations;
             if (!result || candidateResult.fx < result.fx) {
@@ -5807,7 +5860,7 @@ end
             start,
             residualFn,
             options.methodLabel || "Nelder-Mead lens fit",
-            `${starts.length} starts including random perturbations, ${totalIterations} iterations`,
+            `${nmPreset.label} ${starts.length} starts including random perturbations, ${totalIterations} iterations`,
             fitCount,
             optmod === BROWN_CONRADY_OPTMOD ? "Brown-Conrady monotonic robust Huber objective" : "robust Huber objective",
             options.fitScopeText || null

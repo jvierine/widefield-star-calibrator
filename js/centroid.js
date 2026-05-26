@@ -130,7 +130,13 @@
 
     function estimateCentroid(clickX, clickY, sample, options = {}) {
         const upsample = options.upsample ?? 40;
-        const patchRadius = options.patchRadius ?? 8;
+        const imageWidth = Number(options.imageWidth);
+        const patchRadiusFraction = Number(options.patchRadiusWidthFraction);
+        const fractionalPatchRadius = Number.isFinite(imageWidth) && imageWidth > 0 &&
+                Number.isFinite(patchRadiusFraction) && patchRadiusFraction > 0 ?
+            Math.max(2, Math.round(imageWidth * patchRadiusFraction)) :
+            NaN;
+        const patchRadius = options.patchRadius ?? (Number.isFinite(fractionalPatchRadius) ? fractionalPatchRadius : 8);
         const gaussianSigmaFinePx = options.gaussianSigmaFinePx ?? 53.2;
         const gaussianSupportFinePx = options.gaussianSupportFinePx ?? 320;
         const size = 2 * patchRadius + 1;
