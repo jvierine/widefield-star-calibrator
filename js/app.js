@@ -3,7 +3,11 @@
 
     const APP_VERSION = "v0.2.17";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-    const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
+    const LOCAL_TEST_CASES_ENABLED =
+        (location.protocol === "http:" || location.protocol === "https:") &&
+        LOCAL_TEST_HOSTS.has(location.hostname);
+    const TEST_CASE_API_BASE = "/api/test-cases";
+    const FITTING_CATALOG_NAME = "yale";
     const NOT_STAR_TILE_SIZE = 128;
     const MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION = 8 / 4032;
     const FISHEYE_AUTO_MIN_ELEVATION_DEG = 10;
@@ -76,7 +80,6 @@
         flipImageY: document.getElementById("flipImageY"),
         toggleRaDecGrid: document.getElementById("toggleRaDecGrid"),
         toggleAzElGrid: document.getElementById("toggleAzElGrid"),
-        toggleDetectionCircles: document.getElementById("toggleDetectionCircles"),
         toggleStarNames: document.getElementById("toggleStarNames"),
         toggleAmbientMusic: document.getElementById("toggleAmbientMusic"),
         resetOffset: document.getElementById("resetOffset"),
@@ -128,6 +131,7 @@
         baseOptpar: null,
         modelOptpar: null,
         loadedTestCaseId: "",
+        testCaseApiAvailable: false,
         imageLoadId: 0,
         fitBusy: false,
         flipX: false,
@@ -180,6 +184,7 @@
         lastLuckyFitSummary: null,
         autoIdentifyBusy: false,
         luckyFitBusy: false,
+        userLensEditingLocked: false,
         pendingMatch: null,
         centroidPreview: null,
         centroidDensity: null,
@@ -252,8 +257,12 @@
         uniform vec2 u_canvas_size;
         uniform float u_point_scale;
         uniform float u_max_mag;
+        uniform vec3 u_tint;
+        uniform float u_tint_mix;
         varying float v_mag;
         varying float v_alpha;
+        varying vec3 v_tint;
+        varying float v_tint_mix;
         void main() {
             vec2 clip = vec2(
                 (a_pixel.x / u_canvas_size.x) * 2.0 - 1.0,
@@ -264,11 +273,15 @@
             gl_PointSize = clamp(size * u_point_scale, 2.5, 26.0 * u_point_scale);
             v_mag = a_mag;
             v_alpha = clamp(0.18 + 0.82 * (u_max_mag - a_mag + 0.5) / max(1.0, u_max_mag + 1.0), 0.16, 1.0);
+            v_tint = u_tint;
+            v_tint_mix = u_tint_mix;
         }
     `, `
         precision mediump float;
         varying float v_mag;
         varying float v_alpha;
+        varying vec3 v_tint;
+        varying float v_tint_mix;
         void main() {
             vec2 d = gl_PointCoord - vec2(0.5);
             float r = length(d);
@@ -280,6 +293,7 @@
             vec3 coolWhite = vec3(0.78, 0.88, 1.0);
             vec3 warmWhite = vec3(1.0, 0.96, 0.84);
             vec3 color = mix(warmWhite, coolWhite, clamp((2.5 - v_mag) / 4.0, 0.0, 1.0));
+            color = mix(color, v_tint, clamp(v_tint_mix, 0.0, 1.0));
             gl_FragColor = vec4(min(color * 2.0, vec3(1.0)), alpha);
         }
     `);
@@ -983,11 +997,15 @@
     }
 
     function projectRotationPoint(point, scale, centerX, centerY) {
-        const distance = 3.4;
-        const z = point[2] + distance;
+        const east = point[0];
+        const north = point[1];
+        const up = point[2];
+        const oblique = 0.38;
+        const groundDrop = -0.23;
+        const displayScale = 0.35 * scale;
         return [
-            centerX + point[0] / z * scale,
-            centerY - point[1] / z * scale,
+            centerX + (east + oblique * north) * displayScale,
+            centerY + (groundDrop * north - up) * displayScale,
         ];
     }
 
@@ -1000,6 +1018,38 @@
         ctx.moveTo(pa[0], pa[1]);
         ctx.lineTo(pb[0], pb[1]);
         ctx.stroke();
+        return pb;
+    }
+
+    function drawRotationArrow(ctx, a, b, color, width, scale, centerX, centerY, arrowSize) {
+        const pa = projectRotationPoint(a, scale, centerX, centerY);
+        const pb = projectRotationPoint(b, scale, centerX, centerY);
+        const dx = pb[0] - pa[0];
+        const dy = pb[1] - pa[1];
+        const len = Math.hypot(dx, dy);
+        if (len <= 1e-6) {
+            return pb;
+        }
+        const ux = dx / len;
+        const uy = dy / len;
+        const px = -uy;
+        const py = ux;
+        const head = Math.max(4, arrowSize);
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(pa[0], pa[1]);
+        ctx.lineTo(pb[0], pb[1]);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(pb[0], pb[1]);
+        ctx.lineTo(pb[0] - ux * head + px * head * 0.45, pb[1] - uy * head + py * head * 0.45);
+        ctx.lineTo(pb[0] - ux * head - px * head * 0.45, pb[1] - uy * head - py * head * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineCap = "butt";
         return pb;
     }
 
@@ -1023,18 +1073,45 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, w, h);
         const cx = w * 0.5;
-        const cy = h * 0.56;
+        const cy = h * 0.67;
         const scale = Math.min(w, h) * 2.25;
-        const rot = AidaTools.cameraRot(
-            Number(controls.rotAlpha.value) || 0,
-            Number(controls.rotBeta.value) || 0,
-            Number(controls.rotGamma.value) || 0
-        );
+        const alphaDeg = Number(controls.rotAlpha.value) || 0;
+        const betaDeg = Number(controls.rotBeta.value) || 0;
+        const gammaDeg = Number(controls.rotGamma.value) || 0;
+        const rot = AidaTools.cameraRot(alphaDeg, betaDeg, gammaDeg);
         const transform = p => [
             p[0] * rot[0] + p[1] * rot[1] + p[2] * rot[2],
             p[0] * rot[3] + p[1] * rot[4] + p[2] * rot[5],
             p[0] * rot[6] + p[1] * rot[7] + p[2] * rot[8],
         ];
+        const groundCorners = [
+            [-0.72, -0.72, 0],
+            [0.72, -0.72, 0],
+            [0.72, 0.72, 0],
+            [-0.72, 0.72, 0],
+        ].map(p => projectRotationPoint(p, scale, cx, cy));
+        ctx.fillStyle = "rgba(148, 163, 184, 0.12)";
+        ctx.strokeStyle = "rgba(100, 116, 139, 0.24)";
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(groundCorners[0][0], groundCorners[0][1]);
+        for (let i = 1; i < groundCorners.length; i++) {
+            ctx.lineTo(groundCorners[i][0], groundCorners[i][1]);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        const localAxes = [
+            {label: "E", color: "rgba(220, 38, 38, 0.52)", end: [0.55, 0, 0]},
+            {label: "N", color: "rgba(22, 163, 74, 0.52)", end: [0, 0.55, 0]},
+            {label: "U", color: "rgba(37, 99, 235, 0.52)", end: [0, 0, 0.62]},
+        ];
+        for (const axis of localAxes) {
+            const end = drawRotationArrow(ctx, [0, 0, 0], axis.end, axis.color, 1.2 * dpr, scale, cx, cy, 5 * dpr);
+            ctx.fillStyle = axis.color;
+            ctx.font = `${10 * dpr}px ui-monospace, Menlo, Consolas, monospace`;
+            ctx.fillText(axis.label, end[0] + 3 * dpr, end[1] - 3 * dpr);
+        }
         const bodyPoints = [
             [-0.46, -0.32, 0],
             [0.46, -0.32, 0],
@@ -1065,6 +1142,20 @@
         ctx.beginPath();
         ctx.arc(nose[0], nose[1], 3.5 * dpr, 0, Math.PI * 2);
         ctx.fill();
+        const zAxisTip = drawRotationArrow(
+            ctx,
+            transform([0, 0, 0.12]),
+            transform([0, 0, 0.92]),
+            "#f59e0b",
+            2.6 * dpr,
+            scale,
+            cx,
+            cy,
+            8 * dpr
+        );
+        ctx.fillStyle = "#b45309";
+        ctx.font = `${11 * dpr}px ui-monospace, Menlo, Consolas, monospace`;
+        ctx.fillText("z", zAxisTip[0] + 4 * dpr, zAxisTip[1] - 4 * dpr);
         ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
         ctx.beginPath();
         ctx.ellipse(center[0], center[1] + 0.34 * scale / 3.4, 0.20 * scale / 3.4, 0.06 * scale / 3.4, 0, 0, Math.PI * 2);
@@ -1072,7 +1163,6 @@
         const axes = [
             {label: "x", color: "#dc2626", end: transform([0.82, 0, 0])},
             {label: "y", color: "#16a34a", end: transform([0, 0.82, 0])},
-            {label: "z", color: "#2563eb", end: transform([0, 0, 0.95])},
         ];
         for (const axis of axes) {
             const end = drawRotationLine(ctx, transform([0, 0, 0]), axis.end, axis.color, 2.4 * dpr, scale, cx, cy);
@@ -1080,13 +1170,11 @@
             ctx.font = `${11 * dpr}px ui-monospace, Menlo, Consolas, monospace`;
             ctx.fillText(axis.label, end[0] + 4 * dpr, end[1] - 4 * dpr);
         }
-        ctx.fillStyle = "#475569";
-        ctx.font = `${10 * dpr}px system-ui, sans-serif`;
-        ctx.fillText(
-            `alpha ${Number(controls.rotAlpha.value || 0).toFixed(1)}  beta ${Number(controls.rotBeta.value || 0).toFixed(1)}  gamma ${Number(controls.rotGamma.value || 0).toFixed(1)}`,
-            8 * dpr,
-            h - 9 * dpr
-        );
+        const boresight = boresightAzElFromCameraAngles(alphaDeg, betaDeg);
+        ctx.font = `${10 * dpr}px ui-monospace, Menlo, Consolas, monospace`;
+        ctx.fillStyle = "#334155";
+        ctx.fillText(`az ${boresight.az.toFixed(1)}°  el ${boresight.el.toFixed(1)}°`, 8 * dpr, 18 * dpr);
+        ctx.fillText(`α ${alphaDeg.toFixed(1)}°  β ${betaDeg.toFixed(1)}°  γ ${gammaDeg.toFixed(1)}°`, 8 * dpr, h - 9 * dpr);
     }
 
     function pythonFloat(value) {
@@ -1535,6 +1623,19 @@
         controls.saveFeedback.classList.toggle("error", Boolean(isError));
     }
 
+    function setTestCaseApiAvailable(available, message = "") {
+        state.testCaseApiAvailable = Boolean(available);
+        if (controls.submitTestCase) {
+            controls.submitTestCase.disabled = !state.testCaseApiAvailable;
+        }
+        if (controls.loadTestCase) {
+            controls.loadTestCase.disabled = !state.testCaseApiAvailable;
+        }
+        if (message) {
+            setSaveFeedback(message, !state.testCaseApiAvailable);
+        }
+    }
+
     function imagePixelsPngDataUrl() {
         if (!state.imagePixels || !state.image) {
             return Promise.resolve(null);
@@ -1562,6 +1663,14 @@
         if (!LOCAL_TEST_CASES_ENABLED) {
             return;
         }
+        if (!state.testCaseApiAvailable) {
+            const message = "submit test case: start the local WISC server with npm run serve";
+            setSaveFeedback(message, true);
+            state.fitMessage = `${message}. Static file servers cannot save test cases.`;
+            render();
+            focusImageWindowSoon();
+            return;
+        }
         if (!state.image || !state.imagePixels) {
             state.fitMessage = "submit test case: load an image with readable pixels first";
             render();
@@ -1579,7 +1688,7 @@
         try {
             const testCase = currentTestCaseObject();
             const imageDataUrl = await imagePixelsPngDataUrl();
-            const response = await fetch("/api/test-cases", {
+            const response = await fetch(TEST_CASE_API_BASE, {
                 method: "POST",
                 headers: {"content-type": "application/json"},
                 body: JSON.stringify({testCase, imageDataUrl}),
@@ -1599,7 +1708,7 @@
             setSaveFeedback(`Save failed: ${error.message || error}`, true);
             state.fitMessage = `submit test case failed: ${error.message || error}. Start with npm run serve.`;
         } finally {
-            controls.submitTestCase.disabled = false;
+            controls.submitTestCase.disabled = !state.testCaseApiAvailable;
             render();
             focusImageWindowSoon();
         }
@@ -1610,11 +1719,13 @@
             return;
         }
         try {
-            const response = await fetch("/api/test-cases");
+            const response = await fetch(TEST_CASE_API_BASE);
             if (!response.ok) {
                 throw new Error("test-case API unavailable");
             }
             const cases = await response.json();
+            setTestCaseApiAvailable(true);
+            setSaveFeedback("", false);
             controls.testCaseSelect.replaceChildren();
             const placeholder = document.createElement("option");
             placeholder.value = "";
@@ -1628,11 +1739,13 @@
             }
             controls.testCaseSelect.value = selectId || "";
         } catch (error) {
+            setTestCaseApiAvailable(false);
             controls.testCaseSelect.replaceChildren();
             const option = document.createElement("option");
             option.value = "";
             option.textContent = "Start with npm run serve";
             controls.testCaseSelect.appendChild(option);
+            setSaveFeedback("Test case saving needs npm run serve, not a static file server.", true);
         }
     }
 
@@ -1714,7 +1827,6 @@
         state.lastJunkStarFinderPoint = null;
         state.showPickedMatchMarkers = true;
         state.showFitResiduals = true;
-        updateDetectionCircleButton();
         updateStarNameButton();
         updateFitResidualButton();
         updateAutoMatches();
@@ -1727,6 +1839,10 @@
         if (!LOCAL_TEST_CASES_ENABLED) {
             return;
         }
+        if (!state.testCaseApiAvailable) {
+            setSaveFeedback("Load test case needs npm run serve, not a static file server.", true);
+            return;
+        }
         const id = controls.testCaseSelect && controls.testCaseSelect.value;
         if (!id) {
             setSaveFeedback("Select a saved test case first.", true);
@@ -1734,7 +1850,7 @@
         }
         controls.loadTestCase.disabled = true;
         try {
-            const response = await fetch(`/api/test-cases/${encodeURIComponent(id)}`);
+            const response = await fetch(`${TEST_CASE_API_BASE}/${encodeURIComponent(id)}`);
             const payload = await response.json();
             if (!response.ok) {
                 throw new Error(payload.error || "failed to load test case");
@@ -1748,7 +1864,7 @@
             state.fitMessage = `load test case failed: ${error.message || error}`;
             render();
         } finally {
-            controls.loadTestCase.disabled = false;
+            controls.loadTestCase.disabled = !state.testCaseApiAvailable;
             focusImageWindowSoon();
         }
     }
@@ -2260,6 +2376,14 @@ end
         return state.catalogs[activeStarCatalogName()] || state.catalogs.yale || [];
     }
 
+    function fittingStarCatalogName() {
+        return FITTING_CATALOG_NAME;
+    }
+
+    function fittingStarCatalog() {
+        return catalogRowsForName(fittingStarCatalogName());
+    }
+
     function catalogRowsForName(name) {
         if (name === "tycho2" && Array.isArray(state.catalogs.tycho2)) {
             return state.catalogs.tycho2;
@@ -2269,6 +2393,64 @@ end
 
     function catalogDisplayName(name) {
         return name === "tycho2" ? "Tycho-2" : "Yale";
+    }
+
+    const GREEK_STAR_LABELS = new Map([
+        ["alpha", "α"],
+        ["beta", "β"],
+        ["gamma", "γ"],
+        ["delta", "δ"],
+        ["epsilon", "ε"],
+        ["epsilo", "ε"],
+        ["zeta", "ζ"],
+        ["eta", "η"],
+        ["theta", "θ"],
+        ["iota", "ι"],
+        ["kappa", "κ"],
+        ["lambda", "λ"],
+        ["mu", "μ"],
+        ["nu", "ν"],
+        ["xi", "ξ"],
+        ["omicron", "ο"],
+        ["pi", "π"],
+        ["rho", "ρ"],
+        ["sigma", "σ"],
+        ["tau", "τ"],
+        ["upsilon", "υ"],
+        ["phi", "φ"],
+        ["chi", "χ"],
+        ["psi", "ψ"],
+        ["omega", "ω"],
+    ]);
+
+    const UNICODE_SUBSCRIPT_DIGITS = new Map([
+        ["0", "₀"],
+        ["1", "₁"],
+        ["2", "₂"],
+        ["3", "₃"],
+        ["4", "₄"],
+        ["5", "₅"],
+        ["6", "₆"],
+        ["7", "₇"],
+        ["8", "₈"],
+        ["9", "₉"],
+    ]);
+
+    function unicodeSubscriptDigits(text) {
+        return String(text || "").replace(/\d/g, digit => UNICODE_SUBSCRIPT_DIGITS.get(digit) || digit);
+    }
+
+    function compactStarDisplayName(name) {
+        return String(name || "").trim().replace(
+            /\b(Alpha|Beta|Gamma|Delta|Epsilon|Epsilo|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Omicron|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)(\d*)-?(\d*)\b/g,
+            (match, greek, componentSuffix, catalogueSuffix) => {
+                const symbol = GREEK_STAR_LABELS.get(greek.toLowerCase());
+                if (!symbol) {
+                    return match;
+                }
+                return `${symbol}${unicodeSubscriptDigits(`${componentSuffix || ""}${catalogueSuffix || ""}`)}`;
+            }
+        );
     }
 
     function angularDistanceDegBetweenRaDec(raHoursA, decDegA, raHoursB, decDegB) {
@@ -2342,7 +2524,21 @@ end
 
     function isMatchedCatalogStar(star) {
         const key = catalogKey(star);
-        return state.matches.some(match => match.catalog.key === key);
+        return state.matches.some(match => {
+            if (match.catalog.key === key) {
+                return true;
+            }
+            return catalogStarsReferToSameSkyPosition(star, match.catalog);
+        });
+    }
+
+    function catalogStarsReferToSameSkyPosition(a, b) {
+        if (!a || !b ||
+                !Number.isFinite(a.raHours) || !Number.isFinite(a.decDeg) ||
+                !Number.isFinite(b.raHours) || !Number.isFinite(b.decDeg)) {
+            return false;
+        }
+        return angularDistanceDegBetweenRaDec(a.raHours, a.decDeg, b.raHours, b.decDeg) <= 0.03;
     }
 
     function fittingMatches() {
@@ -2356,6 +2552,8 @@ end
             state.autoMatches = [];
             return;
         }
+        // Display projection follows the GUI catalogue selector. Automatic
+        // matching/lucky fitting use fittingStarCatalogName() instead.
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
@@ -2416,7 +2614,8 @@ end
     }
 
     function projectedStarsForAutoIdentification(options = {}) {
-        const catalogName = options.catalogName || activeStarCatalogName();
+        // Solver input must be independent of the rendered/display catalogue.
+        const catalogName = options.catalogName || fittingStarCatalogName();
         const projectedStars = catalogName === activeStarCatalogName() ?
             state.projected :
             projectCatalogForMatching(catalogName, Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 7);
@@ -2462,7 +2661,7 @@ end
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
-        const catalogName = options.catalogName || options.matchingCatalogName || activeStarCatalogName();
+        const catalogName = options.catalogName || options.matchingCatalogName || fittingStarCatalogName();
         const maxZenithDeg = Number.isFinite(options.maxZenithDeg) ?
             options.maxZenithDeg :
             Number.isFinite(options.catalogMaxZenithDeg) ? options.catalogMaxZenithDeg : 88;
@@ -2805,7 +3004,7 @@ end
         };
         const matcherDetections = activeDetectedStars()
             .slice(0, Math.max(1, Math.floor(Number.isFinite(options.maxDetections) ? options.maxDetections : 80)));
-        const matchingCatalogName = options.matchingCatalogName || activeStarCatalogName();
+        const matchingCatalogName = options.matchingCatalogName || fittingStarCatalogName();
         const blindCatalogName = options.blindCatalogName || matchingCatalogName;
         const asterismCatalogName = options.asterismCatalogName || matchingCatalogName;
         const projectedCatalogName = options.projectedCatalogName || matchingCatalogName;
@@ -3116,15 +3315,15 @@ end
         gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
 
-    function drawStars() {
+    function drawProjectedStarPoints(stars, options = {}) {
         if (!state.image || state.projected.length === 0) {
             return;
         }
         const values = [];
         const margin = 20 * (window.devicePixelRatio || 1);
-        const maxMag = Number(controls.maxMag.value) || 4;
-        for (let i = 0; i < state.projected.length; i++) {
-            const star = state.projected[i];
+        const maxMag = Number.isFinite(options.maxMag) ? options.maxMag : Number(controls.maxMag.value) || 4;
+        for (let i = 0; i < stars.length; i++) {
+            const star = stars[i];
             if (star.mag > maxMag) {
                 continue;
             }
@@ -3150,12 +3349,21 @@ end
         gl.vertexAttribPointer(aMag, 1, gl.FLOAT, false, 12, 8);
         gl.uniform2f(gl.getUniformLocation(pointProgram, "u_canvas_size"), canvas.width, canvas.height);
         gl.uniform1f(gl.getUniformLocation(pointProgram, "u_point_scale"),
-            window.devicePixelRatio ? 1.15 * window.devicePixelRatio : 1.15);
+            Number.isFinite(options.pointScale) ?
+                options.pointScale :
+                window.devicePixelRatio ? 1.15 * window.devicePixelRatio : 1.15);
         gl.uniform1f(gl.getUniformLocation(pointProgram, "u_max_mag"), maxMag);
+        const tint = Array.isArray(options.tint) ? options.tint : [1, 1, 1];
+        gl.uniform3f(gl.getUniformLocation(pointProgram, "u_tint"), tint[0], tint[1], tint[2]);
+        gl.uniform1f(gl.getUniformLocation(pointProgram, "u_tint_mix"), Number.isFinite(options.tintMix) ? options.tintMix : 0);
         gl.enable(gl.BLEND);
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
         gl.drawArrays(gl.POINTS, 0, data.length / 3);
         gl.disable(gl.BLEND);
+    }
+
+    function drawStars() {
+        drawProjectedStarPoints(state.projected);
     }
 
     function visibleCatalogStars(maxMag = Number(controls.maxMag.value) || 4) {
@@ -3738,7 +3946,7 @@ end
                 continue;
             }
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
-            addOverlayLabel(star.name.trim(), [x + offset, y - offset], "star-name-label");
+            addOverlayLabel(compactStarDisplayName(star.name), [x + offset, y - offset], "star-name-label");
         }
     }
 
@@ -3754,14 +3962,26 @@ end
 
     function drawCatalogPairingMarkers() {
         const offset = 12 * (window.devicePixelRatio || 1);
-        for (const star of visibleCatalogStars()) {
+        const stars = visibleCatalogStars();
+        const unpairedStars = stars.filter(star => !isMatchedCatalogStar(star));
+        drawProjectedStarPoints(unpairedStars, {
+            maxMag: Number(controls.maxMag.value) || 4,
+            tint: [1.0, 0.18, 0.16],
+            tintMix: 0.88,
+            pointScale: window.devicePixelRatio ? 0.92 * window.devicePixelRatio : 0.92,
+        });
+        const domMarkerMaxMag = unpairedStars.length > 350 ? 4.0 : Number(controls.maxMag.value) || 4;
+        for (const star of unpairedStars) {
             if (isMatchedCatalogStar(star)) {
+                continue;
+            }
+            if (star.mag > domMarkerMaxMag) {
                 continue;
             }
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
             addOverlayCircle([x, y], `catalog-pairing-marker ${starMagnitudeClass(star.mag)}`);
             if (state.showStarNames && star.mag <= 4.0 && star.name && star.name.trim()) {
-                const label = star.name.trim();
+                const label = compactStarDisplayName(star.name);
                 addOverlayLabel(label, [x + offset, y - offset], "catalog-pairing-label");
             }
         }
@@ -3774,7 +3994,7 @@ end
         const labelOffset = 16 * (window.devicePixelRatio || 1);
         for (const match of state.matches) {
             const matchLabel = match.catalog.name && match.catalog.name.trim() && match.catalog.mag <= 4.0 ?
-                match.catalog.name.trim() :
+                compactStarDisplayName(match.catalog.name) :
                 "";
             const markerClass = `paired-marker ${starMagnitudeClass(match.catalog.mag)}`;
             if (state.showPickedMatchMarkers) {
@@ -4283,6 +4503,40 @@ end
         if (controls.closeAssociateFit) {
             controls.closeAssociateFit.disabled = disabled;
         }
+    }
+
+    function userLensEditingLocked() {
+        return state.userLensEditingLocked || state.luckyFitBusy;
+    }
+
+    function setUserLensEditingLocked(locked) {
+        state.userLensEditingLocked = Boolean(locked);
+        const elements = [
+            controls.optmod,
+            controls.fScaleX,
+            controls.fScaleY,
+            controls.rotAlpha,
+            controls.rotBeta,
+            controls.rotGamma,
+            controls.du,
+            controls.dv,
+            controls.radialAlpha,
+            controls.brownK2,
+            controls.brownK3,
+            controls.brownP1,
+            controls.brownP2,
+            controls.maxMag,
+            controls.flipX,
+            controls.flipY,
+            controls.flipImageX,
+            controls.flipImageY,
+            controls.resetOffset,
+        ].filter(Boolean);
+        for (const element of elements) {
+            element.disabled = Boolean(locked);
+        }
+        state.dragging = false;
+        state.lensDragMode = "none";
     }
 
     function detectorStarRadius() {
@@ -6970,6 +7224,7 @@ end
         }
         state.luckyFitBusy = true;
         state.lastLuckyProgressUpdateMs = -Infinity;
+        setUserLensEditingLocked(true);
         controls.luckyFit.disabled = true;
         controls.fitLens.disabled = true;
         controls.fitLensLm.disabled = true;
@@ -7893,6 +8148,7 @@ end
             render();
         } finally {
             hideLoadingProgress();
+            setUserLensEditingLocked(false);
             controls.luckyFit.disabled = false;
             controls.fitLens.disabled = false;
             controls.fitLensLm.disabled = false;
@@ -8046,10 +8302,10 @@ end
         controls.fitLens.disabled = false;
         controls.fitLensLm.disabled = false;
         if (controls.submitTestCase) {
-            controls.submitTestCase.disabled = false;
+            controls.submitTestCase.disabled = !state.testCaseApiAvailable;
         }
         if (controls.loadTestCase) {
-            controls.loadTestCase.disabled = false;
+            controls.loadTestCase.disabled = !state.testCaseApiAvailable;
         }
         controls.highPassImage.checked = true;
         controls.highPassWidth.value = "100";
@@ -8063,7 +8319,6 @@ end
         controls.toggleAzElGrid.classList.toggle("toggle-on", true);
         controls.toggleStarNames.textContent = "Hide star names (N)";
         controls.toggleStarNames.classList.toggle("toggle-on", true);
-        updateDetectionCircleButton();
         updateFitResidualButton();
     }
 
@@ -8324,23 +8579,6 @@ end
         }
     }
 
-    function updateDetectionCircleButton() {
-        controls.toggleDetectionCircles.textContent =
-            state.displayMode === "stellarium" ? "Star pairing view" : "Stellarium view";
-        controls.toggleDetectionCircles.classList.toggle("toggle-on", state.displayMode === "stellarium");
-    }
-
-    function toggleDetectionCircles() {
-        const nextMode = state.displayMode === "stellarium" ? "pairing" : "stellarium";
-        clearTransientDebugOverlays();
-        setDisplayMode(nextMode);
-        state.previousAnnotatedDisplayMode = nextMode;
-        state.starMatchMode = false;
-        state.pendingMatch = null;
-        updateDetectionCircleButton();
-        recomputeAndRender();
-    }
-
     function togglePureView() {
         clearTransientDebugOverlays();
         if (state.displayMode === "pureImage") {
@@ -8359,7 +8597,6 @@ end
         state.zoomMode = false;
         hideZoomCanvas();
         state.pendingMatch = null;
-        updateDetectionCircleButton();
         recomputeAndRender();
         playInteractionSound("mode");
     }
@@ -8992,7 +9229,6 @@ end
         if (!armed) {
             hideZoomCanvas();
         }
-        updateDetectionCircleButton();
         recomputeAndRender();
     }
 
@@ -9194,8 +9430,11 @@ end
         if (el !== controls.file &&
                 el !== controls.highPassImage && el !== controls.highPassWidth &&
                 el !== controls.maxMag && el !== controls.optmod && el !== controls.starCatalog &&
-                el !== controls.exportLanguage) {
+            el !== controls.exportLanguage) {
             el.addEventListener("input", () => {
+                if (userLensEditingLocked()) {
+                    return;
+                }
                 syncModelOptparFromControls();
                 recomputeAndRender();
             });
@@ -9213,6 +9452,9 @@ end
         });
     }
     controls.maxMag.addEventListener("input", () => {
+        if (userLensEditingLocked()) {
+            return;
+        }
         if (Object.prototype.hasOwnProperty.call(state.maxMagByMode, state.displayMode)) {
             state.maxMagByMode[state.displayMode] = Number(controls.maxMag.value) || 4.0;
         }
@@ -9220,6 +9462,9 @@ end
         recomputeAndRender();
     });
     controls.optmod.addEventListener("input", () => {
+        if (userLensEditingLocked()) {
+            return;
+        }
         updateOptmodUi();
         state.lastFitVector = null;
         clearFitUndoStack();
@@ -9227,24 +9472,36 @@ end
     });
 
     controls.flipX.addEventListener("click", () => {
+        if (userLensEditingLocked()) {
+            return;
+        }
         state.flipX = !state.flipX;
         playInteractionSound("mode");
         updateAutoMatches();
         render();
     });
     controls.flipY.addEventListener("click", () => {
+        if (userLensEditingLocked()) {
+            return;
+        }
         state.flipY = !state.flipY;
         playInteractionSound("mode");
         updateAutoMatches();
         render();
     });
     controls.flipImageX.addEventListener("click", () => {
+        if (userLensEditingLocked()) {
+            return;
+        }
         state.imageFlipX = !state.imageFlipX;
         playInteractionSound("mode");
         updateAutoMatches();
         render();
     });
     controls.flipImageY.addEventListener("click", () => {
+        if (userLensEditingLocked()) {
+            return;
+        }
         state.imageFlipY = !state.imageFlipY;
         playInteractionSound("mode");
         updateAutoMatches();
@@ -9259,7 +9516,6 @@ end
     controls.toggleAzElGrid.addEventListener("click", () => {
         toggleAzElGrid();
     });
-    controls.toggleDetectionCircles.addEventListener("click", toggleDetectionCircles);
     controls.toggleStarNames.addEventListener("click", toggleStarNames);
     controls.luckyFit.addEventListener("click", () => {
         playInteractionSound("fit");
@@ -9442,6 +9698,9 @@ end
         focusImageWindowSoon();
     });
     controls.resetOffset.addEventListener("click", () => {
+        if (userLensEditingLocked()) {
+            return;
+        }
         setCameraAnglesFromBoresightAzEl(0, 90);
         syncModelOptparFromControls();
         playInteractionSound("mode");
@@ -9496,6 +9755,10 @@ end
 
     canvas.addEventListener("pointerdown", event => {
         focusImageWindow();
+        if (userLensEditingLocked()) {
+            event.preventDefault();
+            return;
+        }
         if (state.maskMode && event.button === 0) {
             event.preventDefault();
             state.notStarTilePaintActive = true;
@@ -9545,6 +9808,13 @@ end
             updateZoomCanvas(event);
         }
         if (!state.dragging || !state.image) {
+            return;
+        }
+        if (userLensEditingLocked()) {
+            event.preventDefault();
+            state.dragging = false;
+            state.lensDragMode = "none";
+            state.lastMouse = [event.clientX, event.clientY];
             return;
         }
         const dpr = window.devicePixelRatio || 1;
@@ -9611,6 +9881,9 @@ end
     });
     canvas.addEventListener("wheel", event => {
         event.preventDefault();
+        if (userLensEditingLocked()) {
+            return;
+        }
         const currentX = Number(controls.fScaleX.value) || 1.0;
         const currentY = Number(controls.fScaleY.value) || 1.0;
         const factor = Math.exp(-event.deltaY * 0.00045);
@@ -9627,6 +9900,10 @@ end
     document.addEventListener("keydown", event => {
         const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : "";
         if (tag === "input" || tag === "select" || tag === "textarea") {
+            return;
+        }
+        if (state.luckyFitBusy) {
+            event.preventDefault();
             return;
         }
         if ((event.key === "z" || event.key === "Z") &&
@@ -9734,7 +10011,6 @@ end
             setDisplayMode("pairing");
             state.pendingMatch = null;
             clearDensityEstimate();
-            updateDetectionCircleButton();
             recomputeAndRender();
         }
     });
@@ -9792,7 +10068,6 @@ end
     } else {
         window.addEventListener("load", initializeApp, {once: true});
     }
-    updateDetectionCircleButton();
     updateStarNameButton();
     updateAmbientMusicButton();
     updateFitResidualButton();
