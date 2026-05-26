@@ -2004,6 +2004,344 @@
         };
     }
 
+    function huberLoss(distance, scale) {
+        const c = Math.max(1e-6, scale);
+        return distance <= c ? distance * distance : 2 * c * distance - c * c;
+    }
+
+    function translationRobustObjective(projectedStars, detections, options = {}) {
+        const radius = defaultMatchRadius(options);
+        const huberScale = Number.isFinite(options.huberScalePx) ? options.huberScalePx : Math.max(2, radius / 3);
+        const missingPenalty = Number.isFinite(options.missingPenalty) ? options.missingPenalty : huberScale * huberScale * 8;
+        const minObjectiveMatches = Number.isFinite(options.minObjectiveMatches) ? options.minObjectiveMatches : 5;
+        const maxObjectiveStars = Number.isFinite(options.maxObjectiveStars) ? options.maxObjectiveStars : 180;
+        const stars = projectedStars.slice(0, maxObjectiveStars);
+        return offset => {
+            const matches = greedyMatch(stars, detections, offset, {
+                ...options,
+                rejectAmbiguousMatches: options.rejectAmbiguousMatches !== false,
+            });
+            if (matches.length < minObjectiveMatches) {
+                return missingPenalty * (minObjectiveMatches - matches.length + 1) * 100;
+            }
+            let loss = 0;
+            for (const match of matches) {
+                loss += huberLoss(match.distance, huberScale);
+            }
+            loss += missingPenalty * Math.max(0, Math.min(stars.length, 80) - matches.length);
+            // Prefer solutions with more matched stars when the robust loss is otherwise close.
+            return loss - matches.length * huberScale * 0.25;
+        };
+    }
+
+    function nelderMeadOffset(objective, start, stepPx, maxIter = 80, options = {}) {
+        const searchRadius = defaultTranslationRadius(options);
+        const clampOffset = point => ({
+            dx: clamp(Number(point.dx) || 0, -searchRadius, searchRadius),
+            dy: clamp(Number(point.dy) || 0, -searchRadius, searchRadius),
+        });
+        let simplex = [
+            clampOffset(start),
+            clampOffset({dx: start.dx + stepPx, dy: start.dy}),
+            clampOffset({dx: start.dx, dy: start.dy + stepPx}),
+        ].map(point => ({point, fx: objective(point)}));
+        const alpha = 1.0;
+        const gamma = 2.0;
+        const rho = 0.5;
+        const sigma = 0.5;
+        let iterations = 0;
+        for (; iterations < maxIter; iterations += 1) {
+            simplex.sort((a, b) => a.fx - b.fx);
+            const spread = Math.max(...simplex.map(item => Math.abs(item.fx - simplex[0].fx)));
+            const size = Math.max(...simplex.map(item =>
+                Math.hypot(item.point.dx - simplex[0].point.dx, item.point.dy - simplex[0].point.dy)
+            ));
+            if (spread < 1e-4 && size < 0.05) {
+                break;
+            }
+            const centroid = {
+                dx: 0.5 * (simplex[0].point.dx + simplex[1].point.dx),
+                dy: 0.5 * (simplex[0].point.dy + simplex[1].point.dy),
+            };
+            const worst = simplex[2].point;
+            const reflect = clampOffset({
+                dx: centroid.dx + alpha * (centroid.dx - worst.dx),
+                dy: centroid.dy + alpha * (centroid.dy - worst.dy),
+            });
+            const fr = objective(reflect);
+            if (fr < simplex[0].fx) {
+                const expand = clampOffset({
+                    dx: centroid.dx + gamma * (reflect.dx - centroid.dx),
+                    dy: centroid.dy + gamma * (reflect.dy - centroid.dy),
+                });
+                const fe = objective(expand);
+                simplex[2] = fe < fr ? {point: expand, fx: fe} : {point: reflect, fx: fr};
+            } else if (fr < simplex[1].fx) {
+                simplex[2] = {point: reflect, fx: fr};
+            } else {
+                const contract = clampOffset({
+                    dx: centroid.dx + rho * (worst.dx - centroid.dx),
+                    dy: centroid.dy + rho * (worst.dy - centroid.dy),
+                });
+                const fc = objective(contract);
+                if (fc < simplex[2].fx) {
+                    simplex[2] = {point: contract, fx: fc};
+                } else {
+                    for (let i = 1; i < simplex.length; i += 1) {
+                        const point = clampOffset({
+                            dx: simplex[0].point.dx + sigma * (simplex[i].point.dx - simplex[0].point.dx),
+                            dy: simplex[0].point.dy + sigma * (simplex[i].point.dy - simplex[0].point.dy),
+                        });
+                        simplex[i] = {point, fx: objective(point)};
+                    }
+                }
+            }
+        }
+        simplex.sort((a, b) => a.fx - b.fx);
+        return {offset: simplex[0].point, fx: simplex[0].fx, iterations};
+    }
+
+    async function nelderMeadOffsetAsync(objective, start, stepPx, maxIter = 80, options = {}, progress = {}, yieldState = null) {
+        const searchRadius = defaultTranslationRadius(options);
+        const clampOffset = point => ({
+            dx: clamp(Number(point.dx) || 0, -searchRadius, searchRadius),
+            dy: clamp(Number(point.dy) || 0, -searchRadius, searchRadius),
+        });
+        let simplex = [
+            clampOffset(start),
+            clampOffset({dx: start.dx + stepPx, dy: start.dy}),
+            clampOffset({dx: start.dx, dy: start.dy + stepPx}),
+        ].map(point => ({point, fx: objective(point)}));
+        const alpha = 1.0;
+        const gamma = 2.0;
+        const rho = 0.5;
+        const sigma = 0.5;
+        const p0 = Number.isFinite(progress.start) ? progress.start : 40;
+        const p1 = Number.isFinite(progress.end) ? progress.end : 75;
+        const label = progress.label || "Close projection matcher: robust Nelder-Mead association...";
+        let iterations = 0;
+        for (; iterations < maxIter; iterations += 1) {
+            if (iterations % 8 === 0) {
+                const pct = p0 + (p1 - p0) * iterations / Math.max(1, maxIter);
+                await cooperativeYield(options, pct, label, false, yieldState);
+            }
+            simplex.sort((a, b) => a.fx - b.fx);
+            const spread = Math.max(...simplex.map(item => Math.abs(item.fx - simplex[0].fx)));
+            const size = Math.max(...simplex.map(item =>
+                Math.hypot(item.point.dx - simplex[0].point.dx, item.point.dy - simplex[0].point.dy)
+            ));
+            if (spread < 1e-4 && size < 0.05) {
+                break;
+            }
+            const centroid = {
+                dx: 0.5 * (simplex[0].point.dx + simplex[1].point.dx),
+                dy: 0.5 * (simplex[0].point.dy + simplex[1].point.dy),
+            };
+            const worst = simplex[2].point;
+            const reflect = clampOffset({
+                dx: centroid.dx + alpha * (centroid.dx - worst.dx),
+                dy: centroid.dy + alpha * (centroid.dy - worst.dy),
+            });
+            const fr = objective(reflect);
+            if (fr < simplex[0].fx) {
+                const expand = clampOffset({
+                    dx: centroid.dx + gamma * (reflect.dx - centroid.dx),
+                    dy: centroid.dy + gamma * (reflect.dy - centroid.dy),
+                });
+                const fe = objective(expand);
+                simplex[2] = fe < fr ? {point: expand, fx: fe} : {point: reflect, fx: fr};
+            } else if (fr < simplex[1].fx) {
+                simplex[2] = {point: reflect, fx: fr};
+            } else {
+                const contract = clampOffset({
+                    dx: centroid.dx + rho * (worst.dx - centroid.dx),
+                    dy: centroid.dy + rho * (worst.dy - centroid.dy),
+                });
+                const fc = objective(contract);
+                if (fc < simplex[2].fx) {
+                    simplex[2] = {point: contract, fx: fc};
+                } else {
+                    for (let i = 1; i < simplex.length; i += 1) {
+                        const point = clampOffset({
+                            dx: simplex[0].point.dx + sigma * (simplex[i].point.dx - simplex[0].point.dx),
+                            dy: simplex[0].point.dy + sigma * (simplex[i].point.dy - simplex[0].point.dy),
+                        });
+                        simplex[i] = {point, fx: objective(point)};
+                    }
+                }
+            }
+        }
+        await cooperativeYield(options, p1, label, false, yieldState);
+        simplex.sort((a, b) => a.fx - b.fx);
+        return {offset: simplex[0].point, fx: simplex[0].fx, iterations};
+    }
+
+    function identifyStarsNearProjection(projectedStars, detections, options = {}) {
+        const projected = normalizeProjectedStars(projectedStars, {
+            maxCatalogStars: Number.isFinite(options.maxCatalogStars) ? options.maxCatalogStars : 650,
+            marginPx: Number.isFinite(options.marginPx) ? options.marginPx : 40,
+            ...options,
+        });
+        const normalizedDetections = normalizeDetections(detections, {
+            maxDetections: Number.isFinite(options.maxDetections) ? options.maxDetections : 650,
+            ...options,
+        });
+        if (projected.length === 0 || normalizedDetections.length === 0) {
+            return {
+                matches: [],
+                rawMatches: [],
+                projected,
+                detections: normalizedDetections,
+                offset: {dx: 0, dy: 0, count: 0, rms: Infinity, score: -Infinity},
+                status: "close projection matching: no projected catalog stars or detected image stars",
+            };
+        }
+        const initial = estimateTranslation(projected, normalizedDetections, {
+            translationSearchRadiusPx: Number.isFinite(options.translationSearchRadiusPx) ?
+                options.translationSearchRadiusPx : 45,
+            maxTranslationStars: Number.isFinite(options.maxTranslationStars) ? options.maxTranslationStars : 160,
+            maxTranslationDetections: Number.isFinite(options.maxTranslationDetections) ? options.maxTranslationDetections : 220,
+            ...options,
+        });
+        const objective = translationRobustObjective(projected, normalizedDetections, options);
+        const starts = [
+            {dx: 0, dy: 0},
+            {dx: initial.dx || 0, dy: initial.dy || 0},
+        ];
+        let best = null;
+        const stepPx = Number.isFinite(options.nelderMeadStepPx) ?
+            options.nelderMeadStepPx : Math.max(2, defaultMatchRadius(options) / 2);
+        for (const start of starts) {
+            const candidate = nelderMeadOffset(
+                objective,
+                start,
+                stepPx,
+                Number.isFinite(options.nelderMeadMaxIter) ? options.nelderMeadMaxIter : 90,
+                options,
+            );
+            if (!best || candidate.fx < best.fx) {
+                best = candidate;
+            }
+        }
+        const offset = best ? best.offset : {dx: initial.dx || 0, dy: initial.dy || 0};
+        const rawMatches = greedyMatch(projected, normalizedDetections, offset, {
+            ...options,
+            rejectAmbiguousMatches: options.rejectAmbiguousMatches !== false,
+        });
+        const matches = robustFilterMatches(rawMatches, {
+            maxDistancePx: Number.isFinite(options.maxDistancePx) ? options.maxDistancePx : 14,
+            ...options,
+        });
+        const minMatches = Number.isFinite(options.minMatches) ? options.minMatches : 8;
+        const medianDistance = matches.length ? median(matches.map(match => match.distance)) : Infinity;
+        const status = matches.length >= minMatches ?
+            `close projection matching: ${matches.length} star pairs, median residual ${medianDistance.toFixed(1)} px, ` +
+                `robust NM dx/dy ${offset.dx.toFixed(1)}/${offset.dy.toFixed(1)} px` :
+            `close projection matching: only ${matches.length} plausible star pairs found; improve the manual lens fit first`;
+        return {
+            matches,
+            rawMatches,
+            projected,
+            detections: normalizedDetections,
+            initialOffset: initial,
+            offset,
+            medianDistance,
+            iterations: best ? best.iterations : 0,
+            rejectedOutliers: rawMatches.length - matches.length,
+            status,
+        };
+    }
+
+    async function identifyStarsNearProjectionAsync(projectedStars, detections, options = {}) {
+        const yieldState = {lastYield: 0};
+        await cooperativeYield(options, 5, "Close projection matcher: preparing stars and detections...", true, yieldState);
+        const projected = normalizeProjectedStars(projectedStars, {
+            maxCatalogStars: Number.isFinite(options.maxCatalogStars) ? options.maxCatalogStars : 650,
+            marginPx: Number.isFinite(options.marginPx) ? options.marginPx : 40,
+            ...options,
+        });
+        const normalizedDetections = normalizeDetections(detections, {
+            maxDetections: Number.isFinite(options.maxDetections) ? options.maxDetections : 650,
+            ...options,
+        });
+        if (projected.length === 0 || normalizedDetections.length === 0) {
+            await cooperativeYield(options, 100, "Close projection matcher: no usable stars or detections.", true, yieldState);
+            return {
+                matches: [],
+                rawMatches: [],
+                projected,
+                detections: normalizedDetections,
+                offset: {dx: 0, dy: 0, count: 0, rms: Infinity, score: -Infinity},
+                status: "close projection matching: no projected catalog stars or detected image stars",
+            };
+        }
+        await cooperativeYield(options, 18, "Close projection matcher: estimating bulk image offset...", true, yieldState);
+        const initial = estimateTranslation(projected, normalizedDetections, {
+            translationSearchRadiusPx: Number.isFinite(options.translationSearchRadiusPx) ?
+                options.translationSearchRadiusPx : 45,
+            maxTranslationStars: Number.isFinite(options.maxTranslationStars) ? options.maxTranslationStars : 160,
+            maxTranslationDetections: Number.isFinite(options.maxTranslationDetections) ? options.maxTranslationDetections : 220,
+            ...options,
+        });
+        await cooperativeYield(options, 34, "Close projection matcher: refining offset with robust Nelder-Mead...", true, yieldState);
+        const objective = translationRobustObjective(projected, normalizedDetections, options);
+        const starts = [
+            {dx: 0, dy: 0},
+            {dx: initial.dx || 0, dy: initial.dy || 0},
+        ];
+        let best = null;
+        const stepPx = Number.isFinite(options.nelderMeadStepPx) ?
+            options.nelderMeadStepPx : Math.max(2, defaultMatchRadius(options) / 2);
+        for (let i = 0; i < starts.length; i += 1) {
+            const candidate = await nelderMeadOffsetAsync(
+                objective,
+                starts[i],
+                stepPx,
+                Number.isFinite(options.nelderMeadMaxIter) ? options.nelderMeadMaxIter : 90,
+                options,
+                {
+                    start: 34 + i * 20,
+                    end: 54 + i * 20,
+                    label: `Close projection matcher: robust Nelder-Mead start ${i + 1}/${starts.length}...`,
+                },
+                yieldState,
+            );
+            if (!best || candidate.fx < best.fx) {
+                best = candidate;
+            }
+        }
+        await cooperativeYield(options, 78, "Close projection matcher: pruning ambiguous and outlying associations...", true, yieldState);
+        const offset = best ? best.offset : {dx: initial.dx || 0, dy: initial.dy || 0};
+        const rawMatches = greedyMatch(projected, normalizedDetections, offset, {
+            ...options,
+            rejectAmbiguousMatches: options.rejectAmbiguousMatches !== false,
+        });
+        const matches = robustFilterMatches(rawMatches, {
+            maxDistancePx: Number.isFinite(options.maxDistancePx) ? options.maxDistancePx : 14,
+            ...options,
+        });
+        const minMatches = Number.isFinite(options.minMatches) ? options.minMatches : 8;
+        const medianDistance = matches.length ? median(matches.map(match => match.distance)) : Infinity;
+        const status = matches.length >= minMatches ?
+            `close projection matching: ${matches.length} star pairs, median residual ${medianDistance.toFixed(1)} px, ` +
+                `robust NM dx/dy ${offset.dx.toFixed(1)}/${offset.dy.toFixed(1)} px` :
+            `close projection matching: only ${matches.length} plausible star pairs found; improve the manual lens fit first`;
+        const result = {
+            matches,
+            rawMatches,
+            projected,
+            detections: normalizedDetections,
+            initialOffset: initial,
+            offset,
+            medianDistance,
+            iterations: best ? best.iterations : 0,
+            rejectedOutliers: rawMatches.length - matches.length,
+            status,
+        };
+        await cooperativeYield(options, 100, "Close projection matcher: robust association complete.", true, yieldState);
+        return result;
+    }
+
     function identifyStarsByAsterisms(catalogStars, detections, options = {}) {
         const maxMagnitude = Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 4.0;
         const catalog = normalizeProjectedStars(catalogStars, {
@@ -3177,6 +3515,8 @@
 
     return {
         identifyStars,
+        identifyStarsNearProjection,
+        identifyStarsNearProjectionAsync,
         identifyStarsByAsterisms,
         identifyStarsByAsterismsAsync,
         identifyStarsBlind,

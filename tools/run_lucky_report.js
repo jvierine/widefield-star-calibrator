@@ -318,9 +318,9 @@ function timestampFromNameOrMetadata(filename, metadata, imageMetadata, options)
             return {date, source: "image EXIF metadata"};
         }
     }
-    const guessed = AidaTools.guessTimestampFromAllsky7Name(path.basename(filename));
+    const guessed = AidaTools.guessTimestampFromImageName(path.basename(filename));
     if (guessed) {
-        return {date: guessed, source: "allsky7 filename"};
+        return {date: guessed, source: "filename"};
     }
     try {
         const stats = fs.statSync(filename);
@@ -353,13 +353,13 @@ function siteFromNameOrMetadata(filename, metadata, imageMetadata, options) {
             source: "image EXIF metadata",
         };
     }
-    const station = AidaTools.guessAllsky7StationMetadata(path.basename(filename));
+    const station = AidaTools.guessStationMetadataFromName(path.basename(filename));
     if (station) {
         return {
             latDeg: Number(station.latDeg),
             lonDeg: Number(station.lonDeg),
             altM: Number(station.altM) || 0,
-            source: "allsky7 filename",
+            source: station.code ? `${station.code} station filename` : "filename",
         };
     }
     return {latDeg: 69.65, lonDeg: 18.95, altM: 0, source: "Tromso fallback"};

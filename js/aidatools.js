@@ -228,6 +228,28 @@
         return new Date(Date.UTC(Number(yy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss), milli));
     }
 
+    function guessTimestampFromIrfAllskyName(name) {
+        const filename = String(name || "").split(/[\\/]/).pop();
+        const modern = filename.match(
+            /(20\d{2})-(\d{2})-(\d{2})T(\d{2})\.(\d{2})\.(\d{2})(?:\.(\d{1,3}))?([A-Za-z]{3})\.(?:jpe?g|png|tiff?)$/i,
+        );
+        if (modern) {
+            const [, yy, mm, dd, hh, mi, ss, ms] = modern;
+            const milli = ms ? Number(ms.padEnd(3, "0").slice(0, 3)) : 0;
+            return new Date(Date.UTC(Number(yy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss), milli));
+        }
+        const legacy = filename.match(/[A-Za-z]*(?:KRN|MER|SIL|TJA|ABK|NIL)(20\d{2})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/i);
+        if (legacy) {
+            const [, yy, mm, dd, hh, mi, ss] = legacy;
+            return new Date(Date.UTC(Number(yy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), Number(ss), 0));
+        }
+        return null;
+    }
+
+    function guessTimestampFromImageName(name) {
+        return guessTimestampFromIrfAllskyName(name) || guessTimestampFromAllsky7Name(name);
+    }
+
     const ALLSKY7_STATION_METADATA = [
         // Public allsky7 station coordinates are intentionally coarsened.
         {tokens: ["010760"], latDeg: 51.0, lonDeg: 7.2},
@@ -237,6 +259,18 @@
         {tokens: ["010314", "cam5"], latDeg: 50.4, lonDeg: 11.2},
         {tokens: ["010880", "010881", "ams0881", "ams0882"], latDeg: 51.4, lonDeg: 14.3},
         {tokens: ["010028", "010031", "ams0228", "ams0221"], latDeg: 52.2, lonDeg: 14.1},
+    ];
+
+    const ALIS_STATION_METADATA = [
+        // KRN follows the current IRF Kiruna all-sky camera location:
+        // https://www.irf.se/allsky/data.html and /allsky/index.html
+        {code: "KRN", name: "Kiruna IRF", latDeg: 67 + 50 / 60 + 26.588 / 3600, lonDeg: 20 + 24 / 60 + 40.045 / 3600, altM: 425},
+        // Other ALIS station coordinates are from Brändström, IRF Scientific Report 279, Table 2.3.
+        {code: "MER", name: "Merasjärvi", latDeg: 67 + 32 / 60 + 50.7 / 3600, lonDeg: 21 + 55 / 60 + 12.3 / 3600, altM: 300},
+        {code: "SIL", name: "Silkkimuotka", latDeg: 68 + 1 / 60 + 47.0 / 3600, lonDeg: 21 + 41 / 60 + 13.4 / 3600, altM: 385},
+        {code: "TJA", name: "Tjautjas", latDeg: 67 + 19 / 60 + 57.8 / 3600, lonDeg: 20 + 45 / 60 + 2.9 / 3600, altM: 474},
+        {code: "ABK", name: "Abisko", latDeg: 68 + 21 / 60 + 20.0 / 3600, lonDeg: 18 + 49 / 60 + 10.5 / 3600, altM: 360},
+        {code: "NIL", name: "Nikkaluokta", latDeg: 67 + 51 / 60 + 6.7 / 3600, lonDeg: 19 + 0 / 60 + 12.4 / 3600, altM: 495},
     ];
 
     function guessAllsky7StationMetadata(name) {
@@ -250,6 +284,28 @@
             }
         }
         return null;
+    }
+
+    function guessIrfAllskyStationMetadata(name) {
+        const filename = String(name || "").split(/[\\/]/).pop();
+        const modern = filename.match(/([A-Za-z]{3})\.(?:jpe?g|png|tiff?)$/i);
+        const legacy = filename.match(/[A-Za-z]*([A-Za-z]{3})(?:20\d{2}\d{2}\d{2}T\d{6})/i);
+        const code = (modern && modern[1] || legacy && legacy[1] || "").toUpperCase();
+        const station = ALIS_STATION_METADATA.find(item => item.code === code);
+        if (!station) {
+            return null;
+        }
+        return {
+            code: station.code,
+            name: station.name,
+            latDeg: station.latDeg,
+            lonDeg: station.lonDeg,
+            altM: station.altM,
+        };
+    }
+
+    function guessStationMetadataFromName(name) {
+        return guessIrfAllskyStationMetadata(name) || guessAllsky7StationMetadata(name);
     }
 
     function dateToDatetimeLocal(date) {
@@ -558,7 +614,11 @@
         dateToDatetimeLocal,
         datetimeLocalToDate,
         guessAllsky7StationMetadata,
+        guessIrfAllskyStationMetadata,
+        guessStationMetadataFromName,
         guessTimestampFromAllsky7Name,
+        guessTimestampFromIrfAllskyName,
+        guessTimestampFromImageName,
         parseExifMetadata,
         normalizeExternalExifMetadata,
         cameraRot,

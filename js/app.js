@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.7";
+    const APP_VERSION = "v0.2.8";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
@@ -88,6 +88,7 @@
         luckyFit: document.getElementById("luckyFit"),
         fitLens: document.getElementById("fitLens"),
         fitLensLm: document.getElementById("fitLensLm"),
+        closeAssociateFit: document.getElementById("closeAssociateFit"),
         undoFit: document.getElementById("undoFit"),
         exportLanguage: document.getElementById("exportLanguage"),
         copyOptpar: document.getElementById("copyOptpar"),
@@ -5543,6 +5544,138 @@ end
         );
     }
 
+    async function closeAssociateAndFit() {
+        if (!state.image || !state.imagePixels) {
+            state.fitMessage = "close auto-associate: load an image with readable pixels first";
+            render();
+            return;
+        }
+        if (!autoIdentifierAvailable() ||
+                typeof window.AidaAutoIdentifier.identifyStarsNearProjectionAsync !== "function") {
+            state.fitMessage = "close auto-associate: matcher module is unavailable";
+            render();
+            return;
+        }
+        if (state.autoIdentifyBusy || state.luckyFitBusy) {
+            return;
+        }
+        state.autoIdentifyBusy = true;
+        controls.luckyFit.disabled = true;
+        controls.fitLens.disabled = true;
+        controls.fitLensLm.disabled = true;
+        if (controls.closeAssociateFit) {
+            controls.closeAssociateFit.disabled = true;
+        }
+        const undoSnapshot = autoPairingUndoSnapshot("close auto-associate");
+        const startingMatchCount = state.matches.length;
+        const startingRms = currentFitRmsPx();
+        try {
+            setLuckyMaxMagnitude(Math.max(6.5, Number(controls.maxMag.value) || 0));
+            updateProjection();
+            setLoadingProgress(5, "Close auto-associate: detecting star finder peaks...");
+            await yieldToBrowser();
+            await detectBrightImageStarsForAutoIdentify(650, {
+                scanStep: 1,
+                thresholdSigma: 1.5,
+                localThresholdSigma: 1.6,
+                requireGlobalThreshold: false,
+                maxRadiusPx: 9,
+                maxElongation: 4.5,
+                suppressionRadiusPx: 8,
+                crowdingRadiusPx: 30,
+                maxCrowding: 10,
+                crowdingScorePower: 1.1,
+            });
+            render();
+            await yieldToBrowser();
+            setLoadingProgress(62, "Close auto-associate: robustly matching detections to projected catalog stars...");
+            const diag = Math.hypot(state.image.width, state.image.height);
+            const result = await window.AidaAutoIdentifier.identifyStarsNearProjectionAsync(
+                projectedStarsForAutoIdentification(),
+                activeDetectedStars(),
+                {
+                    imageWidth: state.image.width,
+                    imageHeight: state.image.height,
+                    maxMagnitude: Math.max(6.5, Number(controls.maxMag.value) || 0),
+                    maxDetections: 650,
+                    maxCatalogStars: 700,
+                    maxDistancePx: Math.max(9, Math.min(18, 0.0045 * diag)),
+                    translationSearchRadiusPx: Math.max(18, Math.min(55, 0.015 * diag)),
+                    nelderMeadStepPx: 5,
+                    nelderMeadMaxIter: 100,
+                    rejectAmbiguousMatches: true,
+                    ambiguityRadiusPx: 10,
+                    ambiguityDistanceSlackPx: 7,
+                    minMatches: 10,
+                    onProgress: (percent, text) => {
+                        setLoadingProgress(62 + 18 * Math.max(0, Math.min(100, percent)) / 100, text);
+                    },
+                    yieldFn: async () => {
+                        await yieldToBrowser();
+                    },
+                }
+            );
+            setLoadingProgress(82, "Close auto-associate: adding robust associations...");
+            await yieldToBrowser();
+            const added = addAutoIdentificationMatches(result, "close projection auto star finder", {
+                ignoreDistanceGuards: false,
+                maxAddDistancePx: Math.max(7, Math.min(14, 0.0035 * diag)),
+                maxMedianDistance: Math.max(4, Math.min(9, 0.0022 * diag)),
+                maxAdditions: 260,
+            });
+            let pruned = 0;
+            let acceptedFits = 0;
+            if (added > 0) {
+                ensureMaxMagnitudeForMatches(state.matches);
+                setLoadingProgress(88, "Close auto-associate: fitting robust lens model...");
+                await yieldToBrowser();
+                const fit = fitLensFromMatches({
+                    methodLabel: "Close auto-associate Nelder-Mead fit",
+                    fitScopeText: "using manual plus close-projection automatic pairs",
+                });
+                acceptedFits += fit && fit.accepted ? 1 : 0;
+                const prune = pruneLuckyAutoOutliers();
+                pruned += prune.removed;
+                if (prune.removed > 0) {
+                    setLoadingProgress(93, `Close auto-associate: pruned ${prune.removed} outlier pairings and refitting...`);
+                    await yieldToBrowser();
+                    const refit = fitLensFromMatches({
+                        methodLabel: "Close auto-associate refit",
+                        fitScopeText: "after robust automatic outlier pruning",
+                    });
+                    acceptedFits += refit && refit.accepted ? 1 : 0;
+                }
+            }
+            if (added > 0 || pruned > 0 || acceptedFits > 0) {
+                rememberUndoState(undoSnapshot);
+            }
+            const finalRms = currentFitRmsPx();
+            const rmsText = Number.isFinite(startingRms) && Number.isFinite(finalRms) ?
+                `RMS ${startingRms.toFixed(2)} -> ${finalRms.toFixed(2)} px` :
+                Number.isFinite(finalRms) ? `RMS ${finalRms.toFixed(2)} px` : "RMS unavailable";
+            state.automaticMatchingStatus =
+                `${result.status}; added ${added}; pruned ${pruned}; accepted ${acceptedFits} fit step${acceptedFits === 1 ? "" : "s"}`;
+            state.fitMessage =
+                `close auto-associate: ${rmsText}; ${added} new pairings ` +
+                `(${startingMatchCount} -> ${state.matches.length}), ${pruned} outlier${pruned === 1 ? "" : "s"} pruned; undo is available`;
+            state.showAutoDetectionMarkers = false;
+            playInteractionSound(acceptedFits > 0 ? "fit" : "click");
+            recomputeAndRender();
+        } catch (error) {
+            state.fitMessage = `close auto-associate failed: ${error.message || error}`;
+            render();
+        } finally {
+            hideLoadingProgress();
+            controls.luckyFit.disabled = false;
+            controls.fitLens.disabled = false;
+            controls.fitLensLm.disabled = false;
+            if (controls.closeAssociateFit) {
+                controls.closeAssociateFit.disabled = false;
+            }
+            state.autoIdentifyBusy = false;
+        }
+    }
+
     function currentFitRmsPx() {
         const fitCount = fittingMatches().length;
         if (!state.image || fitCount === 0) {
@@ -6597,6 +6730,9 @@ end
             controls.luckyFit.disabled = false;
             controls.fitLens.disabled = false;
             controls.fitLensLm.disabled = false;
+            if (controls.closeAssociateFit) {
+                controls.closeAssociateFit.disabled = false;
+            }
             state.luckyFitBusy = false;
         }
     }
@@ -6772,16 +6908,19 @@ end
 
     function applyImageMetadata(name, exifMetadata = null) {
         const applied = [];
-        const guessed = AidaTools.guessTimestampFromAllsky7Name(name);
+        const guessed = AidaTools.guessTimestampFromImageName(name);
         if (guessed) {
             controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(guessed);
-            applied.push("allsky7 filename time");
+            applied.push("filename time");
         }
-        const station = AidaTools.guessAllsky7StationMetadata(name);
+        const station = AidaTools.guessStationMetadataFromName(name);
         if (station) {
             controls.latDeg.value = station.latDeg.toFixed(6);
             controls.lonDeg.value = station.lonDeg.toFixed(6);
-            applied.push("scrubbed allsky7 station position");
+            if (Number.isFinite(station.altM)) {
+                controls.altM.value = station.altM.toFixed(1);
+            }
+            applied.push(station.code ? `${station.code} station position` : "filename station position");
         }
         if (!exifMetadata) {
             return applied;
@@ -8033,6 +8172,12 @@ end
         playInteractionSound("fit");
         fitLensLevenbergMarquardt();
     });
+    if (controls.closeAssociateFit) {
+        controls.closeAssociateFit.addEventListener("click", () => {
+            playInteractionSound("fit");
+            closeAssociateAndFit();
+        });
+    }
     controls.undoFit.addEventListener("click", () => {
         playInteractionSound("mode");
         undoFit();
@@ -8274,6 +8419,10 @@ end
             event.preventDefault();
             playInteractionSound("fit");
             feelingLuckyFit();
+        } else if ((event.key === "p" || event.key === "P") && !event.repeat) {
+            event.preventDefault();
+            playInteractionSound("fit");
+            closeAssociateAndFit();
         } else if ((event.key === "f" || event.key === "F") && !event.repeat) {
             event.preventDefault();
             playInteractionSound("fit");

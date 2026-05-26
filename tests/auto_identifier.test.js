@@ -20,8 +20,12 @@ const {
 const {
     detectionOracleMetrics,
 } = require("../tools/star_detector_oracle_report.js");
+const {
+    runCloseProjectionCase,
+} = require("../tools/close_projection_report.js");
 const RUN_FULL_TESTS = process.env.AIDA_FULL_TESTS === "1";
 const RUN_SENSITIVITY_TESTS = process.env.AIDA_SENSITIVITY_TESTS === "1";
+const RUN_CLOSE_FIT_TESTS = process.env.AIDA_CLOSE_FIT_TESTS === "1";
 
 function fullTest(name, fn) {
     test(name, {skip: !RUN_FULL_TESTS, timeout: 1000}, fn);
@@ -33,6 +37,10 @@ function slowFullTest(name, fn) {
 
 function sensitivityTest(name, fn) {
     test(name, {skip: !RUN_SENSITIVITY_TESTS, timeout: 180000}, fn);
+}
+
+function closeFitTest(name, fn) {
+    test(name, {skip: !RUN_CLOSE_FIT_TESTS, timeout: 180000}, fn);
 }
 
 function loadBrowserScript(filename) {
@@ -1786,6 +1794,31 @@ fullTest("bright-star detector recovers saved 012165 manual pairings", async () 
             `${topDetections.map(point => `${point.name}:${point.distance.toFixed(1)}px`).join(", ")}; ` +
             detectionResult.status,
     );
+});
+
+closeFitTest("close projection matcher expands the KRN all-sky fisheye manual solution", async () => {
+    const result = await runCloseProjectionCase("2026-01-23T20-05-00-000KRN", {
+        writeReport: false,
+    });
+    assert.ok(
+        result.detections.length >= 250,
+        `expected many KRN star detections, got ${result.detections.length}`,
+    );
+    assert.ok(
+        result.identification.matches.length >= 35,
+        `expected close-projection matcher to find at least 35 stars, ` +
+            `got ${result.identification.matches.length}; ${result.identification.status}`,
+    );
+    assert.ok(
+        result.identification.medianDistance < 8,
+        `expected KRN close-projection median residual below 8 px, got ${result.identification.medianDistance}`,
+    );
+    assert.ok(
+        result.score.correct >= 12,
+        `expected at least 12 automatic associations to agree with manual seed pairs, ` +
+            `got ${result.score.correct}; wrong=${result.score.wrong}; unknown=${result.score.unknown}`,
+    );
+    assert.equal(result.score.wrong, 0);
 });
 
 fullTest("real 010095 detections stay useful as the lens start moves away", async () => {

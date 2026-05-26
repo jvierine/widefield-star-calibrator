@@ -289,6 +289,36 @@ test("allsky7 station metadata parser handles known camera ids and aliases", () 
     assert.equal(AidaTools.guessAllsky7StationMetadata("unknown_first1s.png"), null);
 });
 
+test("IRF all-sky filename parser handles KRN timestamps and station metadata", () => {
+    const date = AidaTools.guessTimestampFromImageName("2026-01-23T20.05.00.000KRN.jpeg");
+    assert.equal(date.toISOString(), "2026-01-23T20:05:00.000Z");
+
+    const station = AidaTools.guessStationMetadataFromName("2026-01-23T20.05.00.000KRN.jpeg");
+    assert.equal(station.code, "KRN");
+    assert.equal(station.name, "Kiruna IRF");
+    assertNear(station.latDeg, 67 + 50 / 60 + 26.588 / 3600, 1e-12);
+    assertNear(station.lonDeg, 20 + 24 / 60 + 40.045 / 3600, 1e-12);
+    assert.equal(station.altM, 425);
+});
+
+test("ALIS station metadata parser handles station codes from IRF report 279", () => {
+    const silDate = AidaTools.guessTimestampFromImageName("2026-01-23T20.05.00.000SIL.jpeg");
+    assert.equal(silDate.toISOString(), "2026-01-23T20:05:00.000Z");
+
+    const sil = AidaTools.guessStationMetadataFromName("2026-01-23T20.05.00.000SIL.jpeg");
+    assert.equal(sil.code, "SIL");
+    assert.equal(sil.name, "Silkkimuotka");
+    assertNear(sil.latDeg, 68 + 1 / 60 + 47.0 / 3600, 1e-12);
+    assertNear(sil.lonDeg, 21 + 41 / 60 + 13.4 / 3600, 1e-12);
+    assert.equal(sil.altM, 385);
+
+    const legacy = AidaTools.guessTimestampFromImageName("xMER20260123T200500E01000Q.JPG");
+    assert.equal(legacy.toISOString(), "2026-01-23T20:05:00.000Z");
+    const mer = AidaTools.guessStationMetadataFromName("xMER20260123T200500E01000Q.JPG");
+    assert.equal(mer.code, "MER");
+    assert.equal(mer.name, "Merasjärvi");
+});
+
 test("EXIF parser extracts GPS position, altitude, and timestamp", () => {
     const metadata = AidaTools.parseExifMetadata(bufferToArrayBuffer(makeExifJpeg()));
     assert.equal(metadata.timestampUtc.toISOString(), "2025-02-19T01:47:01.000Z");
