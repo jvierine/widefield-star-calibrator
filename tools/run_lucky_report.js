@@ -183,6 +183,9 @@ function mergeImageMetadata(primary, secondary) {
         altM: Number.isFinite(secondary.altM) ? secondary.altM : primary.altM,
         cameraMake: secondary.cameraMake || primary.cameraMake,
         cameraModel: secondary.cameraModel || primary.cameraModel,
+        imageDirectionDeg: Number.isFinite(secondary.imageDirectionDeg) ?
+            secondary.imageDirectionDeg :
+            primary.imageDirectionDeg,
     };
 }
 
@@ -362,11 +365,25 @@ function siteFromNameOrMetadata(filename, metadata, imageMetadata, options) {
     return {latDeg: 69.65, lonDeg: 18.95, altM: 0, source: "Tromso fallback"};
 }
 
+function metadataLooksLikeIphone(imageMetadata) {
+    if (!imageMetadata) {
+        return false;
+    }
+    const make = String(imageMetadata.cameraMake || "");
+    const model = String(imageMetadata.cameraModel || "");
+    return /apple/i.test(make) && /iphone/i.test(model) || /iphone/i.test(`${make} ${model}`);
+}
+
 async function normalizeImage(filename, outAssetDir) {
     fs.mkdirSync(outAssetDir, {recursive: true});
     const ext = path.extname(filename).toLowerCase();
     const id = sanitizeId(path.basename(filename));
     const outPng = path.join(outAssetDir, `${id}.png`);
+    const bundledBrowserPng = path.join(IMAGE_DIR, `${id}.png`);
+    if ((ext === ".heic" || ext === ".heif") && fs.existsSync(bundledBrowserPng)) {
+        fs.copyFileSync(bundledBrowserPng, outPng);
+        return outPng;
+    }
     if (ext === ".png") {
         fs.copyFileSync(filename, outPng);
     } else if (ext === ".heic" || ext === ".heif") {
@@ -655,7 +672,13 @@ function deepAsterismFallbackStages(options = {}) {
     ];
 }
 
-function luckyStages(optmod) {
+function luckyStages(testCaseOrOptmod) {
+    const optmod = typeof testCaseOrOptmod === "object" && testCaseOrOptmod !== null ?
+        testCaseOrOptmod.optmod :
+        testCaseOrOptmod;
+    const imageDirectionDeg = typeof testCaseOrOptmod === "object" && testCaseOrOptmod !== null ?
+        Number(testCaseOrOptmod.imageDirectionDeg) :
+        NaN;
     const stages = [
         {
             phase: "blind bright-star bootstrap",
@@ -768,6 +791,98 @@ function luckyStages(optmod) {
             maxAddDistancePx: 6,
             skipFit: false,
         });
+    } else if (optmod === BROWN_CONRADY_OPTMOD) {
+        const legacyPhonePreflatten = {
+            preflattenModelCandidates: ["pinhole", "fisheye"],
+            preflattenF1Candidates: [0.70, 0.85, 1.00],
+            preflattenRadialAlphaCandidates: [0.30, 0.60, 0.90],
+            preflattenDu: 0,
+            preflattenDv: 0,
+            minBlindMatchSpanXFraction: 0.42,
+            minBlindMatchSpanYFraction: 0.34,
+        };
+        const legacyPhoneDeepPreflatten = {
+            preflattenModelCandidates: ["pinhole", "fisheye"],
+            preflattenF1Candidates: [0.55, 0.65, 0.75, 0.85, 0.95, 1.10],
+            preflattenRadialAlphaCandidates: [0.15, 0.30, 0.45, 0.60, 0.75, 0.90, 0.98],
+            preflattenDu: 0,
+            preflattenDv: 0,
+            minBlindMatchSpanXFraction: 0.42,
+            minBlindMatchSpanYFraction: 0.34,
+        };
+        const iPhoneHeadingGuard = Number.isFinite(imageDirectionDeg) ? {
+            expectedBoresightAzDeg: imageDirectionDeg,
+            boresightAzToleranceDeg: 60,
+            minBoresightElevationDeg: 0,
+        } : {};
+        Object.assign(legacyPhonePreflatten, iPhoneHeadingGuard);
+        Object.assign(legacyPhoneDeepPreflatten, iPhoneHeadingGuard);
+        const brownConradyMaxRmsToContinuePx = 12.0;
+        Object.assign(stages[0], {
+            phase: "Brown-Conrady v0.2.0-style blind bootstrap",
+            maxDetections: 80,
+            maxMagnitude: 4.0,
+            detectorOptions: {scanStep: 1, thresholdSigma: 1.8, localThresholdSigma: 1.8, requireGlobalThreshold: false, maxRadiusPx: 5, maxElongation: 4.0, suppressionRadiusPx: 10, crowdingRadiusPx: 36, maxCrowding: 7, crowdingScorePower: 1.25},
+            blindOptions: {maxDetections: 80, maxBlindVerifyDetections: 80, maxCatalogStars: 220, maxCatalogTriangleStars: 220, maxCatalogTriangles: 30000, ...legacyPhonePreflatten, maxCatalogLocalNeighbors: 20, maxBlindNeighborTriangles: 8, blindEarlyAcceptMatches: 12, maxBlindCandidateRotations: 12000, rejectAmbiguousBlindMatches: true, blindAmbiguityRadiusDeg: 1.0, blindAmbiguityDistanceSlackDeg: 0.35, blindPixelMatchRadiusPx: 64, blindPixelAmbiguityRadiusPx: 18, blindPixelAmbiguityDistanceSlackPx: 8, ambiguityMaxMagnitude: 6.0},
+            maxAddDistancePx: 0.8,
+            maxMedianDistance: 0.42,
+            maxRmsToContinuePx: brownConradyMaxRmsToContinuePx,
+            weakAsterismOptions: deepAsterismFallbackStages({summaryLabel: "Brown-Conrady v0.2.0-style bootstrap"}),
+        });
+        Object.assign(stages[1], {
+            phase: "Brown-Conrady v0.2.0-style extended bootstrap",
+            maxDetections: 160,
+            maxMagnitude: 4.0,
+            detectorOptions: {scanStep: 1, thresholdSigma: 1.8, localThresholdSigma: 1.8, requireGlobalThreshold: false, maxRadiusPx: 5, maxElongation: 4.0, suppressionRadiusPx: 10, crowdingRadiusPx: 36, maxCrowding: 7, crowdingScorePower: 1.25},
+            blindOptions: {maxDetections: 160, maxBlindVerifyDetections: 140, maxCatalogStars: 220, maxCatalogTriangleStars: 220, maxCatalogTriangles: 30000, maxDetectionTriangleStars: 120, maxDetectionTriangles: 6000, ...legacyPhonePreflatten, maxCatalogLocalNeighbors: 20, maxBlindNeighborTriangles: 8, blindEarlyAcceptMatches: 12, maxBlindCandidateRotations: 12000, rejectAmbiguousBlindMatches: true, blindAmbiguityRadiusDeg: 1.0, blindAmbiguityDistanceSlackDeg: 0.35, blindPixelAmbiguityRadiusPx: 18, blindPixelAmbiguityDistanceSlackPx: 8, ambiguityMaxMagnitude: 6.0},
+            maxAddDistancePx: 0.8,
+            maxMedianDistance: 0.42,
+            maxRmsToContinuePx: brownConradyMaxRmsToContinuePx,
+            weakAsterismOptions: deepAsterismFallbackStages({summaryLabel: "Brown-Conrady v0.2.0-style extended bootstrap"}),
+        });
+        Object.assign(stages[2], {
+            phase: "Brown-Conrady v0.2.0-style phone deep bootstrap",
+            maxDetections: 650,
+            maxMagnitude: 6.5,
+            detectorOptions: {scanStep: 1, thresholdSigma: 1.5, localThresholdSigma: 1.5, requireGlobalThreshold: false, maxRadiusPx: 5, maxElongation: 4.0, suppressionRadiusPx: 10, crowdingRadiusPx: 36, maxCrowding: 7, crowdingScorePower: 1.25},
+            blindOptions: {maxDetections: 650, maxBlindVerifyDetections: 650, maxCatalogStars: 650, maxCatalogTriangleStars: 420, maxCatalogTriangles: 50000, maxAmbiguityCatalogStars: 700, maxDetectionTriangleStars: 260, maxDetectionTriangles: 20000, ...legacyPhoneDeepPreflatten, maxCatalogLocalNeighbors: 24, maxBlindNeighborTriangles: 10, blindEarlyAcceptMatches: 11, blindEarlyAcceptMedianDeg: 0.75, maxBlindCandidateRotations: 26000, rejectAmbiguousBlindMatches: true, blindAmbiguityRadiusDeg: 0.9, blindAmbiguityDistanceSlackDeg: 0.3, blindPixelMatchRadiusPx: 58, blindPixelAmbiguityRadiusPx: 16, blindPixelAmbiguityDistanceSlackPx: 8, ambiguityMaxMagnitude: 7.0},
+            maxAddDistancePx: 1.2,
+            maxMedianDistance: 0.42,
+            maxRmsToContinuePx: brownConradyMaxRmsToContinuePx,
+        });
+        Object.assign(stages[3], {
+            maxDetections: 90,
+            maxMagnitude: 5.0,
+            includeAsterisms: false,
+            detectorOptions: {thresholdSigma: 3.6, localThresholdSigma: 3.4, requireGlobalThreshold: true, maxElongation: 3.1},
+            projectedOptions: {maxDetections: 90, maxCatalogStars: 130, maxDistancePx: 34, translationSearchRadiusPx: 90, rejectAmbiguousMatches: true, ambiguityRadiusPx: 18, ambiguityDistanceSlackPx: 16},
+            maxAddDistancePx: 8,
+            maxRmsToContinuePx: brownConradyMaxRmsToContinuePx,
+            minAsterismChecksForNewStars: 1,
+        });
+        Object.assign(stages[4], {
+            maxDetections: 650,
+            maxMagnitude: 6.5,
+            detectorOptions: {scanStep: 1, thresholdSigma: 1.5, localThresholdSigma: 1.5, requireGlobalThreshold: false, maxRadiusPx: 5, maxElongation: 4.0, suppressionRadiusPx: 10, crowdingRadiusPx: 36, maxCrowding: 7, crowdingScorePower: 1.25},
+            projectedOptions: {maxDetections: 650, maxCatalogStars: 650, maxDistancePx: 18, translationSearchRadiusPx: 35, minMatches: 8, rejectAmbiguousMatches: true, ambiguityRadiusPx: 14, ambiguityDistanceSlackPx: 10},
+            maxAddDistancePx: 5,
+            maxMedianDistance: 10,
+            rejectIfRmsIncreasePx: 0.8,
+            maxRmsToContinuePx: brownConradyMaxRmsToContinuePx,
+            minAsterismChecksForNewStars: 2,
+        });
+        Object.assign(stages[5], {
+            maxDetections: 650,
+            maxMagnitude: 7.0,
+            detectorOptions: {scanStep: 1, thresholdSigma: 1.5, localThresholdSigma: 1.5, requireGlobalThreshold: false, maxRadiusPx: 5, maxElongation: 4.0, suppressionRadiusPx: 10, crowdingRadiusPx: 36, maxCrowding: 7, crowdingScorePower: 1.25},
+            projectedOptions: {maxDetections: 650, maxCatalogStars: 700, maxDistancePx: 14, translationSearchRadiusPx: 24, minMatches: 10, rejectAmbiguousMatches: true, ambiguityRadiusPx: 12, ambiguityDistanceSlackPx: 8},
+            maxAddDistancePx: 4,
+            maxMedianDistance: 8,
+            rejectIfRmsIncreasePx: 0.5,
+            maxRmsToContinuePx: brownConradyMaxRmsToContinuePx,
+            minAsterismChecksForNewStars: 2,
+            skipFit: true,
+        });
     }
     return stages;
 }
@@ -871,7 +986,7 @@ async function runLucky(testCase, imageData, log) {
     let acceptedFits = 0;
     const detectionByKey = new Map();
     const tTotal = performance.now();
-    const stages = luckyStages(testCase.optmod);
+    const stages = luckyStages(testCase);
     for (let i = 0; i < stages.length; i += 1) {
         const stage = stages[i];
         if (stage.runOnlyWithoutSeed === true && matches.length > 0) {
@@ -961,7 +1076,7 @@ function buildTestCase(filename, metadataMap, imagePng, imageData, imageMetadata
     const site = siteFromNameOrMetadata(filename, metadata, imageMetadata, options);
     const optmod = Number.isFinite(options.optmod) ? options.optmod :
         metadata && Array.isArray(metadata.optpar) && Number.isFinite(Number(metadata.optpar[0])) ? Number(metadata.optpar[0]) :
-            metadata && /iphone|img_/i.test(id) ? BROWN_CONRADY_OPTMOD : 2;
+            metadataLooksLikeIphone(imageMetadata) || /iphone|img_/i.test(id) ? BROWN_CONRADY_OPTMOD : 2;
     const knownOptpar = metadata && Array.isArray(metadata.optpar) ?
         metadata.optpar.slice(1) :
         null;
@@ -983,6 +1098,9 @@ function buildTestCase(filename, metadataMap, imagePng, imageData, imageMetadata
         maxMag: metadata && Number.isFinite(metadata.maxMag) ? Number(metadata.maxMag) : optmod === BROWN_CONRADY_OPTMOD ? 7.0 : 6.5,
         initialOptpar: defaultOptparForCase({width: imageData.width, height: imageData.height, optmod}),
         knownOptpar,
+        imageDirectionDeg: imageMetadata && Number.isFinite(imageMetadata.imageDirectionDeg) ?
+            imageMetadata.imageDirectionDeg :
+            null,
         metadataFound: Boolean(metadata),
         exifMetadataFound: Boolean(imageMetadata),
     };
@@ -1022,7 +1140,7 @@ function overlaySvg(result) {
         items.push(asterismLineSvg(edge));
     }
     for (const detection of result.detections || []) {
-        items.push(circleSvg(detection.x, detection.y, 3, "detected-star", `raw detection score ${fmt(detection.score, 1)}`));
+        items.push(circleSvg(detection.x, detection.y, 9, "detected-star", `raw detection score ${fmt(detection.score, 1)}`));
     }
     for (const match of result.matches) {
         const star = fittedByKey.get(match.star.key);

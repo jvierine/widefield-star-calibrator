@@ -1038,11 +1038,49 @@ function fitPenalty(x, optmod) {
         Math.abs(x[6]) > 0.5 || radialPenalty;
 }
 
-function regularizationResiduals(x, optmod) {
+function regularizationResiduals(x, optmod, testCase = null) {
     if (optmod !== 20) {
         return [];
     }
-    return [x[7] * 0.4, (x[8] || 0) * 0.8, (x[9] || 0) * 1.6, (x[10] || 0) * 8, (x[11] || 0) * 8];
+    const residuals = [];
+    if (testCase && Number.isFinite(testCase.width) && Number.isFinite(testCase.height)) {
+        const width = testCase.width;
+        const height = testCase.height;
+        const f1 = Math.max(Math.abs(x[0]), 1e-6);
+        const f2 = Math.max(Math.abs(x[1]), 1e-6);
+        const du = x[5] || 0;
+        const dv = x[6] || 0;
+        const k1 = x[7] || 0;
+        const k2 = x[8] || 0;
+        const k3 = x[9] || 0;
+        const corners = [
+            [0, 0],
+            [width - 1, 0],
+            [0, height - 1],
+            [width - 1, height - 1],
+        ];
+        let cornerRadius = 0.5;
+        for (const [px, py] of corners) {
+            const xn = (px / width - 0.5 - du) / f1;
+            const yn = (py / height - 0.5 - dv) / f2;
+            cornerRadius = Math.max(cornerRadius, Math.hypot(xn, yn));
+        }
+        const maxR = Math.min(2.0, cornerRadius * 1.1);
+        for (let i = 1; i <= 8; i += 1) {
+            const r = maxR * i / 8;
+            const r2 = r * r;
+            const r4 = r2 * r2;
+            const r6 = r4 * r2;
+            const derivative = 1 + 3 * k1 * r2 + 5 * k2 * r4 + 7 * k3 * r6;
+            if (!Number.isFinite(derivative)) {
+                residuals.push(2000);
+            } else if (derivative < 0.03) {
+                residuals.push((0.03 - derivative) * 40);
+            }
+        }
+    }
+    residuals.push(x[7] * 0.4, (x[8] || 0) * 0.8, (x[9] || 0) * 1.6, (x[10] || 0) * 8, (x[11] || 0) * 8);
+    return residuals;
 }
 
 function fitResiduals(x, pairs, testCase, includeRegularization = false) {
@@ -1064,7 +1102,7 @@ function fitResiduals(x, pairs, testCase, includeRegularization = false) {
         }
         residuals.push(xy.x - pair.detection.x, xy.y - pair.detection.y);
     }
-    return includeRegularization ? residuals.concat(regularizationResiduals(x, testCase.optmod)) : residuals;
+    return includeRegularization ? residuals.concat(regularizationResiduals(x, testCase.optmod, testCase)) : residuals;
 }
 
 function residualSumSquares(residuals) {
