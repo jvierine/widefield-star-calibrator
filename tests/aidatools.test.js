@@ -319,6 +319,21 @@ test("ALIS station metadata parser handles station codes from IRF report 279", (
     assert.equal(mer.name, "Merasjärvi");
 });
 
+test("compact station filename parser handles Ramfjordmoen timestamps and coordinates", () => {
+    const date = AidaTools.guessTimestampFromImageName("20260112173523_RAM.jpg");
+    assert.equal(date.toISOString(), "2026-01-12T17:35:23.000Z");
+
+    const missingLeadingTwo = AidaTools.guessTimestampFromImageName("0260112173523_RAM.jpg");
+    assert.equal(missingLeadingTwo.toISOString(), "2026-01-12T17:35:23.000Z");
+
+    const station = AidaTools.guessStationMetadataFromName("20260112173523_RAM.jpg");
+    assert.equal(station.code, "RAM");
+    assert.equal(station.name, "Ramfjordmoen");
+    assertNear(station.latDeg, 69.5860, 1e-12);
+    assertNear(station.lonDeg, 19.2247, 1e-12);
+    assert.equal(station.altM, 0);
+});
+
 test("default focal ratios follow image width and height", () => {
     const square = AidaTools.defaultOptparForImageSize(2832, 2832, 2);
     assert.equal(square[0], 1.0);

@@ -246,8 +246,32 @@
         return null;
     }
 
+    function guessTimestampFromCompactStationName(name) {
+        const filename = String(name || "").split(/[\\/]/).pop();
+        const match = filename.match(/^(20\d{12}|\d{13})_([A-Za-z]{3})\.(?:jpe?g|png|tiff?)$/i);
+        if (!match) {
+            return null;
+        }
+        let stamp = match[1];
+        if (stamp.length === 13 && stamp.startsWith("0")) {
+            stamp = `2${stamp}`;
+        }
+        if (stamp.length !== 14 || !stamp.startsWith("20")) {
+            return null;
+        }
+        const yy = Number(stamp.slice(0, 4));
+        const mm = Number(stamp.slice(4, 6));
+        const dd = Number(stamp.slice(6, 8));
+        const hh = Number(stamp.slice(8, 10));
+        const mi = Number(stamp.slice(10, 12));
+        const ss = Number(stamp.slice(12, 14));
+        return new Date(Date.UTC(yy, mm - 1, dd, hh, mi, ss, 0));
+    }
+
     function guessTimestampFromImageName(name) {
-        return guessTimestampFromIrfAllskyName(name) || guessTimestampFromAllsky7Name(name);
+        return guessTimestampFromIrfAllskyName(name) ||
+            guessTimestampFromCompactStationName(name) ||
+            guessTimestampFromAllsky7Name(name);
     }
 
     function defaultOptparForImageSize(width, height, optmod = 2, radialAlpha = null) {
@@ -950,6 +974,10 @@
         {code: "NIL", name: "Nikkaluokta", latDeg: 67 + 51 / 60 + 6.7 / 3600, lonDeg: 19 + 0 / 60 + 12.4 / 3600, altM: 495},
     ];
 
+    const COMPACT_STATION_METADATA = [
+        {code: "RAM", name: "Ramfjordmoen", latDeg: 69.5860, lonDeg: 19.2247, altM: 0},
+    ];
+
     function guessAllsky7StationMetadata(name) {
         const filename = String(name || "").split(/[\\/]/).pop().toLowerCase();
         for (const station of ALLSKY7_STATION_METADATA) {
@@ -981,8 +1009,27 @@
         };
     }
 
+    function guessCompactStationMetadata(name) {
+        const filename = String(name || "").split(/[\\/]/).pop();
+        const match = filename.match(/^(?:20\d{12}|\d{13})_([A-Za-z]{3})\.(?:jpe?g|png|tiff?)$/i);
+        const code = (match && match[1] || "").toUpperCase();
+        const station = COMPACT_STATION_METADATA.find(item => item.code === code);
+        if (!station) {
+            return null;
+        }
+        return {
+            code: station.code,
+            name: station.name,
+            latDeg: station.latDeg,
+            lonDeg: station.lonDeg,
+            altM: station.altM,
+        };
+    }
+
     function guessStationMetadataFromName(name) {
-        return guessIrfAllskyStationMetadata(name) || guessAllsky7StationMetadata(name);
+        return guessIrfAllskyStationMetadata(name) ||
+            guessCompactStationMetadata(name) ||
+            guessAllsky7StationMetadata(name);
     }
 
     function dateToDatetimeLocal(date) {
@@ -1295,9 +1342,11 @@
         fisheyeOptparFromAnnulus,
         fisheyePreflattenFromAnnulus,
         guessAllsky7StationMetadata,
+        guessCompactStationMetadata,
         guessIrfAllskyStationMetadata,
         guessStationMetadataFromName,
         guessTimestampFromAllsky7Name,
+        guessTimestampFromCompactStationName,
         guessTimestampFromIrfAllskyName,
         guessTimestampFromImageName,
         parseExifMetadata,
