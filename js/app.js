@@ -2532,6 +2532,16 @@ end
         });
     }
 
+    function matchingCatalogIndex(star) {
+        const key = catalogKey(star);
+        return state.matches.findIndex(match => {
+            if (match.catalog.key === key) {
+                return true;
+            }
+            return catalogStarsReferToSameSkyPosition(star, match.catalog);
+        });
+    }
+
     function catalogStarsReferToSameSkyPosition(a, b) {
         if (!a || !b ||
                 !Number.isFinite(a.raHours) || !Number.isFinite(a.decDeg) ||
@@ -4946,6 +4956,9 @@ end
         zoomContext.lineTo(64, 50);
         zoomContext.stroke();
         drawKdeContoursOnZoom(point, size, half);
+        drawCatalogStarPositionsOnZoom(point, size, half);
+        drawPairedStarPositionsOnZoom(point, size, half);
+        drawDetectedStarCentersOnZoom(point, size, half);
 
         const panelRect = canvas.parentElement.getBoundingClientRect();
         const cssX = event.clientX - panelRect.left;
@@ -4962,6 +4975,100 @@ end
         zoomCanvas.style.left = `${Math.max(8, left)}px`;
         zoomCanvas.style.top = `${Math.max(8, top)}px`;
         zoomCanvas.classList.add("visible");
+    }
+
+    function zoomPatchPoint(rawX, rawY, point, size, half, pad = 12) {
+        const x = rawX - point.x + half;
+        const y = rawY - point.y + half;
+        return x >= -pad && x <= size + pad && y >= -pad && y <= size + pad ? {x, y} : null;
+    }
+
+    function drawZoomCross(x, y, color, radius = 7, lineWidth = 1.5) {
+        zoomContext.save();
+        zoomContext.strokeStyle = color;
+        zoomContext.lineWidth = lineWidth;
+        zoomContext.shadowColor = color;
+        zoomContext.shadowBlur = 3;
+        zoomContext.beginPath();
+        zoomContext.moveTo(x - radius, y);
+        zoomContext.lineTo(x + radius, y);
+        zoomContext.moveTo(x, y - radius);
+        zoomContext.lineTo(x, y + radius);
+        zoomContext.stroke();
+        zoomContext.restore();
+    }
+
+    function drawZoomDot(x, y, fill = "rgba(0, 0, 0, 0.95)", radius = 2.6) {
+        zoomContext.save();
+        zoomContext.fillStyle = fill;
+        zoomContext.strokeStyle = "rgba(255, 255, 255, 0.82)";
+        zoomContext.lineWidth = 0.8;
+        zoomContext.beginPath();
+        zoomContext.arc(x, y, radius, 0, 2 * Math.PI);
+        zoomContext.fill();
+        zoomContext.stroke();
+        zoomContext.restore();
+    }
+
+    function drawDetectedStarCentersOnZoom(point, size, half) {
+        for (const detection of activeDetectedStars()) {
+            const p = zoomPatchPoint(detection.x, detection.y, point, size, half, 5);
+            if (!p) {
+                continue;
+            }
+            drawZoomDot(p.x, p.y);
+        }
+    }
+
+    function drawCatalogStarPositionsOnZoom(point, size, half) {
+        const maxMag = Number(controls.maxMag.value) || 4;
+        for (const star of state.projected) {
+            if (star.mag > maxMag || isMatchedCatalogStar(star)) {
+                continue;
+            }
+            const [rawX, rawY] = rawImagePixelFromModelImagePixel(star.x, star.y);
+            const p = zoomPatchPoint(rawX, rawY, point, size, half, 5);
+            if (!p) {
+                continue;
+            }
+            drawZoomCross(p.x, p.y, "rgba(255, 60, 60, 0.72)", 4, 1);
+        }
+    }
+
+    function pairedCatalogRawPoint(match) {
+        if (!state.image || !match || !match.catalog) {
+            return null;
+        }
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const optmod = Number(controls.optmod.value);
+        const optpar = currentOptpar();
+        const azze = AidaTools.radecToAzZe(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
+        const xy = AidaTools.cameraModel(azze.az, azze.ze, optpar, optmod, state.image.width, state.image.height);
+        if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
+            return null;
+        }
+        const [rawX, rawY] = rawImagePixelFromModelImagePixel(xy.x, xy.y);
+        return {x: rawX, y: rawY};
+    }
+
+    function drawPairedStarPositionsOnZoom(point, size, half) {
+        for (const match of state.matches) {
+            if (match.image) {
+                const imagePoint = zoomPatchPoint(match.image.x, match.image.y, point, size, half, 10);
+                if (imagePoint) {
+                    drawZoomDot(imagePoint.x, imagePoint.y, "rgba(0, 0, 0, 0.98)", 3.0);
+                }
+            }
+            const catalogPoint = pairedCatalogRawPoint(match);
+            if (catalogPoint) {
+                const p = zoomPatchPoint(catalogPoint.x, catalogPoint.y, point, size, half, 10);
+                if (p) {
+                    drawZoomCross(p.x, p.y, "rgba(34, 255, 102, 0.98)", 6, 1.4);
+                }
+            }
+        }
     }
 
     function drawKdeContoursOnZoom(point, size, half) {
@@ -5596,9 +5703,9 @@ end
         return {x: result.x, y: result.y, sigma: result.sigma, method: result.method};
     }
 
-    function nearestProjectedStar(event) {
+    function nearestProjectedStar(event, options = {}) {
         const [cx, cy] = eventToCanvasPixel(event);
-        return nearestProjectedStarFromCanvasPixel(cx, cy);
+        return nearestProjectedStarFromCanvasPixel(cx, cy, options);
     }
 
     function isMatchedDetection(detection) {
@@ -5629,13 +5736,14 @@ end
         return best && bestD2 <= maxDist * maxDist ? {...best, distancePx: Math.sqrt(bestD2)} : null;
     }
 
-    function nearestProjectedStarFromCanvasPixel(cx, cy) {
+    function nearestProjectedStarFromCanvasPixel(cx, cy, options = {}) {
         const maxMag = Number(controls.maxMag.value) || 4;
         const margin = 20 * (window.devicePixelRatio || 1);
+        const includeMatched = options.includeMatched === true;
         let best = null;
         let bestD2 = Infinity;
         for (const star of state.projected) {
-            if (star.mag > maxMag || isMatchedCatalogStar(star)) {
+            if (star.mag > maxMag || (!includeMatched && isMatchedCatalogStar(star))) {
                 continue;
             }
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
@@ -5734,17 +5842,19 @@ end
     }
 
     function handleCatalogPairClick(event) {
-        const star = nearestProjectedStar(event);
+        const star = nearestProjectedStar(event, {includeMatched: true});
         if (!star) {
             state.fitMessage = "star match: click the matching red catalog star";
             render();
             return;
         }
-        state.matches.push({
-            id: state.matches.length + 1,
-            image: state.pendingMatch.image,
-            detectionId: null,
-            catalog: {
+        const existingIndex = matchingCatalogIndex(star);
+        if (existingIndex >= 0) {
+            const match = state.matches[existingIndex];
+            match.image = state.pendingMatch.image;
+            match.detectionId = null;
+            match.detectionGeneration = null;
+            match.catalog = {
                 key: catalogKey(star),
                 raHours: star.raHours,
                 decDeg: star.decDeg,
@@ -5752,9 +5862,28 @@ end
                 name: star.name,
                 az: star.az,
                 ze: star.ze,
-            },
-        });
+            };
+            state.fitMessage = `updated paired star ${match.id}: ${match.catalog.name || match.catalog.key || "(unnamed)"}`;
+        } else {
+            state.matches.push({
+                id: state.matches.length + 1,
+                image: state.pendingMatch.image,
+                detectionId: null,
+                catalog: {
+                    key: catalogKey(star),
+                    raHours: star.raHours,
+                    decDeg: star.decDeg,
+                    mag: star.mag,
+                    name: star.name,
+                    az: star.az,
+                    ze: star.ze,
+                },
+            });
+            state.fitMessage = `paired star ${state.matches.length}: ${star.name || catalogKey(star)}`;
+        }
         state.pendingMatch = null;
+        state.lastFitVector = null;
+        updateAutoMatches();
         clearDensityEstimate();
         state.showPickedMatchMarkers = true;
         playPairingRewardSound();
@@ -9804,7 +9933,7 @@ end
             }
             render();
         }
-        if (state.zoomMode || state.starMatchMode) {
+        if (state.zoomMode || state.starMatchMode || state.pendingMatch) {
             updateZoomCanvas(event);
         }
         if (!state.dragging || !state.image) {
