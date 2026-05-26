@@ -120,11 +120,13 @@ pairings after an automatic run.
 7. To add or correct pairs manually, hold `S` and click an image star. The
    local star position is refined with the interpolated density estimate.
    Release `S`, then click the matching red catalog star.
-8. Repeat until several well-spread star pairs are available.
-9. Press `F` for robust randomized Nelder-Mead, or `G` for
+8. Use `X` to toggle between the catalogue view and the image while checking
+   that the selected image star and red catalogue star are the intended pair.
+9. Repeat until several well-spread star pairs are available.
+10. Press `F` for robust randomized Nelder-Mead, or `G` for
    Levenberg-Marquardt.
-10. Press `R` to inspect residuals and remove bad pairs if needed.
-11. Export the fitted model with the copy buttons.
+11. Press `R` to inspect residuals and remove bad pairs if needed.
+12. Export the fitted model with the copy buttons.
 
 ## Field Of View Adjustment
 
