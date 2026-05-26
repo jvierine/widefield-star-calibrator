@@ -335,7 +335,7 @@ test("default focal ratios follow image width and height", () => {
     assert.equal(brown[7], 0.0);
 });
 
-function syntheticFisheyeImage(width = 320, height = 320, cx = 166, cy = 154, radius = 150) {
+function syntheticFisheyeImage(width = 320, height = 320, cx = 159.5, cy = 159.5, radius = 150) {
     const data = new Uint8Array(width * height * 4);
     for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
@@ -343,7 +343,9 @@ function syntheticFisheyeImage(width = 320, height = 320, cx = 166, cy = 154, ra
             const inside = distance <= radius;
             const annulus = Math.abs(distance - radius) <= 2.2;
             const texture = 6 * Math.sin(0.09 * x) + 4 * Math.cos(0.07 * y);
-            const value = Math.max(0, Math.min(255, (inside ? 82 : 10) + texture + (annulus ? 25 : 0)));
+            const annotation = (x > 120 && x < 200 && y > 8 && y < 24) || (x > 292 && y > 140 && y < 180);
+            const value = Math.max(0, Math.min(255, (inside ? 82 : 4) + texture + (annulus ? 25 : 0) +
+                (annotation ? 180 : 0)));
             const k = 4 * (y * width + x);
             data[k] = value;
             data[k + 1] = value;
@@ -363,8 +365,9 @@ test("fisheye annulus detector finds a circular horizon and initial optmod 2 gue
         samples: 96,
     });
     assert.equal(detection.detected, true);
-    assert.ok(Math.abs(detection.centerX - 166) < 8, `center x ${detection.centerX}`);
-    assert.ok(Math.abs(detection.centerY - 154) < 8, `center y ${detection.centerY}`);
+    assert.equal(detection.method, "median-radial-edge");
+    assert.ok(Math.abs(detection.centerX - 159.5) < 1e-9, `center x ${detection.centerX}`);
+    assert.ok(Math.abs(detection.centerY - 159.5) < 1e-9, `center y ${detection.centerY}`);
     assert.ok(Math.abs(detection.radiusPx - 150) < 8, `radius ${detection.radiusPx}`);
     assert.equal(detection.initialOptpar.length, 8);
     assertNear(detection.initialOptpar[7], 0.46, 1e-12);

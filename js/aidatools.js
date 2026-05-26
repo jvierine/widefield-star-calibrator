@@ -390,6 +390,89 @@
         };
     }
 
+    function medianRadialHorizonEdge(imageData, options = {}) {
+        const width = imageData.width;
+        const height = imageData.height;
+        const minSide = Math.min(width, height);
+        const cx = Number.isFinite(options.centerX) ? options.centerX : 0.5 * (width - 1);
+        const cy = Number.isFinite(options.centerY) ? options.centerY : 0.5 * (height - 1);
+        const radiusMin = (Number.isFinite(options.radiusMinFraction) ? options.radiusMinFraction : 0.40) * minSide;
+        const radiusMax = (Number.isFinite(options.radiusMaxFraction) ? options.radiusMaxFraction : 0.505) * minSide;
+        const radiusStep = Math.max(1, Number.isFinite(options.radialProfileStepPx) ?
+            options.radialProfileStepPx :
+            Math.round(minSide / 1400));
+        const samples = Number.isFinite(options.radialProfileSamples) ?
+            Math.max(96, Math.floor(options.radialProfileSamples)) :
+            minSide >= 1200 ? 720 : 192;
+        const profile = [];
+        for (let radius = radiusMin; radius <= radiusMax + 1e-9; radius += radiusStep) {
+            const values = [];
+            for (let i = 0; i < samples; i += 1) {
+                const a = 2 * Math.PI * i / samples;
+                const x = cx + radius * Math.cos(a);
+                const y = cy + radius * Math.sin(a);
+                if (x >= 0 && x < width && y >= 0 && y < height) {
+                    values.push(luminanceAt(imageData, x, y));
+                }
+            }
+            if (values.length >= samples * 0.80) {
+                profile.push({radius, median: median(values), validFraction: values.length / samples});
+            }
+        }
+        if (profile.length < 12) {
+            return null;
+        }
+        const halfWindow = Math.max(2, Math.round((Number.isFinite(options.edgeWindowPx) ?
+            options.edgeWindowPx :
+            Math.max(5, 0.004 * minSide)) / radiusStep));
+        let best = null;
+        for (let i = halfWindow; i < profile.length - halfWindow - 1; i += 1) {
+            const inside = median(profile.slice(i - halfWindow, i).map(row => row.median));
+            const outside = median(profile.slice(i + 1, i + halfWindow + 1).map(row => row.median));
+            const drop = inside - outside;
+            if (!best || drop > best.drop) {
+                best = {
+                    radius: profile[i].radius,
+                    inside,
+                    outside,
+                    drop,
+                    validFraction: profile[i].validFraction,
+                };
+            }
+        }
+        if (!best) {
+            return null;
+        }
+        const innerRows = profile.filter(row => row.radius >= radiusMin && row.radius <= best.radius - 2 * halfWindow * radiusStep);
+        const outerRows = profile.filter(row => row.radius >= best.radius + 2 * halfWindow * radiusStep && row.radius <= radiusMax);
+        const innerLevel = median(innerRows.map(row => row.median));
+        const outerLevel = median(outerRows.map(row => row.median));
+        const spread = robustSpread(profile.map(row => row.median), median(profile.map(row => row.median)));
+        const normalizedDrop = best.drop / Math.max(6, spread || 0);
+        const score = normalizedDrop + 0.01 * best.drop;
+        const detected = best.drop > 24 && innerLevel > outerLevel + 20 && outerLevel < Math.max(45, innerLevel * 0.45);
+        return {
+            detected,
+            reason: detected ? "centered median radial horizon edge" : "weak centered radial edge",
+            centerX: cx,
+            centerY: cy,
+            radiusPx: best.radius,
+            radiusFraction: best.radius / minSide,
+            centerOffsetFraction: 0,
+            score,
+            contrast: best.drop,
+            medInside: best.inside,
+            medOutside: best.outside,
+            innerLevel,
+            outerLevel,
+            spread,
+            validFraction: best.validFraction,
+            method: "median-radial-edge",
+            profileStepPx: radiusStep,
+            profileSamples: samples,
+        };
+    }
+
     function detectFisheyeAnnulus(imageData, options = {}) {
         const width = Number(imageData && imageData.width) || 0;
         const height = Number(imageData && imageData.height) || 0;
@@ -398,6 +481,23 @@
         }
         const minSide = Math.min(width, height);
         const filenameHint = looksLikeIrfFisheyeName(options.filename || options.name || "");
+        const centered = medianRadialHorizonEdge(imageData, options);
+        if (centered && centered.detected) {
+            const alpha = Number.isFinite(Number(options.alpha)) ? Number(options.alpha) : 0.46;
+            const detection = {
+                ...centered,
+                detected: true,
+                width,
+                height,
+                filenameHint,
+                alpha,
+                confidence: Math.max(0, Math.min(1, (centered.score - 1.0) / 2.5)),
+            };
+            detection.alphaCandidates = fisheyeAlphaCandidates(alpha);
+            detection.initialOptpar = fisheyeOptparFromAnnulus(detection, width, height, alpha);
+            detection.preflatten = fisheyePreflattenFromAnnulus(detection);
+            return detection;
+        }
         const radiusMin = (Number.isFinite(options.radiusMinFraction) ? options.radiusMinFraction : 0.40) * minSide;
         const radiusMax = (Number.isFinite(options.radiusMaxFraction) ? options.radiusMaxFraction : 0.515) * minSide;
         const centerSpan = (Number.isFinite(options.centerSpanFraction) ? options.centerSpanFraction : 0.055) * minSide;
