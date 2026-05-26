@@ -128,11 +128,11 @@ function radialHorizonDiagnostic(imageData, detection, reference = null) {
     };
 }
 
-function svgScatterPlot({title, xLabel, yLabel, points, yAccessor, detectedRadius, referenceRadius, width = 760, height = 250}) {
+function svgScatterPlot({title, xLabel, yLabel, points, yAccessor, detectedRadius, referenceRadius, width = 920, height = 380}) {
     if (!Array.isArray(points) || points.length === 0) {
         return "";
     }
-    const margin = {left: 58, right: 20, top: 28, bottom: 42};
+    const margin = {left: 82, right: 34, top: 58, bottom: 70};
     const xMin = Math.min(...points.map(point => point.radius));
     const xMax = Math.max(...points.map(point => point.radius));
     const yValues = points.map(yAccessor).filter(Number.isFinite);
@@ -145,30 +145,31 @@ function svgScatterPlot({title, xLabel, yLabel, points, yAccessor, detectedRadiu
     const ticks = [0, 0.25, 0.5, 0.75, 1].map(frac => xMin + frac * (xMax - xMin));
     const yTicks = [0, 0.25, 0.5, 0.75, 1].map(frac => yMin + frac * (yMax - yMin));
     const circles = points.map(point =>
-        `<circle cx="${sx(point.radius).toFixed(1)}" cy="${sy(yAccessor(point)).toFixed(1)}" r="2.2"/>`
+        `<circle cx="${sx(point.radius).toFixed(1)}" cy="${sy(yAccessor(point)).toFixed(1)}" r="3.0"/>`
     ).join("\n");
     const vline = (radius, color, label, dash = "") => Number.isFinite(radius) ?
         `<line x1="${sx(radius).toFixed(1)}" x2="${sx(radius).toFixed(1)}" y1="${margin.top}" y2="${height - margin.bottom}" ` +
-        `stroke="${color}" stroke-width="2" ${dash ? `stroke-dasharray="${dash}"` : ""}/>` +
-        `<text x="${(sx(radius) + 5).toFixed(1)}" y="${margin.top + 13}" fill="${color}" font-size="12">${escapeHtml(label)}</text>` :
+        `stroke="${color}" stroke-width="3" ${dash ? `stroke-dasharray="${dash}"` : ""}/>` +
+        `<text x="${(sx(radius) + 8).toFixed(1)}" y="${margin.top - 16}" fill="${color}" font-size="18" font-weight="700">${escapeHtml(label)}</text>` :
         "";
     return `<figure class="plot">
 <figcaption>${escapeHtml(title)}</figcaption>
 <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)}">
 <rect x="0" y="0" width="${width}" height="${height}" fill="#0f172a" rx="6"/>
+<rect x="${margin.left}" y="${margin.top}" width="${width - margin.left - margin.right}" height="${height - margin.top - margin.bottom}" fill="#020617" stroke="#64748b" stroke-width="1"/>
 <g stroke="#334155" stroke-width="1">
 ${ticks.map(tick => `<line x1="${sx(tick).toFixed(1)}" x2="${sx(tick).toFixed(1)}" y1="${margin.top}" y2="${height - margin.bottom}"/>`).join("\n")}
 ${yTicks.map(tick => `<line x1="${margin.left}" x2="${width - margin.right}" y1="${sy(tick).toFixed(1)}" y2="${sy(tick).toFixed(1)}"/>`).join("\n")}
 </g>
-<g fill="#38bdf8" opacity="0.82">${circles}</g>
+<g fill="#67e8f9" opacity="0.9">${circles}</g>
 ${vline(detectedRadius, "#38bdf8", "detected")}
 ${vline(referenceRadius, "#f97316", "reference", "7 5")}
-<line x1="${margin.left}" x2="${width - margin.right}" y1="${height - margin.bottom}" y2="${height - margin.bottom}" stroke="#94a3b8"/>
-<line x1="${margin.left}" x2="${margin.left}" y1="${margin.top}" y2="${height - margin.bottom}" stroke="#94a3b8"/>
-${ticks.map(tick => `<text x="${sx(tick).toFixed(1)}" y="${height - 16}" text-anchor="middle" fill="#cbd5e1" font-size="11">${tick.toFixed(0)}</text>`).join("\n")}
-${yTicks.map(tick => `<text x="${margin.left - 8}" y="${(sy(tick) + 4).toFixed(1)}" text-anchor="end" fill="#cbd5e1" font-size="11">${tick.toFixed(0)}</text>`).join("\n")}
-<text x="${width / 2}" y="${height - 3}" text-anchor="middle" fill="#e5e7eb" font-size="12">${escapeHtml(xLabel)}</text>
-<text transform="translate(14 ${height / 2}) rotate(-90)" text-anchor="middle" fill="#e5e7eb" font-size="12">${escapeHtml(yLabel)}</text>
+<line x1="${margin.left}" x2="${width - margin.right}" y1="${height - margin.bottom}" y2="${height - margin.bottom}" stroke="#cbd5e1" stroke-width="2"/>
+<line x1="${margin.left}" x2="${margin.left}" y1="${margin.top}" y2="${height - margin.bottom}" stroke="#cbd5e1" stroke-width="2"/>
+${ticks.map(tick => `<text x="${sx(tick).toFixed(1)}" y="${height - 38}" text-anchor="middle" fill="#f8fafc" font-size="16">${tick.toFixed(0)}</text>`).join("\n")}
+${yTicks.map(tick => `<text x="${margin.left - 12}" y="${(sy(tick) + 5).toFixed(1)}" text-anchor="end" fill="#f8fafc" font-size="16">${tick.toFixed(0)}</text>`).join("\n")}
+<text x="${width / 2}" y="${height - 12}" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="700">${escapeHtml(xLabel)}</text>
+<text transform="translate(24 ${height / 2}) rotate(-90)" text-anchor="middle" fill="#ffffff" font-size="18" font-weight="700">${escapeHtml(yLabel)}</text>
 </svg>
 </figure>`;
 }
@@ -385,14 +386,18 @@ function writeReport(result, options = {}) {
 <meta charset="utf-8">
 <title>Fisheye lucky validation: ${escapeHtml(result.caseId)}</title>
 <style>
-body{font-family:system-ui,sans-serif;margin:24px;background:#111827;color:#e5e7eb}
+body{font-family:system-ui,sans-serif;margin:28px;background:#111827;color:#f8fafc;font-size:18px;line-height:1.45}
+h1{font-size:32px;margin:0 0 16px}h2{font-size:26px;margin:30px 0 12px}
 .wrap{position:relative;width:min(100%,${width}px)}
 img,svg{display:block;width:100%;height:auto}
-svg{position:absolute;inset:0}
-table{border-collapse:collapse;margin:16px 0}td,th{padding:5px 10px;border-bottom:1px solid #374151;text-align:left}
-.note{max-width:900px;line-height:1.45}
-.plots{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;max-width:1540px}
-.plot{margin:0}.plot figcaption{margin:0 0 6px;color:#cbd5e1;font-weight:600}
+.wrap>svg{position:absolute;inset:0}
+table{border-collapse:collapse;margin:18px 0 24px;background:#0f172a;border:1px solid #475569}
+td,th{padding:9px 14px;border-bottom:1px solid #334155;text-align:left}
+th{color:#ffffff;font-weight:750}td{color:#e2e8f0}
+.note{max-width:1100px;line-height:1.55;color:#e2e8f0}
+.plots{display:grid;grid-template-columns:1fr;gap:28px;max-width:980px}
+.plot{margin:0;background:#0f172a;border:1px solid #475569;border-radius:8px;padding:14px}
+.plot figcaption{margin:0 0 10px;color:#ffffff;font-weight:750;font-size:20px}
 </style>
 <h1>Fisheye lucky validation: ${escapeHtml(result.caseId)}</h1>
 <p class="note">This report checks the fast circular-annulus fisheye detector and runs the same
