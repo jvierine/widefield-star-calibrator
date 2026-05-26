@@ -28,11 +28,14 @@ http://4.235.86.214/aida/
 
 ![Wide-field star calibrator GUI](docs/gui-screenshot.png)
 
-Open `index.html` directly in a browser. No local web server is needed.
+The tool is fully client-side JavaScript, with the GUI rendered in WebGL. For
+normal GUI use, no installation is required: open the hosted link above in a
+browser, or open `index.html` directly from a local checkout.
 
 ## Installation
 
-Clone the repository and install the command-line wrapper:
+Installation is only required if you want to run the calibrator from the command
+line. Clone the repository and install the wrapper:
 
 ```bash
 git clone https://github.com/jvierine/widefield-star-calibrator.git
@@ -153,6 +156,22 @@ stacked frame is available, then read `calibration.json`. A failed solve keeps
 `solved: false` and `optpar: null`, so automation can reject it without parsing
 the visual HTML report.
 
+## FAQ
+
+### Why JavaScript?
+
+JavaScript is not a beautiful language for mathematical software, but it is
+extremely well optimized because it runs software for a huge fraction of the
+world's internet users. It is also very well suited for graphical user
+interfaces that can be shared over the internet without asking users to install
+a desktop application. WebGL is fast enough for the interactive image display
+and overlay work this tool needs.
+
+The GUI is optional, because the same calibrator can be installed as
+`widefield-star-calibrate` and run like any other command-line program. Still,
+the GUI is a major advantage when a difficult star field does not automatically
+plate solve and needs a few manual corrections.
+
 ## Coordinates And Camera Models
 
 The AIDA radial models are based on tried-and-true, robust lens models from
@@ -207,4 +226,3 @@ write into ignored directories such as `test-report/`, `lucky-report/`, and
 The camera-model cross-check starts Python and imports `aida_tools_py`. Set
 `PYTHON=/path/to/python` if the default `/opt/miniconda3/bin/python` is not the
 right environment.
-
