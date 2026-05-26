@@ -26,6 +26,7 @@ MIN_TOTAL_COMPARISONS = 100
 MAX_ANGULAR_ERROR_DEG = 0.85
 MAX_AZ_ERROR_DEG = 2.00
 MAX_EL_ERROR_DEG = 0.30
+ASTROPY_PRESSURE = 0 * u.hPa
 
 
 def wrap_deg(value: float) -> float:
@@ -134,17 +135,30 @@ def has_comparable_stars(metadata: dict) -> bool:
     return False
 
 
+def astropy_vacuum_altaz_frame(timestamp: str, location: EarthLocation) -> AltAz:
+    """Create an Astropy AltAz frame with atmospheric refraction disabled.
+
+    Astropy applies atmospheric refraction in AltAz only when the frame pressure
+    is non-zero.  The browser calculation does not model refraction, so this
+    independent reference must be the unrefracted topocentric AltAz direction.
+    """
+    frame = AltAz(
+        obstime=Time(timestamp, scale="utc"),
+        location=location,
+        pressure=ASTROPY_PRESSURE,
+    )
+    if abs(frame.pressure.to_value(u.hPa)) > 0.0:
+        raise RuntimeError("Astropy AltAz frame must use pressure=0 hPa to disable atmospheric refraction")
+    return frame
+
+
 def compare_case(metadata: dict) -> dict:
     location = EarthLocation(
         lat=float(metadata["latDeg"]) * u.deg,
         lon=float(metadata["lonDeg"]) * u.deg,
         height=float(metadata.get("altM", 0.0)) * u.m,
     )
-    frame = AltAz(
-        obstime=Time(metadata["timestampUtc"], scale="utc"),
-        location=location,
-        pressure=0 * u.hPa,
-    )
+    frame = astropy_vacuum_altaz_frame(metadata["timestampUtc"], location)
 
     rows = []
     for match in metadata.get("matches", []):
@@ -204,6 +218,11 @@ def compare_case(metadata: dict) -> dict:
         "count": len(rows),
         "rows": rows,
         "summary": summarize_rows(rows),
+        "astropyAltAz": {
+            "atmosphericRefractionEnabled": False,
+            "pressureHpa": float(frame.pressure.to_value(u.hPa)),
+            "description": "Unrefracted topocentric AltAz: Astropy pressure is fixed to 0 hPa.",
+        },
     }
 
 
@@ -267,6 +286,11 @@ def compare_cases(metadata_paths: list[Path], case_filter: str | None = None) ->
         "cases": cases,
         "rows": rows,
         "summary": summarize_rows(rows),
+        "astropyAltAz": {
+            "atmosphericRefractionEnabled": False,
+            "pressureHpa": 0.0,
+            "description": "Unrefracted topocentric AltAz: every Astropy frame is constructed with pressure=0 hPa.",
+        },
     }
 
 
@@ -380,8 +404,9 @@ th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:last-child,
 <h1>Astropy AltAz Cross-Check</h1>
 <p>This fast regression compares the <code>js/aidatools.js</code> RA/Dec to azimuth/elevation
 calculation with Astropy for every tracked saved test case that has a lens model
-and paired catalogue-star detections.  Astropy uses vacuum refraction settings
-with <code>pressure=0 hPa</code> to match the browser calculation.</p>
+and paired catalogue-star detections.  Astropy is explicitly configured for
+unrefracted topocentric AltAz coordinates by setting <code>pressure=0 hPa</code>;
+there is no atmospheric refraction correction in this reference calculation.</p>
 <div class="metrics">
 <div class="metric"><span>Cases</span><b>{result['caseCount']}</b></div>
 <div class="metric"><span>Stars</span><b>{result['count']}</b></div>

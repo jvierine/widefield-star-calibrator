@@ -50,6 +50,12 @@ test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip:
     );
     assert.ok(summary.caseCount >= 10, `expected at least 10 comparable cases, got ${summary.caseCount}`);
     assert.ok(summary.count >= 100, `expected at least 100 star comparisons, got ${summary.count}`);
+    assert.equal(summary.astropyAltAz.atmosphericRefractionEnabled, false);
+    assert.equal(summary.astropyAltAz.pressureHpa, 0);
+    for (const caseSummary of summary.cases) {
+        assert.equal(caseSummary.astropyAltAz.atmosphericRefractionEnabled, false);
+        assert.equal(caseSummary.astropyAltAz.pressureHpa, 0);
+    }
     assert.ok(
         summary.summary.pixelResidualCount >= 100,
         `expected at least 100 pixel residuals, got ${summary.summary.pixelResidualCount}`,
