@@ -126,22 +126,6 @@ visible.
 
 ## Coordinates And Camera Models
 
-The browser uses true 0-based image pixel coordinates. The AIDA/MATLAB optical
-model values are converted from MATLAB's 1-based pixel convention inside
-`js/aidatools.js`.
-
-The bundled public allsky7 station lookup intentionally uses scrubbed
-coordinates rounded to 0.1 degrees. This keeps the example data useful without
-publishing exact station positions. For production calibration, enter the exact
-station latitude and longitude before fitting.
-
-The browser camera model is tested against the Python and MATLAB reference
-implementations for the parametric AIDA optmods `1`, `2`, `3`, `4`, `5`, and
-`12`, and has a separate browser unit test for the Brown-Conrady
-radial/tangential projection. The MATLAB lookup-table and instrument-specific
-camera models are intentionally not in the browser UI because they require
-external calibration tables or special camera code.
-
 The AIDA radial models are based on tried-and-true, robust lens models from
 the original AIDA_tools MATLAB code, where they have been used on a range of
 wide-field and all-sky lenses. The GUI exposes these options:
