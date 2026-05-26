@@ -11,6 +11,7 @@
     "report:img9953-asterisms": "node tools/img9953_undistorted_asterism_report.js",
     "report:img9953-sensitivity": "node tools/img9953_preundistortion_sensitivity.js",
     "report:allsky010031-sensitivity": "node tools/allsky010031_ams0221_preundistortion_sensitivity.js",
+    "report:img9970-astropy-altaz": "python3 tools/img9970_astropy_altaz_report.py --write-report",
     "report:close-projection": "node tools/close_projection_report.js",
     "report:star-detector-oracle": "node tools/star_detector_oracle_report.js",
     "report:fisheye-lucky": "node tools/fisheye_lucky_report.js",
