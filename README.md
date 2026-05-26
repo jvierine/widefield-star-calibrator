@@ -191,79 +191,102 @@ plate solve and needs a few manual corrections.
 
 ## Coordinates And Camera Models
 
-For a catalog star at azimuth `az` and zenith angle `ze`, WISC first writes the
-local sky direction as an east/north/up unit vector:
+For a catalog star at azimuth $\mathrm{az}$ and zenith angle $\mathrm{ze}$,
+WISC first writes the local sky direction as an east/north/up unit vector:
 
-```text
-e = [sin(ze) sin(az), sin(ze) cos(az), cos(ze)].
-```
+$$
+\mathbf{e} =
+\begin{bmatrix}
+\sin(\mathrm{ze})\sin(\mathrm{az}) \\
+\sin(\mathrm{ze})\cos(\mathrm{az}) \\
+\cos(\mathrm{ze})
+\end{bmatrix}.
+$$
 
 The camera pointing parameters rotate this direction into the camera frame:
 
-```text
-s = R(alpha_cam, beta_cam, gamma_cam) e
-  = [s1, s2, s3].
-```
+$$
+\mathbf{s}
+= R(\alpha_\mathrm{cam}, \beta_\mathrm{cam}, \gamma_\mathrm{cam})\mathbf{e}
+=
+\begin{bmatrix}
+s_1 \\
+s_2 \\
+s_3
+\end{bmatrix}.
+$$
 
 The final image coordinates are normalized coordinates multiplied by image
 size:
 
-```text
-x = width  * u - 1
-y = height * v - 1.
-```
+$$
+x = W u - 1, \qquad y = H v - 1,
+$$
+
+where $W$ and $H$ are the image width and height in pixels.
 
 For the radial AIDA-style models, define
 
-```text
-rho   = sqrt(s1^2 + s2^2)
-theta = atan2(rho, s3)
-u     = 0.5 + dx + f1 * (s1/rho) * r(theta)
-v     = 0.5 + dy + f2 * (s2/rho) * r(theta).
-```
+$$
+\rho = \sqrt{s_1^2 + s_2^2}, \qquad
+\theta = \operatorname{atan2}(\rho, s_3),
+$$
 
-At the optical axis, `rho = 0`, the code uses `u = 0.5 + dx` and
-`v = 0.5 + dy`.
+$$
+u = \frac{1}{2} + d_x + f_1\frac{s_1}{\rho}q(\theta), \qquad
+v = \frac{1}{2} + d_y + f_2\frac{s_2}{\rho}q(\theta).
+$$
+
+At the optical axis, where $\rho = 0$, WISC uses
+$u = \frac{1}{2} + d_x$ and $v = \frac{1}{2} + d_y$.
 
 The AIDA radial models are based on tried-and-true, robust lens models from
 the original AIDA_tools MATLAB code, where they have been used on a range of
 wide-field and all-sky lenses. The GUI exposes these options, with the radial
-function `r(theta)` defined as:
+function $q(\theta)$ defined as:
 
-- `optmod 1`: rectilinear/pinhole projection,
-  `u = 0.5 + dx + f1 s1/s3`, `v = 0.5 + dy + f2 s2/s3`.
-- `optmod 2`: sinusoidal radial projection, a good common choice for fisheye
-  and all-sky lenses, `r(theta) = sin(a theta)`.
-- `optmod 3`: hybrid tangent/equidistant radial projection,
-  `(1 - a) [s1/s3, s2/s3] + a theta [s1/rho, s2/rho]`.
-- `optmod 4`: power-law equidistant-style radial projection,
-  `r(theta) = |theta|^a`.
-- `optmod 5`: scaled rectilinear projection, `r(theta) = tan(a theta)`.
-- `optmod 12`: unified radial projection that can smoothly move between
-  sine-like, equidistant, and tangent-like behavior:
-  `r(theta) = tan(a theta)/a` for `a > 0`, `r(theta) = theta` for `a = 0`,
-  and `r(theta) = sin(a theta)/a` for `a < 0`.
-- `Brown-Conrady` (`optmod 20`): the standard radial/tangential distortion
-  model, usually a good starting point for ordinary phone-camera lenses,
-  including iPhone images.
+| Model | Projection |
+| --- | --- |
+| `optmod 1` | Rectilinear/pinhole projection: $u = \frac{1}{2} + d_x + f_1s_1/s_3$, $v = \frac{1}{2} + d_y + f_2s_2/s_3$. |
+| `optmod 2` | Sinusoidal radial projection: $q(\theta) = \sin(a\theta)$. This is often useful for fisheye and all-sky lenses. |
+| `optmod 3` | Hybrid rectilinear/equidistant projection: $\mathbf{p} = (1-a)\begin{bmatrix}s_1/s_3 \\ s_2/s_3\end{bmatrix} + a\theta\begin{bmatrix}s_1/\rho \\ s_2/\rho\end{bmatrix}$. |
+| `optmod 4` | Power-law equidistant-style projection: $q(\theta) = |\theta|^a$. |
+| `optmod 5` | Scaled rectilinear projection: $q(\theta) = \tan(a\theta)$. |
+| `optmod 12` | Unified radial projection: $q(\theta)=\tan(a\theta)/a$ for $a>0$, $q(\theta)=\theta$ for $a=0$, and $q(\theta)=\sin(a\theta)/a$ for $a<0$. |
+| `optmod 20` | Brown-Conrady radial/tangential distortion model. This is usually a good starting point for ordinary phone-camera lenses, including iPhone images. |
 
 For Brown-Conrady, the undistorted pinhole coordinates are
 
-```text
-xn = s1/s3
-yn = s2/s3
-r2 = xn^2 + yn^2.
-```
+$$
+x_n = \frac{s_1}{s_3}, \qquad
+y_n = \frac{s_2}{s_3}, \qquad
+r^2 = x_n^2 + y_n^2.
+$$
 
 The distorted normalized coordinates are
 
-```text
-rad = 1 + k1 r2 + k2 r2^2 + k3 r2^3
-xd  = xn rad + 2 p1 xn yn + p2 (r2 + 2 xn^2)
-yd  = yn rad + p1 (r2 + 2 yn^2) + 2 p2 xn yn
-u   = 0.5 + dx + f1 xd
-v   = 0.5 + dy + f2 yd.
-```
+$$
+D(r) = 1 + k_1r^2 + k_2r^4 + k_3r^6,
+$$
+
+$$
+x_d =
+x_nD(r)
++ 2p_1x_ny_n
++ p_2(r^2 + 2x_n^2),
+$$
+
+$$
+y_d =
+y_nD(r)
++ p_1(r^2 + 2y_n^2)
++ 2p_2x_ny_n,
+$$
+
+$$
+u = \frac{1}{2} + d_x + f_1x_d, \qquad
+v = \frac{1}{2} + d_y + f_2y_d.
+$$
 
 ## Test Data
 
