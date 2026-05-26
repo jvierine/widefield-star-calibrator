@@ -359,6 +359,9 @@ function writeReport(result, options = {}) {
         ["Annulus score", Number(ann.score).toFixed(3)],
         ["Detected center", `${Number(ann.centerX).toFixed(1)}, ${Number(ann.centerY).toFixed(1)} px`],
         ["Detected horizon radius", `${Number(ann.radiusPx).toFixed(1)} px`],
+        ["Threshold circle seed", ann.thresholdCircle ?
+            `${ann.thresholdCircle.centerX.toFixed(1)}, ${ann.thresholdCircle.centerY.toFixed(1)} px; r=${ann.thresholdCircle.radiusPx.toFixed(1)} px` :
+            "n/a"],
         ["Bootstrap usable radius", result.horizonMask ? `${result.horizonMask.usableRadius.toFixed(1)} px` : "n/a"],
         ["Bootstrap catalog zenith limit", "80 deg (stars >=10 deg elevation)"],
         ["Reference center", ref ? `${ref.centerX.toFixed(1)}, ${ref.centerY.toFixed(1)} px` : "n/a"],
@@ -415,10 +418,10 @@ ${matched}
 </svg>
 </div>
 <h2>Horizon Detection Diagnostics</h2>
-<p class="note">The fisheye detector assumes the image midpoint is the optical center and looks for the
-large drop in the peak value of the pixel-intensity density between the illuminated circular field and the
-nearly black pixels outside it. The peak-density statistic is insensitive to sparse station labels,
-timestamps, and cardinal-direction text.</p>
+<p class="note">The fisheye detector searches for a circular horizon center within 10% of the image size
+around the midpoint and then looks for the large drop in the peak value of the pixel-intensity
+density between the illuminated circular field and the nearly black pixels outside it. The
+peak-density statistic is insensitive to sparse station labels, timestamps, and cardinal-direction text.</p>
 <div class="plots">
 ${radialPlot}
 ${dropPlot}

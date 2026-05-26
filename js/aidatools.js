@@ -326,6 +326,110 @@
         return values.length ? values.reduce((acc, value) => acc + value, 0) / values.length : NaN;
     }
 
+    function peakModeValue(values, binWidth = 4) {
+        const finite = values.filter(Number.isFinite);
+        if (!finite.length) {
+            return NaN;
+        }
+        const minValue = Math.min(...finite);
+        const maxValue = Math.max(...finite);
+        const width = Math.max(1e-6, Number(binWidth) || 4);
+        const bins = Math.max(1, Math.ceil((maxValue - minValue) / width) + 1);
+        const hist = new Array(bins).fill(0);
+        for (const value of finite) {
+            const idx = Math.max(0, Math.min(bins - 1, Math.floor((value - minValue) / width)));
+            hist[idx] += 1;
+        }
+        let bestIdx = 0;
+        let bestCount = -Infinity;
+        for (let i = 0; i < bins; i += 1) {
+            const count = hist[i] + 0.5 * (hist[i - 1] || 0) + 0.5 * (hist[i + 1] || 0);
+            if (count > bestCount) {
+                bestCount = count;
+                bestIdx = i;
+            }
+        }
+        return minValue + (bestIdx + 0.5) * width;
+    }
+
+    function estimateFisheyeCircleFromThreshold(imageData, options = {}) {
+        const width = imageData.width;
+        const height = imageData.height;
+        const minSide = Math.min(width, height);
+        const threshold = Number.isFinite(options.annulusThreshold) ? options.annulusThreshold : 25;
+        const step = Math.max(1, Number.isFinite(options.annulusScanStepPx) ?
+            Math.round(options.annulusScanStepPx) :
+            Math.round(minSide / 180));
+        const minRun = 0.45 * minSide;
+        const maxRun = 1.02 * minSide;
+        const centersX = [];
+        const centersY = [];
+        const radiiX = [];
+        const radiiY = [];
+        for (let y = 0; y < height; y += step) {
+            let first = null;
+            let last = null;
+            for (let x = 0; x < width; x += 1) {
+                if (luminanceAt(imageData, x, y) > threshold) {
+                    if (first === null) {
+                        first = x;
+                    }
+                    last = x;
+                }
+            }
+            if (first !== null) {
+                const run = last - first;
+                if (run >= minRun && run <= maxRun && first > 1 && last < width - 2) {
+                    centersX.push(0.5 * (first + last));
+                    radiiX.push(0.5 * run);
+                }
+            }
+        }
+        for (let x = 0; x < width; x += step) {
+            let first = null;
+            let last = null;
+            for (let y = 0; y < height; y += 1) {
+                if (luminanceAt(imageData, x, y) > threshold) {
+                    if (first === null) {
+                        first = y;
+                    }
+                    last = y;
+                }
+            }
+            if (first !== null) {
+                const run = last - first;
+                if (run >= minRun && run <= maxRun && first > 1 && last < height - 2) {
+                    centersY.push(0.5 * (first + last));
+                    radiiY.push(0.5 * run);
+                }
+            }
+        }
+        if (centersX.length < 6 || centersY.length < 6) {
+            return null;
+        }
+        const centerX = peakModeValue(centersX, Math.max(2, minSide / 160));
+        const centerY = peakModeValue(centersY, Math.max(2, minSide / 160));
+        const radiusPx = peakModeValue(radiiX.concat(radiiY), Math.max(2, minSide / 160));
+        const cx0 = 0.5 * (width - 1);
+        const cy0 = 0.5 * (height - 1);
+        const centerOffsetFraction = Math.hypot(centerX - cx0, centerY - cy0) / minSide;
+        if (!Number.isFinite(centerX) || !Number.isFinite(centerY) || !Number.isFinite(radiusPx) ||
+                radiusPx < 0.35 * minSide || radiusPx > 0.55 * minSide ||
+                centerOffsetFraction > (Number.isFinite(options.centerMaxOffsetFraction) ?
+                    options.centerMaxOffsetFraction : 0.10) + 0.02) {
+            return null;
+        }
+        return {
+            centerX,
+            centerY,
+            radiusPx,
+            centerOffsetFraction,
+            rows: centersX.length,
+            cols: centersY.length,
+            threshold,
+        };
+    }
+
     function ringEdgeScore(imageData, cx, cy, radius, options) {
         const width = imageData.width;
         const height = imageData.height;
@@ -406,12 +510,16 @@
             .map(alpha => radiusNormX / Math.max(1e-6, Math.sin(alpha * Math.PI / 2)))
             .filter(value => Number.isFinite(value) && value > 0.2 && value < 2.0)
             .map(value => Number(value.toFixed(4)));
+        const du = (Number(detection.centerX) + 1) / width - 0.5;
+        const dv = (Number(detection.centerY) + 1) / height - 0.5;
         return {
             preflattenModelCandidates: ["fisheye"],
             preflattenF1Candidates: Array.from(new Set(f1s)),
             preflattenRadialAlphaCandidates: alphas,
-            preflattenDu: (Number(detection.centerX) + 1) / width - 0.5,
-            preflattenDv: (Number(detection.centerY) + 1) / height - 0.5,
+            preflattenDu: 0,
+            preflattenDv: 0,
+            detectedCenterDu: du,
+            detectedCenterDv: dv,
             minBlindMatchSpanXFraction: 0.36,
             minBlindMatchSpanYFraction: 0.36,
         };
@@ -528,6 +636,73 @@
         };
     }
 
+    function peakDensityRadialHorizonEdgeWithCenterSearch(imageData, options = {}) {
+        const width = imageData.width;
+        const height = imageData.height;
+        const minSide = Math.min(width, height);
+        const cx0 = 0.5 * (width - 1);
+        const cy0 = 0.5 * (height - 1);
+        const maxOffsetFraction = Number.isFinite(options.centerMaxOffsetFraction) ?
+            options.centerMaxOffsetFraction :
+            0.10;
+        const centerSpan = Math.max(0, maxOffsetFraction) * minSide;
+        const coarseStep = Math.max(4, Number.isFinite(options.radialCenterStepPx) ?
+            options.radialCenterStepPx :
+            Math.round(minSide / 36));
+        const coarseOptions = {
+            ...options,
+            radialProfileSamples: Number.isFinite(options.coarseRadialProfileSamples) ?
+                options.coarseRadialProfileSamples :
+                Math.min(360, Math.max(160, Math.round(minSide / 8))),
+            radialProfileStepPx: Number.isFinite(options.coarseRadialProfileStepPx) ?
+                options.coarseRadialProfileStepPx :
+                Math.max(2, Math.round(minSide / 900)),
+        };
+        let best = null;
+        for (let cy = cy0 - centerSpan; cy <= cy0 + centerSpan + 1e-9; cy += coarseStep) {
+            for (let cx = cx0 - centerSpan; cx <= cx0 + centerSpan + 1e-9; cx += coarseStep) {
+                const candidate = peakDensityRadialHorizonEdge(imageData, {...coarseOptions, centerX: cx, centerY: cy});
+                if (candidate && (!best || candidate.score > best.score)) {
+                    best = candidate;
+                }
+            }
+        }
+        if (!best) {
+            return peakDensityRadialHorizonEdge(imageData, options);
+        }
+
+        const fineStep = Math.max(2, Math.round(coarseStep / 4));
+        const fineSpan = coarseStep;
+        const fineOptions = {
+            ...options,
+            radialProfileSamples: Number.isFinite(options.fineRadialProfileSamples) ?
+                options.fineRadialProfileSamples :
+                undefined,
+            radialProfileStepPx: Number.isFinite(options.fineRadialProfileStepPx) ?
+                options.fineRadialProfileStepPx :
+                undefined,
+        };
+        for (let cy = best.centerY - fineSpan; cy <= best.centerY + fineSpan + 1e-9; cy += fineStep) {
+            for (let cx = best.centerX - fineSpan; cx <= best.centerX + fineSpan + 1e-9; cx += fineStep) {
+                if (Math.hypot(cx - cx0, cy - cy0) > centerSpan + 1e-9) {
+                    continue;
+                }
+                const candidate = peakDensityRadialHorizonEdge(imageData, {...fineOptions, centerX: cx, centerY: cy});
+                if (candidate && candidate.score > best.score) {
+                    best = candidate;
+                }
+            }
+        }
+        return {
+            ...best,
+            reason: best.detected ? "peak-density radial horizon edge with center search" :
+                "weak peak-density radial edge with center search",
+            centerOffsetFraction: Math.hypot(best.centerX - cx0, best.centerY - cy0) / minSide,
+            centerSearchMaxOffsetFraction: maxOffsetFraction,
+            centerSearchStepPx: coarseStep,
+        };
+    }
+
     function detectFisheyeAnnulus(imageData, options = {}) {
         const width = Number(imageData && imageData.width) || 0;
         const height = Number(imageData && imageData.height) || 0;
@@ -536,17 +711,36 @@
         }
         const minSide = Math.min(width, height);
         const filenameHint = looksLikeIrfFisheyeName(options.filename || options.name || "");
-        const centered = peakDensityRadialHorizonEdge(imageData, options);
-        if (centered && centered.detected) {
+        const thresholdCircle = estimateFisheyeCircleFromThreshold(imageData, options);
+        const radialSeed = thresholdCircle ?
+            peakDensityRadialHorizonEdge(imageData, {
+                ...options,
+                centerX: thresholdCircle.centerX,
+                centerY: thresholdCircle.centerY,
+                radiusMinFraction: Math.max(0.35, thresholdCircle.radiusPx / minSide - 0.045),
+                radiusMaxFraction: Math.min(0.55, thresholdCircle.radiusPx / minSide + 0.045),
+            }) :
+            null;
+        const radialDetection = radialSeed && radialSeed.detected ?
+            {
+                ...radialSeed,
+                reason: "threshold-seeded peak-density radial horizon edge",
+                thresholdCircle,
+                centerOffsetFraction: thresholdCircle.centerOffsetFraction,
+            } :
+            options.disablePeakDensityCenterSearch ?
+                peakDensityRadialHorizonEdge(imageData, options) :
+                peakDensityRadialHorizonEdgeWithCenterSearch(imageData, options);
+        if (radialDetection && radialDetection.detected) {
             const alpha = Number.isFinite(Number(options.alpha)) ? Number(options.alpha) : 0.46;
             const detection = {
-                ...centered,
+                ...radialDetection,
                 detected: true,
                 width,
                 height,
                 filenameHint,
                 alpha,
-                confidence: Math.max(0, Math.min(1, (centered.score - 1.0) / 2.5)),
+                confidence: Math.max(0, Math.min(1, (radialDetection.score - 1.0) / 2.5)),
             };
             detection.alphaCandidates = fisheyeAlphaCandidates(alpha);
             detection.initialOptpar = fisheyeOptparFromAnnulus(detection, width, height, alpha);
@@ -555,7 +749,9 @@
         }
         const radiusMin = (Number.isFinite(options.radiusMinFraction) ? options.radiusMinFraction : 0.40) * minSide;
         const radiusMax = (Number.isFinite(options.radiusMaxFraction) ? options.radiusMaxFraction : 0.515) * minSide;
-        const centerSpan = (Number.isFinite(options.centerSpanFraction) ? options.centerSpanFraction : 0.055) * minSide;
+        const centerSpan = (Number.isFinite(options.centerSpanFraction) ?
+            options.centerSpanFraction :
+            Number.isFinite(options.centerMaxOffsetFraction) ? options.centerMaxOffsetFraction : 0.10) * minSide;
         const centerStep = Math.max(6, Number.isFinite(options.centerStepPx) ?
             options.centerStepPx :
             Math.round(minSide / 96));
@@ -600,7 +796,7 @@
         const radiusFraction = best.radius / minSide;
         const centerOffsetFraction = Math.hypot(best.cx - cx0, best.cy - cy0) / minSide;
         const shapePlausible = radiusFraction >= 0.40 && radiusFraction <= 0.515 &&
-            centerOffsetFraction <= 0.09 &&
+            centerOffsetFraction <= 0.105 &&
             best.validFraction >= 0.80;
         const strong = best.score >= 1.15 && best.contrast > 12;
         const hinted = filenameHint && best.score >= 0.75 && best.contrast > 8;
