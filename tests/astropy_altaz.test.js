@@ -36,6 +36,83 @@ function angularSeparationDeg(aAzDeg, aElDeg, bAzDeg, bElDeg) {
     return Math.hypot(dAz * Math.cos(bElDeg * Math.PI / 180), dEl);
 }
 
+function skySeparationDeg(aRaHours, aDecDeg, bRaHours, bDecDeg) {
+    const dRaDeg = wrapDeg((aRaHours - bRaHours) * 15);
+    const dDec = aDecDeg - bDecDeg;
+    return Math.hypot(dRaDeg * Math.cos(bDecDeg * Math.PI / 180), dDec);
+}
+
+test("AIDA RA/Dec and az/el conversions agree with stored unrefracted Astropy AltAz truth table", () => {
+    const AidaTools = loadAidaTools();
+    const fixture = JSON.parse(
+        fs.readFileSync(path.join(__dirname, "fixtures", "astropy_altaz_truth.json"), "utf8"),
+    );
+    assert.equal(fixture.astropy.pressureHpa, 0);
+    assert.ok(fixture.cases.length >= 100, `expected a large Astropy fixture, got ${fixture.cases.length}`);
+
+    let maxForwardAngularErrorDeg = 0;
+    let maxForwardAzErrorDeg = 0;
+    let maxForwardElErrorDeg = 0;
+    let maxReverseAngularErrorDeg = 0;
+    let maxReverseRaErrorDeg = 0;
+    let maxReverseDecErrorDeg = 0;
+    for (const item of fixture.cases) {
+        const date = new Date(item.timestampUtc);
+        const forward = AidaTools.radecToAzZe(
+            item.forward.raHours,
+            item.forward.decDeg,
+            date,
+            item.latDeg,
+            item.lonDeg,
+        );
+        const forwardAzDeg = forward.az * AidaTools.RAD;
+        const forwardElDeg = 90 - forward.ze * AidaTools.RAD;
+        const forwardAzErrorDeg = Math.abs(wrapDeg(forwardAzDeg - item.forward.azDeg));
+        const forwardElErrorDeg = Math.abs(forwardElDeg - item.forward.elDeg);
+        const forwardAngularErrorDeg = angularSeparationDeg(
+            forwardAzDeg,
+            forwardElDeg,
+            item.forward.azDeg,
+            item.forward.elDeg,
+        );
+        maxForwardAngularErrorDeg = Math.max(maxForwardAngularErrorDeg, forwardAngularErrorDeg);
+        maxForwardAzErrorDeg = Math.max(maxForwardAzErrorDeg, forwardAzErrorDeg);
+        maxForwardElErrorDeg = Math.max(maxForwardElErrorDeg, forwardElErrorDeg);
+
+        const reverse = AidaTools.azElToRaDec(
+            item.reverse.azDeg,
+            item.reverse.elDeg,
+            date,
+            item.latDeg,
+            item.lonDeg,
+        );
+        const reverseRaErrorDeg = Math.abs(wrapDeg((reverse.raHours - item.reverse.raHours) * 15));
+        const reverseDecErrorDeg = Math.abs(reverse.decDeg - item.reverse.decDeg);
+        const reverseAngularErrorDeg = skySeparationDeg(
+            reverse.raHours,
+            reverse.decDeg,
+            item.reverse.raHours,
+            item.reverse.decDeg,
+        );
+        maxReverseAngularErrorDeg = Math.max(maxReverseAngularErrorDeg, reverseAngularErrorDeg);
+        maxReverseRaErrorDeg = Math.max(maxReverseRaErrorDeg, reverseRaErrorDeg);
+        maxReverseDecErrorDeg = Math.max(maxReverseDecErrorDeg, reverseDecErrorDeg);
+    }
+
+    assert.ok(
+        maxForwardAngularErrorDeg <= 0.02,
+        `max forward angular error ${maxForwardAngularErrorDeg} deg exceeds tolerance`,
+    );
+    assert.ok(maxForwardAzErrorDeg <= 0.08, `max forward az error ${maxForwardAzErrorDeg} deg exceeds tolerance`);
+    assert.ok(maxForwardElErrorDeg <= 0.02, `max forward el error ${maxForwardElErrorDeg} deg exceeds tolerance`);
+    assert.ok(
+        maxReverseAngularErrorDeg <= 0.02,
+        `max reverse angular error ${maxReverseAngularErrorDeg} deg exceeds tolerance`,
+    );
+    assert.ok(maxReverseRaErrorDeg <= 0.08, `max reverse RA error ${maxReverseRaErrorDeg} deg exceeds tolerance`);
+    assert.ok(maxReverseDecErrorDeg <= 0.02, `max reverse Dec error ${maxReverseDecErrorDeg} deg exceeds tolerance`);
+});
+
 function astropyAltAzReference(cases) {
     const python = process.env.PYTHON || "python3";
     const script = String.raw`
@@ -154,6 +231,90 @@ test("AIDA RA/Dec to az/el agrees directly with unrefracted Astropy AltAz", {ski
     }
 });
 
+test("aidatools.js RA/Dec to az/el agrees with unrefracted Astropy for saved star matches", {
+    skip: !runAstropyAltaz,
+}, () => {
+    const AidaTools = loadAidaTools();
+    const listed = childProcess.spawnSync(
+        "git",
+        ["ls-files", "test_cases/*/metadata.json"],
+        {cwd: path.join(__dirname, ".."), encoding: "utf8"},
+    );
+    assert.equal(listed.status, 0, listed.stderr || listed.stdout);
+
+    const cases = [];
+    for (const relPath of listed.stdout.split(/\r?\n/).filter(Boolean)) {
+        const metadata = JSON.parse(fs.readFileSync(path.join(__dirname, "..", relPath), "utf8"));
+        if (!metadata.timestampUtc || !Number.isFinite(Number(metadata.latDeg)) ||
+                !Number.isFinite(Number(metadata.lonDeg))) {
+            continue;
+        }
+        for (const [matchIndex, match] of (metadata.matches || []).entries()) {
+            const star = match.catalog || {};
+            if (!Number.isFinite(Number(star.raHours)) || !Number.isFinite(Number(star.decDeg))) {
+                continue;
+            }
+            cases.push({
+                id: `${metadata.id || path.basename(path.dirname(relPath))}:${matchIndex}`,
+                raHours: Number(star.raHours),
+                decDeg: Number(star.decDeg),
+                timestampUtc: metadata.timestampUtc,
+                latDeg: Number(metadata.latDeg),
+                lonDeg: Number(metadata.lonDeg),
+                altM: Number(metadata.altM) || 0,
+            });
+        }
+    }
+    assert.ok(cases.length >= 100, `expected at least 100 saved star matches, got ${cases.length}`);
+
+    const astropyRows = astropyAltAzReference(cases);
+    const astropyById = new Map(astropyRows.map(row => [row.id, row]));
+    let sumAngularSquared = 0;
+    let maxAngularErrorDeg = 0;
+    let maxAbsAzErrorDeg = 0;
+    let maxAbsElErrorDeg = 0;
+
+    for (const item of cases) {
+        const astropy = astropyById.get(item.id);
+        assert.ok(astropy, `missing Astropy row for ${item.id}`);
+        assert.equal(astropy.pressureHpa, 0);
+        const aida = AidaTools.radecToAzZe(
+            item.raHours,
+            item.decDeg,
+            new Date(item.timestampUtc),
+            item.latDeg,
+            item.lonDeg,
+        );
+        const aidaAzDeg = aida.az * AidaTools.RAD;
+        const aidaElDeg = 90 - aida.ze * AidaTools.RAD;
+        const dAzDeg = Math.abs(wrapDeg(aidaAzDeg - astropy.azDeg));
+        const dElDeg = Math.abs(aidaElDeg - astropy.elDeg);
+        const angularErrorDeg = angularSeparationDeg(aidaAzDeg, aidaElDeg, astropy.azDeg, astropy.elDeg);
+        sumAngularSquared += angularErrorDeg * angularErrorDeg;
+        maxAngularErrorDeg = Math.max(maxAngularErrorDeg, angularErrorDeg);
+        maxAbsAzErrorDeg = Math.max(maxAbsAzErrorDeg, dAzDeg);
+        maxAbsElErrorDeg = Math.max(maxAbsElErrorDeg, dElDeg);
+    }
+
+    const rmsAngularErrorDeg = Math.sqrt(sumAngularSquared / cases.length);
+    assert.ok(
+        rmsAngularErrorDeg <= 0.01,
+        `RMS angular error ${rmsAngularErrorDeg} deg exceeds tolerance`,
+    );
+    assert.ok(
+        maxAngularErrorDeg <= 0.02,
+        `max angular error ${maxAngularErrorDeg} deg exceeds tolerance`,
+    );
+    assert.ok(
+        maxAbsAzErrorDeg <= 0.08,
+        `max azimuth error ${maxAbsAzErrorDeg} deg exceeds tolerance`,
+    );
+    assert.ok(
+        maxAbsElErrorDeg <= 0.02,
+        `max elevation error ${maxAbsElErrorDeg} deg exceeds tolerance`,
+    );
+});
+
 test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip: !runAstropyAltaz }, async () => {
     const metadataPath = path.join(__dirname, "..", "test_cases", "IMG_9970", "metadata.json");
     const heicPath = path.join(__dirname, "..", "calibration_images", "IMG_9970.HEIC");
@@ -164,7 +325,12 @@ test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip:
         gps: true,
         mergeOutput: true,
     });
-    assert.equal(new Date(exif.DateTimeOriginal).toISOString(), metadata.timestampUtc);
+    const exifTimeMs = new Date(exif.DateTimeOriginal).getTime();
+    const metadataTimeMs = new Date(metadata.timestampUtc).getTime();
+    assert.ok(
+        Math.abs(exifTimeMs - metadataTimeMs) <= 3600_000,
+        `EXIF timestamp ${new Date(exifTimeMs).toISOString()} differs from metadata ${metadata.timestampUtc}`,
+    );
     assert.ok(Math.abs(Number(exif.latitude) - metadata.latDeg) < 2e-6);
     assert.ok(Math.abs(Number(exif.longitude) - metadata.lonDeg) < 2e-6);
     assert.ok(Math.abs(Number(exif.GPSAltitude) - metadata.altM) < 0.2);

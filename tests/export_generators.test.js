@@ -213,7 +213,34 @@ function exportContextFromSavedCase(savedCase) {
     };
 }
 
-function projectionSamples(savedCase, maxSamples = 5) {
+function savedCasesByOptmod(maxSamples = 10) {
+    const testCaseRoot = path.join(__dirname, "..", "test_cases");
+    const bestByOptmod = new Map();
+    for (const caseId of fs.readdirSync(testCaseRoot)) {
+        const metadataPath = path.join(testCaseRoot, caseId, "metadata.json");
+        if (!fs.existsSync(metadataPath)) {
+            continue;
+        }
+        const savedCase = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+        const context = exportContextFromSavedCase(savedCase);
+        if (!MODELS.includes(context.optmod)) {
+            continue;
+        }
+        const samples = projectionSamples(savedCase, maxSamples);
+        if (!Number.isFinite(context.optmod) || samples.length <= 0) {
+            continue;
+        }
+        const current = bestByOptmod.get(context.optmod);
+        if (!current || samples.length > current.samples.length) {
+            bestByOptmod.set(context.optmod, {savedCase, samples});
+        }
+    }
+    return [...bestByOptmod.values()]
+        .sort((a, b) => exportContextFromSavedCase(a.savedCase).optmod -
+            exportContextFromSavedCase(b.savedCase).optmod);
+}
+
+function projectionSamples(savedCase, maxSamples = 10) {
     return (savedCase.matches || [])
         .filter(match => match.catalog &&
             Number.isFinite(Number(match.catalog.az)) &&
@@ -311,32 +338,69 @@ ${testCase.samples.map((sample, index) => `
 `);
 }
 
-function runGeneratedPythonMapper(context, samples) {
+function runGeneratedPythonMappers(cases) {
     const python = pythonCommand();
-    const script = `${ExportGenerators.mapperCode(context, "python")}
-import json
-samples = ${JSON.stringify(samples)}
-print(json.dumps([az_el_to_image(s["azDeg"], s["elDeg"]).tolist() for s in samples]))
+    const blocks = cases.map((testCase, index) => {
+        const namespaceName = `ns${index}`;
+        return `
+${namespaceName} = {}
+exec(${JSON.stringify(ExportGenerators.mapperCode(testCase.context, "python"))}, ${namespaceName})
+results.append([list(${namespaceName}["az_el_to_image"](s["azDeg"], s["elDeg"])) for s in cases[${index}]["samples"]])
+`;
+    }).join("\n");
+    const script = `import json
+cases = ${JSON.stringify(cases.map(testCase => ({samples: testCase.samples})))}
+results = []
+${blocks}
+print(json.dumps(results))
 `;
     const result = childProcess.spawnSync(python, ["-c", script], {encoding: "utf8"});
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    return JSON.parse(result.stdout).map(([x, y]) => ({x, y}));
+    return JSON.parse(result.stdout).map(rows => rows.map(([x, y]) => ({x, y})));
 }
 
-function runGeneratedCMapper(context, samples) {
+function prefixedGeneratedCMapper(context, index) {
+    const prefix = `case_${index}_`;
+    let source = ExportGenerators.mapperCode(context, "c");
+    source = source.replace(/^#include <math\.h>\n/m, "");
+    for (const name of [
+        "optpar",
+        "optmod",
+        "op",
+        "image_width",
+        "image_height",
+        "camera_rot",
+        "aida_az_el_to_image",
+    ]) {
+        source = source.replace(new RegExp(`\\b${name}\\b`, "g"), `${prefix}${name}`);
+    }
+    return source;
+}
+
+function runGeneratedCMappers(cases) {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "aida-export-c-"));
     const sourcePath = path.join(tmpDir, "mapper_test.c");
     const binaryPath = path.join(tmpDir, "mapper_test");
-    const calls = samples.map((sample, index) =>
-        `    aida_az_el_to_image(${sample.azDeg.toPrecision(17)}, ${sample.elDeg.toPrecision(17)}, &x, &y);\n` +
-        `    printf("${index} %.17g %.17g\\n", x, y);`
-    ).join("\n");
-    fs.writeFileSync(sourcePath, `${ExportGenerators.mapperCode(context, "c")}
-#include <stdio.h>
-int main(void) {
+    const blocks = cases.map((testCase, caseIndex) => {
+        const functionName = `case_${caseIndex}_aida_az_el_to_image`;
+        const calls = testCase.samples.map((sample, sampleIndex) =>
+            `    ${functionName}(${sample.azDeg.toPrecision(17)}, ${sample.elDeg.toPrecision(17)}, &x, &y);\n` +
+            `    printf("${caseIndex} ${sampleIndex} %.17g %.17g\\n", x, y);`
+        ).join("\n");
+        return `${prefixedGeneratedCMapper(testCase.context, caseIndex)}
+static void run_case_${caseIndex}(void) {
     double x = 0.0;
     double y = 0.0;
 ${calls}
+}
+`;
+    }).join("\n");
+    const runners = cases.map((_, index) => `    run_case_${index}();`).join("\n");
+    fs.writeFileSync(sourcePath, `#include <math.h>
+#include <stdio.h>
+${blocks}
+int main(void) {
+${runners}
     return 0;
 }
 `);
@@ -344,30 +408,35 @@ ${calls}
     assert.equal(compile.status, 0, compile.stderr || compile.stdout);
     const run = childProcess.spawnSync(binaryPath, [], {encoding: "utf8"});
     assert.equal(run.status, 0, run.stderr || run.stdout);
-    return run.stdout.trim().split(/\n+/).map(line => {
-        const [, x, y] = line.trim().split(/\s+/).map(Number);
-        return {x, y};
-    });
+    const out = cases.map(testCase => new Array(testCase.samples.length));
+    for (const line of run.stdout.trim().split(/\n+/).filter(Boolean)) {
+        const [caseIndex, sampleIndex, x, y] = line.trim().split(/\s+/).map(Number);
+        out[caseIndex][sampleIndex] = {x, y};
+    }
+    return out;
 }
 
 fullTest("generated Python and C mappers reproduce JS projections for saved test-case optpars", () => {
-    const savedCases = [
-        loadSavedCase("2025_02_19_03_47_01_000_010881_ams0882_first1s"),
-        loadSavedCase("IMG_9953"),
-    ];
+    const savedCases = savedCasesByOptmod(10);
+    assert.ok(savedCases.length >= 1, "expected at least one saved test-case optmod");
     const report = {
         generatedAt: new Date().toISOString(),
         command: commandSnippet(),
         tolerancePx: 1e-6,
         cases: [],
     };
-    for (const savedCase of savedCases) {
+    const preparedCases = savedCases.map(({savedCase, samples}) => {
         const context = exportContextFromSavedCase(savedCase);
-        const samples = projectionSamples(savedCase);
-        assert.ok(samples.length >= 3, `${savedCase.id} should provide projection samples`);
+        assert.ok(samples.length >= 10, `${savedCase.id} should provide 10 projection samples`);
         const expected = referenceProjections(context, samples);
-        const pythonActual = runGeneratedPythonMapper(context, samples);
-        const cActual = runGeneratedCMapper(context, samples);
+        return {savedCase, context, samples, expected};
+    });
+    const pythonActualByCase = runGeneratedPythonMappers(preparedCases);
+    const cActualByCase = runGeneratedCMappers(preparedCases);
+    for (const [caseIndex, prepared] of preparedCases.entries()) {
+        const {savedCase, context, samples, expected} = prepared;
+        const pythonActual = pythonActualByCase[caseIndex];
+        const cActual = cActualByCase[caseIndex];
         const rows = samples.map((sample, index) => {
             const pythonDx = pythonActual[index].x - expected[index].x;
             const pythonDy = pythonActual[index].y - expected[index].y;

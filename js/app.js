@@ -184,6 +184,7 @@
         triangleDebugSnapshot: null,
         starPickingLegendVisible: true,
         starPickingLegendDrag: null,
+        lastLuckyProgressUpdateMs: -Infinity,
         fitMessage: "lens fit: not run",
         lastFitVector: null,
         lastAcceptedFitVector: null,
@@ -3698,10 +3699,20 @@ end
         controls.brightness.value = brightness.toFixed(2);
     }
 
-    function setLoadingProgress(percent, text) {
+    function setLoadingProgress(percent, text, options = {}) {
+        const force = options && options.force === true;
+        const now = performance.now();
+        if (state.luckyFitBusy && !force && percent < 99 &&
+                now - state.lastLuckyProgressUpdateMs < 1000) {
+            return false;
+        }
+        if (state.luckyFitBusy) {
+            state.lastLuckyProgressUpdateMs = now;
+        }
         loadingOverlay.classList.add("visible");
         loadingBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
         loadingText.textContent = text;
+        return true;
     }
 
     function shouldUpdateFitProgress(iteration, maxIter, visualStride, minIntervalMs, lastUpdateTime) {
@@ -3717,6 +3728,7 @@ end
 
     function hideLoadingProgress() {
         loadingBar.style.width = "100%";
+        state.lastLuckyProgressUpdateMs = -Infinity;
         window.setTimeout(() => {
             loadingOverlay.classList.remove("visible");
         }, 180);
@@ -6403,6 +6415,7 @@ end
             return;
         }
         state.luckyFitBusy = true;
+        state.lastLuckyProgressUpdateMs = -Infinity;
         controls.luckyFit.disabled = true;
         controls.fitLens.disabled = true;
         controls.fitLensLm.disabled = true;
@@ -6871,10 +6884,15 @@ end
                             maxCatalogStars: 240,
                             maxCatalogTriangleStars: 240,
                             maxCatalogTriangles: 32000,
+                            maxAmbiguityCatalogStars: 360,
+                            maxDetectionTriangleStars: 80,
+                            maxDetectionTriangles: 3200,
                             maxBlindVerifyDetections: 60,
-                            maxBlindCandidateRotations: 14000,
-                            blindEarlyAcceptMatches: 12,
-                            ambiguityMaxMagnitude: 6.0,
+                            maxBlindCandidateRotations: 9000,
+                            blindEarlyAcceptMatches: 10,
+                            blindEarlyAcceptMedianDeg: 0.70,
+                            blindPixelMatchRadiusPx: 60,
+                            ambiguityMaxMagnitude: 4.0,
                             ...centeredFisheyeBlind,
                         },
                         asterismOptions: catalogGuard,
@@ -6894,6 +6912,7 @@ end
                             maxCatalogStars: 320,
                             maxCatalogTriangleStars: 300,
                             maxCatalogTriangles: 44000,
+                            maxAmbiguityCatalogStars: 360,
                             maxDetectionTriangleStars: 110,
                             maxDetectionTriangles: 5200,
                             maxBlindCandidateRotations: 18000,
@@ -7496,7 +7515,7 @@ end
         if (!exifMetadata) {
             return applied;
         }
-        if (exifMetadata.timestampUtc instanceof Date && !Number.isNaN(exifMetadata.timestampUtc.getTime())) {
+        if (!guessed && exifMetadata.timestampUtc instanceof Date && !Number.isNaN(exifMetadata.timestampUtc.getTime())) {
             controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(exifMetadata.timestampUtc);
             applied.push("time");
         }

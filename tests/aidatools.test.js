@@ -292,6 +292,10 @@ test("allsky7 station metadata parser handles known camera ids and aliases", () 
 test("IRF all-sky filename parser handles KRN timestamps and station metadata", () => {
     const date = AidaTools.guessTimestampFromImageName("2026-01-23T20.05.00.000KRN.jpeg");
     assert.equal(date.toISOString(), "2026-01-23T20:05:00.000Z");
+    const hyphenDate = AidaTools.guessTimestampFromImageName("2026-01-23T20-05-00-000KRN.png");
+    assert.equal(hyphenDate.toISOString(), "2026-01-23T20:05:00.000Z");
+    const februaryDate = AidaTools.guessTimestampFromImageName("2026-02-12T19-04-00-000KRN.png");
+    assert.equal(februaryDate.toISOString(), "2026-02-12T19:04:00.000Z");
 
     const station = AidaTools.guessStationMetadataFromName("2026-01-23T20.05.00.000KRN.jpeg");
     assert.equal(station.code, "KRN");

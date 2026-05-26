@@ -312,15 +312,15 @@ function timestampFromNameOrMetadata(filename, metadata, imageMetadata, options)
             return {date, source: "test case metadata"};
         }
     }
+    const guessed = AidaTools.guessTimestampFromImageName(path.basename(filename));
+    if (guessed) {
+        return {date: guessed, source: "filename"};
+    }
     if (imageMetadata && imageMetadata.timestampUtc) {
         const date = new Date(imageMetadata.timestampUtc);
         if (Number.isFinite(date.getTime())) {
             return {date, source: "image EXIF metadata"};
         }
-    }
-    const guessed = AidaTools.guessTimestampFromImageName(path.basename(filename));
-    if (guessed) {
-        return {date: guessed, source: "filename"};
     }
     try {
         const stats = fs.statSync(filename);
@@ -478,7 +478,7 @@ function pruneCatalogByAngularSeparation(stars, minSeparationDeg) {
 }
 
 function skyPlaneStarsForAsterisms(testCase, maxMag, options = {}) {
-    return pruneCatalogByAngularSeparation(visibleStars(testCase, maxMag), options.minSeparationDeg)
+    return pruneCatalogByAngularSeparation(visibleStarsForOptions(testCase, maxMag, options), options.minSeparationDeg)
         .map(star => {
             const r = star.ze / (Math.PI / 2);
             return {
@@ -487,6 +487,30 @@ function skyPlaneStarsForAsterisms(testCase, maxMag, options = {}) {
                 y: -r * Math.cos(star.az),
             };
         });
+}
+
+function visibleStarsForOptions(testCase, maxMag, options = {}) {
+    if (!Number.isFinite(Number(options.catalogMaxZenithDeg))) {
+        return visibleStars(testCase, maxMag);
+    }
+    return visibleStars({...testCase, maxZenithDeg: Number(options.catalogMaxZenithDeg)}, maxMag);
+}
+
+function fisheyeHorizonMask(detection, marginDiameterFraction = 0.10) {
+    if (!detection || !detection.detected) {
+        return null;
+    }
+    const margin = Math.max(0, Number(marginDiameterFraction) || 0) * 2 * Number(detection.radiusPx);
+    const usableRadius = Math.max(0, Number(detection.radiusPx) - margin);
+    const r2 = usableRadius * usableRadius;
+    return {
+        usableRadius,
+        maskPredicate: (x, y) => {
+            const dx = x - detection.centerX;
+            const dy = y - detection.centerY;
+            return dx * dx + dy * dy > r2;
+        },
+    };
 }
 
 function imagePointAlreadyInMatches(matches, x, y, radiusPx = 7) {
@@ -791,6 +815,93 @@ function luckyStages(testCaseOrOptmod) {
             maxAddDistancePx: 6,
             skipFit: false,
         });
+        const fisheyeDetection = typeof testCaseOrOptmod === "object" && testCaseOrOptmod !== null ?
+            testCaseOrOptmod.fisheyeDetection :
+            null;
+        if (fisheyeDetection && fisheyeDetection.detected &&
+                typeof AidaTools.fisheyePreflattenFromAnnulus === "function") {
+            const preflatten = AidaTools.fisheyePreflattenFromAnnulus(fisheyeDetection);
+            const horizonGuard = fisheyeHorizonMask(fisheyeDetection, 0.10);
+            const alphaCandidates = [0.42, 0.46, 0.50, 0.54];
+            const centeredFisheyeBlind = {
+                ...preflatten,
+                preflattenRadialAlphaCandidates: alphaCandidates,
+                preflattenF1Candidates: alphaCandidates.map(alpha =>
+                    Number((fisheyeDetection.radiusPx /
+                        Number(testCaseOrOptmod.width || 1) /
+                        Math.sin(alpha * Math.PI / 2)).toFixed(4))
+                ),
+                catalogMaxZenithDeg: 80,
+                maxCatalogLocalNeighbors: 20,
+                maxBlindNeighborTriangles: 8,
+                rejectAmbiguousBlindMatches: true,
+                blindAmbiguityRadiusDeg: 0.85,
+                blindAmbiguityDistanceSlackDeg: 0.28,
+                blindPixelAmbiguityRadiusPx: 14,
+                blindPixelAmbiguityDistanceSlackPx: 7,
+                preflattenSignCandidates: [[1, 1], [-1, -1], [1, -1], [-1, 1]],
+            };
+            Object.assign(stages[0], {
+                phase: "fisheye annulus bright-star bootstrap",
+                maxDetections: 60,
+                maxMagnitude: 4.0,
+                detectorOptions: {
+                    thresholdSigma: 2.15,
+                    localThresholdSigma: 2.15,
+                    requireGlobalThreshold: false,
+                    maxRadiusPx: 8,
+                    maxElongation: 4.5,
+                    suppressionRadiusPx: 10,
+                    crowdingRadiusPx: 34,
+                    maxCrowding: 7,
+                    crowdingScorePower: 1.2,
+                    maskPredicate: horizonGuard ? horizonGuard.maskPredicate : null,
+                },
+                blindOptions: {
+                    maxDetections: 60,
+                    maxBlindVerifyDetections: 60,
+                    maxCatalogStars: 240,
+                    maxCatalogTriangleStars: 240,
+                    maxCatalogTriangles: 32000,
+                    maxAmbiguityCatalogStars: 360,
+                    maxDetectionTriangleStars: 80,
+                    maxDetectionTriangles: 3200,
+                    maxBlindCandidateRotations: 9000,
+                    blindEarlyAcceptMatches: 10,
+                    blindEarlyAcceptMedianDeg: 0.70,
+                    blindPixelMatchRadiusPx: 60,
+                    ambiguityMaxMagnitude: 4.0,
+                    ...centeredFisheyeBlind,
+                },
+                asterismOptions: {catalogMaxZenithDeg: 80},
+                projectedOptions: {catalogMaxZenithDeg: 80},
+            });
+            Object.assign(stages[1], {
+                phase: "fisheye annulus extended bright-star bootstrap",
+                maxDetections: 120,
+                maxMagnitude: 5.0,
+                detectorOptions: {
+                    ...stages[1].detectorOptions,
+                    maskPredicate: horizonGuard ? horizonGuard.maskPredicate : null,
+                },
+                blindOptions: {
+                    maxDetections: 120,
+                    maxBlindVerifyDetections: 120,
+                    maxCatalogStars: 320,
+                    maxCatalogTriangleStars: 300,
+                    maxCatalogTriangles: 44000,
+                    maxAmbiguityCatalogStars: 360,
+                    maxDetectionTriangleStars: 110,
+                    maxDetectionTriangles: 5200,
+                    maxBlindCandidateRotations: 18000,
+                    blindEarlyAcceptMatches: 11,
+                    ambiguityMaxMagnitude: 5.0,
+                    ...centeredFisheyeBlind,
+                },
+                asterismOptions: {catalogMaxZenithDeg: 80},
+                projectedOptions: {catalogMaxZenithDeg: 80},
+            });
+        }
     } else if (optmod === BROWN_CONRADY_OPTMOD) {
         const legacyPhonePreflatten = {
             preflattenModelCandidates: ["pinhole", "fisheye"],
@@ -899,7 +1010,7 @@ async function identifyStage(testCase, imageData, detections, optpar, matches, s
     if (stage.includeBlind !== false) {
         const maxMag = Math.max(stage.maxMagnitude, Number(stage.blindOptions && stage.blindOptions.ambiguityMaxMagnitude) || stage.maxMagnitude);
         const t0 = performance.now();
-        result = AutoIdentifier.identifyStarsBlind(visibleStars(testCase, maxMag), detections, {
+        result = AutoIdentifier.identifyStarsBlind(visibleStarsForOptions(testCase, maxMag, stage.blindOptions || {}), detections, {
             ...common,
             maxDetections: 80,
             maxCatalogStars: 80,
@@ -954,7 +1065,12 @@ async function identifyStage(testCase, imageData, detections, optpar, matches, s
             result.matches.length < Math.max(stage.minAsterismMatches || 4, stage.minProjectedMatches || 4)) {
         const t0 = performance.now();
         result = AutoIdentifier.identifyStars(
-            projectStars(testCase, optpar, stage.maxMagnitude),
+            projectStars({
+                ...testCase,
+                maxZenithDeg: Number.isFinite(Number(stage.projectedOptions && stage.projectedOptions.catalogMaxZenithDeg)) ?
+                    Number(stage.projectedOptions.catalogMaxZenithDeg) :
+                    testCase.maxZenithDeg,
+            }, optpar, stage.maxMagnitude),
             detections,
             {
                 ...common,
@@ -986,6 +1102,30 @@ async function runLucky(testCase, imageData, log) {
     let acceptedFits = 0;
     const detectionByKey = new Map();
     const tTotal = performance.now();
+    if (testCase.optmod === 2 && typeof AidaTools.detectFisheyeAnnulus === "function") {
+        const tAnnulus = performance.now();
+        const annulus = AidaTools.detectFisheyeAnnulus(imageData, {
+            filename: testCase.image || testCase.id,
+            alpha: 0.46,
+            samples: 128,
+        });
+        if (annulus && annulus.detected) {
+            testCase.fisheyeDetection = annulus;
+            if (typeof AidaTools.fisheyeOptparFromAnnulus === "function") {
+                const seededOptpar = AidaTools.fisheyeOptparFromAnnulus(
+                    annulus,
+                    testCase.width,
+                    testCase.height,
+                    Number(annulus.alpha) || 0.46,
+                );
+                if (Array.isArray(seededOptpar) && seededOptpar.length > 1) {
+                    optpar = seededOptpar.slice(1);
+                    testCase.initialOptpar = optpar.slice();
+                }
+            }
+            log(`    fisheye annulus: r=${fmt(annulus.radiusPx)} px, center ${fmt(annulus.centerX)},${fmt(annulus.centerY)} px, detect ${fmtMs(performance.now() - tAnnulus)}`);
+        }
+    }
     const stages = luckyStages(testCase);
     for (let i = 0; i < stages.length; i += 1) {
         const stage = stages[i];
@@ -1003,6 +1143,7 @@ async function runLucky(testCase, imageData, log) {
         const detectionMs = performance.now() - tDetect;
         timings.detection += detectionMs;
         const detections = detectionResult.detections;
+        const stageDetections = detections.slice(0, Math.max(1, Math.floor(stage.maxDetections || detections.length)));
         for (const detection of detections) {
             const key = `${Math.round(detection.x * 10)}:${Math.round(detection.y * 10)}`;
             if (!detectionByKey.has(key)) {
@@ -1011,7 +1152,7 @@ async function runLucky(testCase, imageData, log) {
         }
         const before = matches.length;
         const tIdentify = performance.now();
-        const pass = await identifyStage(testCase, imageData, detections, optpar, matches, stage, timings);
+        const pass = await identifyStage(testCase, imageData, stageDetections, optpar, matches, stage, timings);
         const identifyMs = performance.now() - tIdentify;
         const asterismEdgesAdded = stage.includeBlind !== false || stage.includeAsterisms !== false ?
             recordAsterismEdges(asterismEdges, pass.result, stage.phase, testCase) :
@@ -1031,7 +1172,8 @@ async function runLucky(testCase, imageData, log) {
         }
         stageRows.push({
             phase: stage.phase,
-            detections: detections.length,
+            detections: stageDetections.length,
+            displayedDetections: detections.length,
             candidates: detectionResult.candidates ? detectionResult.candidates.length : null,
             added: pass.added,
             before,
@@ -1044,7 +1186,7 @@ async function runLucky(testCase, imageData, log) {
             fitCounts: fit.counts,
             asterismEdgesAdded,
         });
-        log(`      detections ${detections.length}, added ${pass.added}, matches ${before}->${matches.length}, ` +
+        log(`      detections ${stageDetections.length}/${detections.length}, added ${pass.added}, matches ${before}->${matches.length}, ` +
             `asterism edges +${asterismEdgesAdded}, rms ${fmt(fit.rms)} px, ` +
             `detect ${fmtMs(detectionMs)}, identify ${fmtMs(identifyMs)}, fit ${fmtMs(fit.fitMs)}`);
         if (i >= 2 && pass.added === 0 && matches.length === before) {

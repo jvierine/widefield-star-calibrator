@@ -74,6 +74,23 @@
         };
     }
 
+    function precessDateToJ2000(raRad, decRad, date) {
+        let guessRa = mod(raRad, 2.0 * Math.PI);
+        let guessDec = Math.max(-Math.PI / 2.0, Math.min(Math.PI / 2.0, decRad));
+        const targetRa = mod(raRad, 2.0 * Math.PI);
+        for (let i = 0; i < 6; i++) {
+            const projected = precessJ2000ToDate(guessRa * 12.0 / Math.PI, guessDec * RAD, date);
+            const dra = ((targetRa - projected.ra + Math.PI) % (2.0 * Math.PI) + 2.0 * Math.PI) % (2.0 * Math.PI) - Math.PI;
+            const ddec = decRad - projected.dec;
+            guessRa = mod(guessRa + dra, 2.0 * Math.PI);
+            guessDec = Math.max(-Math.PI / 2.0, Math.min(Math.PI / 2.0, guessDec + ddec));
+        }
+        return {
+            raHours: mod(guessRa * 12.0 / Math.PI, 24.0),
+            decDeg: guessDec * RAD,
+        };
+    }
+
     function starAzZe(raHours, decDeg, date, latDeg, lonDeg) {
         const rsidtime = (gmstDegrees(date) + lonDeg) * DEG;
         const precessed = precessJ2000ToDate(raHours, decDeg, date);
@@ -93,6 +110,28 @@
         ) / cosAlt;
         const az = mod(Math.atan2(sina, cosa) + Math.PI, 2.0 * Math.PI);
         return {az, ze};
+    }
+
+    function azElToRaDec(azDeg, elDeg, date, latDeg, lonDeg) {
+        const az = azDeg * DEG;
+        const alt = elDeg * DEG;
+        const lat = latDeg * DEG;
+        const cosAlt = Math.cos(alt);
+        const sinAlt = Math.sin(alt);
+        const b = az - Math.PI;
+        const y = Math.sin(b) * cosAlt;
+        const n = Math.cos(b) * cosAlt;
+        const x = Math.cos(lat) * sinAlt + Math.sin(lat) * n;
+        const z = Math.sin(lat) * sinAlt - Math.cos(lat) * n;
+        const hourAngle = Math.atan2(y, x);
+        const dec = Math.asin(Math.max(-1.0, Math.min(1.0, z)));
+        const sidereal = (gmstDegrees(date) + lonDeg) * DEG;
+        const raDate = mod(sidereal - hourAngle, 2.0 * Math.PI);
+        return precessDateToJ2000(raDate, dec, date);
+    }
+
+    function azZeToRaDec(azRad, zeRad, date, latDeg, lonDeg) {
+        return azElToRaDec(azRad * RAD, 90.0 - zeRad * RAD, date, latDeg, lonDeg);
     }
 
     function matMul3(a, b) {
@@ -265,7 +304,7 @@
     function guessTimestampFromIrfAllskyName(name) {
         const filename = String(name || "").split(/[\\/]/).pop();
         const modern = filename.match(
-            /(20\d{2})-(\d{2})-(\d{2})T(\d{2})\.(\d{2})\.(\d{2})(?:\.(\d{1,3}))?([A-Za-z]{3})\.(?:jpe?g|png|tiff?)$/i,
+            /(20\d{2})-(\d{2})-(\d{2})T(\d{2})[.-](\d{2})[.-](\d{2})(?:[.-](\d{1,3}))?([A-Za-z]{3})\.(?:jpe?g|png|tiff?)$/i,
         );
         if (modern) {
             const [, yy, mm, dd, hh, mi, ss, ms] = modern;
@@ -1388,7 +1427,10 @@
         cameraRot,
         cameraAnglesFromRotation,
         cameraModel,
+        azElToRaDec,
+        azZeToRaDec,
         precessJ2000ToDate,
+        precessDateToJ2000,
         radecToAzZe: starAzZe,
         visibleStars,
     };
