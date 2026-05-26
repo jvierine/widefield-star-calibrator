@@ -13,6 +13,7 @@ import argparse
 import json
 import math
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import astropy.units as u
@@ -28,6 +29,7 @@ MAX_ANGULAR_ERROR_DEG = 0.02
 MAX_AZ_ERROR_DEG = 0.08
 MAX_EL_ERROR_DEG = 0.02
 ASTROPY_PRESSURE = 0 * u.hPa
+EXPOSURE_DRIFT_SECONDS = [0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 30.0, 60.0]
 
 
 def wrap_deg(value: float) -> float:
@@ -38,8 +40,6 @@ def wrap_deg(value: float) -> float:
 def julian_date(timestamp: str) -> float:
     # Mirrors js/aidatools.js.  Python's datetime parser is deliberately not
     # used here so that the reference stays close to the JavaScript algorithm.
-    from datetime import datetime, timezone
-
     stamp = timestamp.replace("Z", "+00:00")
     date = datetime.fromisoformat(stamp).astimezone(timezone.utc)
     year = date.year
@@ -62,6 +62,13 @@ def julian_date(timestamp: str) -> float:
         + b
         - 1524.5
     )
+
+
+def offset_timestamp(timestamp: str, seconds: float) -> str:
+    stamp = timestamp.replace("Z", "+00:00")
+    date = datetime.fromisoformat(stamp).astimezone(timezone.utc)
+    shifted = date + timedelta(seconds=seconds)
+    return shifted.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
 def gmst_degrees(timestamp: str) -> float:
@@ -215,6 +222,9 @@ def compare_case(metadata: dict) -> dict:
                 "raHours": float(star["raHours"]),
                 "decDeg": float(star["decDeg"]),
                 "mag": float(star.get("mag", math.nan)),
+                "timestampUtc": metadata["timestampUtc"],
+                "latDeg": float(metadata["latDeg"]),
+                "lonDeg": float(metadata["lonDeg"]),
                 "aidaAzDeg": aida_az,
                 "aidaElDeg": aida_el,
                 "astropyAzDeg": astropy_az,
@@ -239,6 +249,7 @@ def compare_case(metadata: dict) -> dict:
         "count": len(rows),
         "rows": rows,
         "summary": summarize_rows(rows),
+        "exposureDrift": exposure_drift_summary(rows),
         "astropyAltAz": {
             "atmosphericRefractionEnabled": False,
             "pressureHpa": float(frame.pressure.to_value(u.hPa)),
@@ -276,6 +287,40 @@ def summarize_rows(rows: list[dict]) -> dict:
     }
 
 
+def exposure_drift_summary(rows: list[dict], durations: list[float] | None = None) -> list[dict]:
+    durations = durations or EXPOSURE_DRIFT_SECONDS
+    out = []
+    for duration in durations:
+        az_drifts = []
+        angular_drifts = []
+        half = duration / 2.0
+        for row in rows:
+            t0 = offset_timestamp(row["timestampUtc"], -half)
+            t1 = offset_timestamp(row["timestampUtc"], half)
+            az0, el0 = aida_radec_to_az_el(row["raHours"], row["decDeg"], t0, row["latDeg"], row["lonDeg"])
+            az1, el1 = aida_radec_to_az_el(row["raHours"], row["decDeg"], t1, row["latDeg"], row["lonDeg"])
+            d_az = abs(wrap_deg(az1 - az0))
+            d_el = el1 - el0
+            mean_el = 0.5 * (el0 + el1)
+            angular = math.hypot(d_az * math.cos(math.radians(mean_el)), d_el)
+            az_drifts.append(d_az)
+            angular_drifts.append(angular)
+        az_sorted = sorted(az_drifts)
+        angular_sorted = sorted(angular_drifts)
+        if not az_sorted:
+            continue
+        out.append(
+            {
+                "exposureSeconds": duration,
+                "medianAzDriftDeg": az_sorted[len(az_sorted) // 2],
+                "maxAzDriftDeg": max(az_sorted),
+                "medianAngularDriftDeg": angular_sorted[len(angular_sorted) // 2],
+                "maxAngularDriftDeg": max(angular_sorted),
+            }
+        )
+    return out
+
+
 def compare_cases(metadata_paths: list[Path], case_filter: str | None = None) -> dict:
     iers.conf.auto_download = False
     iers.conf.iers_degraded_accuracy = "warn"
@@ -307,6 +352,7 @@ def compare_cases(metadata_paths: list[Path], case_filter: str | None = None) ->
         "cases": cases,
         "rows": rows,
         "summary": summarize_rows(rows),
+        "exposureDrift": exposure_drift_summary(rows),
         "astropyAltAz": {
             "atmosphericRefractionEnabled": False,
             "pressureHpa": 0.0,
@@ -404,6 +450,16 @@ def write_report(result: dict, out_dir: Path) -> None:
         "</tr>"
         for row in sorted(rows, key=lambda item: item["angularErrorDeg"], reverse=True)[:25]
     )
+    exposure_rows = "\n".join(
+        "<tr>"
+        f"<td>{row['exposureSeconds']:.1f}</td>"
+        f"<td>{row['medianAzDriftDeg'] * 3600.0:.2f}</td>"
+        f"<td>{row['maxAzDriftDeg'] * 3600.0:.2f}</td>"
+        f"<td>{row['medianAngularDriftDeg'] * 3600.0:.2f}</td>"
+        f"<td>{row['maxAngularDriftDeg'] * 3600.0:.2f}</td>"
+        "</tr>"
+        for row in result["exposureDrift"]
+    )
     html = f"""<!doctype html>
 <html lang="en">
 <head>
@@ -441,6 +497,15 @@ correction in this reference calculation.</p>
 <p>Maximum absolute azimuth/elevation errors are {s['maxAbsAzErrorDeg']:.4f} deg
 and {s['maxAbsElErrorDeg']:.4f} deg. Maximum absolute pixel dx/dy residuals are
 {s['maxAbsPixelDx']:.3f} px and {s['maxAbsPixelDy']:.3f} px.</p>
+<h2>Exposure-Time Drift</h2>
+<p>The table below estimates how far the projected catalogue positions move
+during a centered exposure of the given duration, using the same precessed
+RA/Dec to AltAz calculation.  The azimuth drift can be large near zenith, so the
+great-circle angular drift is included as the physically relevant sky smear.</p>
+<table>
+<thead><tr><th>Exposure (s)</th><th>Median az drift (arcsec)</th><th>Max az drift (arcsec)</th><th>Median angular drift (arcsec)</th><th>Max angular drift (arcsec)</th></tr></thead>
+<tbody>{exposure_rows}</tbody>
+</table>
 <h2>Angular Error Scatter</h2>
 <img src="{scatter_name}" alt="AIDA minus Astropy azimuth/elevation scatter plot">
 <h2>Pixel Error Scatter</h2>
