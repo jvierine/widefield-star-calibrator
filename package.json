@@ -4,6 +4,7 @@
   "scripts": {
     "test": "node --test tests/*.test.js",
     "test:full": "AIDA_FULL_TESTS=1 node --test tests/*.test.js",
+    "test:astropy-altaz": "AIDA_ASTROPY_TESTS=1 node --test tests/astropy_altaz.test.js",
     "test:img9953-sensitivity": "AIDA_SENSITIVITY_TESTS=1 node --test --test-name-pattern 'IMG_9953 pre-undistortion sensitivity' tests/auto_identifier.test.js",
     "test:allsky010031-sensitivity": "AIDA_SENSITIVITY_TESTS=1 node --test --test-name-pattern 'allsky 010031 AMS0221 optmod 2 pre-undistortion sensitivity' tests/auto_identifier.test.js",
     "report": "node tools/generate_test_report.js",

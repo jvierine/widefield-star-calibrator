@@ -5,7 +5,9 @@ const path = require("node:path");
 const test = require("node:test");
 const exifr = require("exifr");
 
-test("AIDA az/el coordinates agree with Astropy for saved star matches", async () => {
+const runAstropyAltaz = process.env.AIDA_ASTROPY_TESTS === "1" || process.env.AIDA_FULL_TESTS === "1";
+
+test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip: !runAstropyAltaz }, async () => {
     const metadataPath = path.join(__dirname, "..", "test_cases", "IMG_9970", "metadata.json");
     const heicPath = path.join(__dirname, "..", "calibration_images", "IMG_9970.HEIC");
     const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
