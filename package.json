@@ -16,6 +16,7 @@
     "report:star-detector-oracle": "node tools/star_detector_oracle_report.js",
     "report:fisheye-lucky": "node tools/fisheye_lucky_report.js",
     "train:star-nn": "node tools/train_star_patch_nn.js",
+    "metadata:generate": "node tools/generate_project_metadata_js.js",
     "help:generate": "node tools/generate_help_from_readme.js",
     "report:case": "node tools/generate_test_report.js",
     "lucky:report": "node tools/run_lucky_report.js",

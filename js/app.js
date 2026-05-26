@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.15";
+    const APP_VERSION = "v0.2.16";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
@@ -28,11 +28,17 @@
     const loadingOverlay = document.getElementById("loadingOverlay");
     const loadingBar = document.getElementById("loadingBar");
     const loadingText = document.getElementById("loadingText");
+    const copyrightLine = document.getElementById("copyrightLine");
     const starPickingLegend = document.getElementById("starPickingLegend");
     const starPickingLegendHeader = document.getElementById("starPickingLegendHeader");
     const starPickingLegendClose = document.getElementById("starPickingLegendClose");
     if (appVersionEl) {
         appVersionEl.textContent = APP_VERSION;
+    }
+    if (copyrightLine && window.WISC_PROJECT_METADATA) {
+        const metadata = window.WISC_PROJECT_METADATA;
+        const authors = Array.isArray(metadata.authors) ? metadata.authors.join(" and ") : "the WISC authors";
+        copyrightLine.textContent = `Copyright \u00a9 ${metadata.copyrightYear || 2026} ${authors}.`;
     }
     const defaultImage = {
         url: "calibration_images/IMG_0180.png",

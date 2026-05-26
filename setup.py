@@ -1,4 +1,11 @@
+import json
+from pathlib import Path
+
 from setuptools import setup
+
+
+ROOT = Path(__file__).resolve().parent
+PROJECT_METADATA = json.loads((ROOT / "project_metadata.json").read_text(encoding="utf8"))
 
 
 setup(
@@ -9,5 +16,5 @@ setup(
     install_requires=["numpy"],
     python_requires=">=3.8",
     license="CC-BY-4.0",
-    author="Juha Vierinen and Björn Gustavsson",
+    author=" and ".join(PROJECT_METADATA["authors"]),
 )

@@ -3,7 +3,7 @@
 This project is licensed under the Creative Commons Attribution 4.0
 International license (CC BY 4.0).
 
-Copyright (c) 2026 Juha Vierinen.
+Copyright (c) 2026 Juha Vierinen and Björn Gustavsson.
 
 You are free to share and adapt this work for any purpose, including
 commercially, provided that appropriate credit is given to the authors and a
