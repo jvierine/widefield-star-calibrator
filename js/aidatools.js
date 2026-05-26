@@ -41,10 +41,44 @@
         );
     }
 
+    function precessJ2000ToDate(raHours, decDeg, date) {
+        const t = (julianDate(date) - 2451545.0) / 36525.0;
+        const arcsecToRad = DEG / 3600.0;
+        const zeta = (
+            2306.2181 * t +
+            0.30188 * t * t +
+            0.017998 * t * t * t
+        ) * arcsecToRad;
+        const z = (
+            2306.2181 * t +
+            1.09468 * t * t +
+            0.018203 * t * t * t
+        ) * arcsecToRad;
+        const theta = (
+            2004.3109 * t -
+            0.42665 * t * t -
+            0.041833 * t * t * t
+        ) * arcsecToRad;
+        const ra = raHours / 12.0 * Math.PI;
+        const dec = decDeg * DEG;
+        const a = Math.cos(dec) * Math.sin(ra + zeta);
+        const b =
+            Math.cos(theta) * Math.cos(dec) * Math.cos(ra + zeta) -
+            Math.sin(theta) * Math.sin(dec);
+        const c =
+            Math.sin(theta) * Math.cos(dec) * Math.cos(ra + zeta) +
+            Math.cos(theta) * Math.sin(dec);
+        return {
+            ra: mod(Math.atan2(a, b) + z, 2.0 * Math.PI),
+            dec: Math.asin(Math.max(-1.0, Math.min(1.0, c))),
+        };
+    }
+
     function starAzZe(raHours, decDeg, date, latDeg, lonDeg) {
         const rsidtime = (gmstDegrees(date) + lonDeg) * DEG;
-        const rra = raHours / 12.0 * Math.PI;
-        const rdecl = decDeg * DEG;
+        const precessed = precessJ2000ToDate(raHours, decDeg, date);
+        const rra = precessed.ra;
+        const rdecl = precessed.dec;
         const rlat = latDeg * DEG;
         const alt = Math.asin(
             Math.cos(rsidtime - rra) * Math.cos(rdecl) * Math.cos(rlat) +
@@ -1354,6 +1388,7 @@
         cameraRot,
         cameraAnglesFromRotation,
         cameraModel,
+        precessJ2000ToDate,
         radecToAzZe: starAzZe,
         visibleStars,
     };

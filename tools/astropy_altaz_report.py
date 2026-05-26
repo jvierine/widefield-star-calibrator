@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Compare WISC/AIDA RA-Dec to az/el calculations with Astropy.
 
-This is a fast regression for saved calibration cases.  It exercises the same
-low-level spherical astronomy equations used by js/aidatools.js, using Astropy
-as an independent reference for catalogue-star azimuth/elevation coordinates.
+This is a regression for saved calibration cases.  It exercises the same
+low-level spherical astronomy equations used by js/aidatools.js, including
+J2000-to-observation-date precession, using Astropy as an independent reference
+for catalogue-star azimuth/elevation coordinates.
 """
 
 from __future__ import annotations
@@ -23,9 +24,9 @@ from astropy.utils import iers
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUT_DIR = ROOT / "test-report" / "astropy-altaz"
 MIN_TOTAL_COMPARISONS = 100
-MAX_ANGULAR_ERROR_DEG = 0.85
-MAX_AZ_ERROR_DEG = 2.00
-MAX_EL_ERROR_DEG = 0.30
+MAX_ANGULAR_ERROR_DEG = 0.02
+MAX_AZ_ERROR_DEG = 0.08
+MAX_EL_ERROR_DEG = 0.02
 ASTROPY_PRESSURE = 0 * u.hPa
 
 
@@ -74,6 +75,27 @@ def gmst_degrees(timestamp: str) -> float:
     ) % 360.0
 
 
+def precess_j2000_to_date(ra_hours: float, dec_deg: float, timestamp: str) -> tuple[float, float]:
+    """Precess J2000 catalogue RA/Dec to the observation date.
+
+    This mirrors the browser implementation and uses the standard low-order
+    FK5 precession formula.  It removes the dominant ~0.25 degree azimuth
+    offset caused by treating J2000 catalogue coordinates as if they were
+    date-of-observation coordinates.
+    """
+    t = (julian_date(timestamp) - 2451545.0) / 36525.0
+    arcsec_to_rad = math.pi / (180.0 * 3600.0)
+    zeta = (2306.2181 * t + 0.30188 * t * t + 0.017998 * t * t * t) * arcsec_to_rad
+    z = (2306.2181 * t + 1.09468 * t * t + 0.018203 * t * t * t) * arcsec_to_rad
+    theta = (2004.3109 * t - 0.42665 * t * t - 0.041833 * t * t * t) * arcsec_to_rad
+    ra = ra_hours / 12.0 * math.pi
+    dec = dec_deg * math.pi / 180.0
+    a = math.cos(dec) * math.sin(ra + zeta)
+    b = math.cos(theta) * math.cos(dec) * math.cos(ra + zeta) - math.sin(theta) * math.sin(dec)
+    c = math.sin(theta) * math.cos(dec) * math.cos(ra + zeta) + math.cos(theta) * math.sin(dec)
+    return (math.atan2(a, b) + z) % (2.0 * math.pi), math.asin(max(-1.0, min(1.0, c)))
+
+
 def aida_radec_to_az_el(
     ra_hours: float,
     dec_deg: float,
@@ -83,8 +105,7 @@ def aida_radec_to_az_el(
 ) -> tuple[float, float]:
     deg = math.pi / 180.0
     rsidtime = (gmst_degrees(timestamp) + lon_deg) * deg
-    rra = ra_hours / 12.0 * math.pi
-    rdecl = dec_deg * deg
+    rra, rdecl = precess_j2000_to_date(ra_hours, dec_deg, timestamp)
     rlat = lat_deg * deg
     alt = math.asin(
         math.cos(rsidtime - rra) * math.cos(rdecl) * math.cos(rlat)
@@ -402,11 +423,13 @@ th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:last-child,
 </head>
 <body>
 <h1>Astropy AltAz Cross-Check</h1>
-<p>This fast regression compares the <code>js/aidatools.js</code> RA/Dec to azimuth/elevation
+<p>This regression compares the <code>js/aidatools.js</code> RA/Dec to azimuth/elevation
 calculation with Astropy for every tracked saved test case that has a lens model
-and paired catalogue-star detections.  Astropy is explicitly configured for
-unrefracted topocentric AltAz coordinates by setting <code>pressure=0 hPa</code>;
-there is no atmospheric refraction correction in this reference calculation.</p>
+and paired catalogue-star detections.  AIDA precesses J2000 catalogue
+coordinates to the observation date before applying the spherical AltAz formula.
+Astropy is explicitly configured for unrefracted topocentric AltAz coordinates
+by setting <code>pressure=0 hPa</code>; there is no atmospheric refraction
+correction in this reference calculation.</p>
 <div class="metrics">
 <div class="metric"><span>Cases</span><b>{result['caseCount']}</b></div>
 <div class="metric"><span>Stars</span><b>{result['count']}</b></div>

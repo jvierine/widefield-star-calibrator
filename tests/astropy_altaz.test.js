@@ -65,7 +65,15 @@ test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip:
         `expected finite RMS pixel error, got ${summary.summary.rmsPixelError}`,
     );
     assert.ok(
-        summary.summary.maxAngularErrorDeg <= 0.85,
+        summary.summary.maxAngularErrorDeg <= 0.02,
         `max angular error ${summary.summary.maxAngularErrorDeg} deg exceeds tolerance`,
+    );
+    assert.ok(
+        summary.summary.maxAbsAzErrorDeg <= 0.08,
+        `max azimuth error ${summary.summary.maxAbsAzErrorDeg} deg exceeds tolerance`,
+    );
+    assert.ok(
+        summary.summary.maxAbsElErrorDeg <= 0.02,
+        `max elevation error ${summary.summary.maxAbsElErrorDeg} deg exceeds tolerance`,
     );
 });
