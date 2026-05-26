@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.11";
+    const APP_VERSION = "v0.2.12";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
@@ -154,6 +154,7 @@
         lastJunkStarFinderPoint: null,
         detectedStars: [],
         currentImageMetadata: null,
+        fisheyeDetection: null,
         showAutoDetectionMarkers: true,
         deletedDetectionIds: new Set(),
         autoMatches: [],
@@ -603,6 +604,39 @@
         const width = image && Number.isFinite(image.width) && image.width > 0 ? image.width : 16;
         const height = image && Number.isFinite(image.height) && image.height > 0 ? image.height : 9;
         return AidaTools.defaultOptparForImageSize(width, height, optmod, defaultRadialAlphaForOptmod(optmod));
+    }
+
+    function detectedFisheyeMessage(detection) {
+        if (!detection || !detection.detected) {
+            return "";
+        }
+        return `fisheye horizon annulus r=${detection.radiusPx.toFixed(0)} px, ` +
+            `center ${detection.centerX.toFixed(0)},${detection.centerY.toFixed(0)}`;
+    }
+
+    function detectAndApplyFisheyeInitialGuess(name, exifMetadata = null) {
+        state.fisheyeDetection = null;
+        if (!state.imagePixels || metadataLooksLikeIphone(exifMetadata) ||
+                typeof AidaTools.detectFisheyeAnnulus !== "function") {
+            return null;
+        }
+        const detection = AidaTools.detectFisheyeAnnulus(state.imagePixels, {
+            filename: name,
+            alpha: 0.46,
+        });
+        state.fisheyeDetection = detection;
+        if (detection && detection.detected) {
+            controls.optmod.value = "2";
+            state.baseOptpar = null;
+            updateOptmodUi();
+            applyOptpar(detection.initialOptpar || AidaTools.fisheyeOptparFromAnnulus(
+                detection,
+                state.image.width,
+                state.image.height,
+                0.46,
+            ));
+        }
+        return detection;
     }
 
     function cameraAnglesFromRotation(rot) {
@@ -6694,6 +6728,89 @@ end
             delete stages[4].rejectIfRmsIncreasePx;
             delete stages[5].rejectIfRmsIncreasePx;
             delete stages[5].maxMedianDistance;
+            if (state.fisheyeDetection && state.fisheyeDetection.detected &&
+                    typeof AidaTools.fisheyePreflattenFromAnnulus === "function") {
+                const annulusPreflatten = AidaTools.fisheyePreflattenFromAnnulus(state.fisheyeDetection);
+                if (annulusPreflatten) {
+                    const centeredFisheyeBlind = {
+                        ...annulusPreflatten,
+                        maxCatalogLocalNeighbors: 24,
+                        maxBlindNeighborTriangles: 10,
+                        rejectAmbiguousBlindMatches: true,
+                        blindAmbiguityRadiusDeg: 0.85,
+                        blindAmbiguityDistanceSlackDeg: 0.28,
+                        blindPixelAmbiguityRadiusPx: 14,
+                        blindPixelAmbiguityDistanceSlackPx: 7,
+                        preflattenSignCandidates: [[1, 1], [-1, -1], [1, -1], [-1, 1]],
+                    };
+                    Object.assign(stages[0], {
+                        phase: "fisheye annulus bright-star bootstrap",
+                        maxDetections: 60,
+                        maxMagnitude: 4.0,
+                        detectorOptions: {
+                            thresholdSigma: 2.15,
+                            localThresholdSigma: 2.15,
+                            requireGlobalThreshold: false,
+                            maxRadiusPx: 8,
+                            maxElongation: 4.5,
+                            suppressionRadiusPx: 10,
+                            crowdingRadiusPx: 34,
+                            maxCrowding: 7,
+                            crowdingScorePower: 1.2,
+                        },
+                        blindOptions: {
+                            maxDetections: 60,
+                            maxCatalogStars: 240,
+                            maxCatalogTriangleStars: 240,
+                            maxCatalogTriangles: 32000,
+                            maxBlindVerifyDetections: 60,
+                            maxBlindCandidateRotations: 14000,
+                            blindEarlyAcceptMatches: 12,
+                            ambiguityMaxMagnitude: 6.0,
+                            ...centeredFisheyeBlind,
+                        },
+                    });
+                    Object.assign(stages[1], {
+                        phase: "fisheye annulus extended bright-star bootstrap",
+                        maxDetections: 120,
+                        maxMagnitude: 5.0,
+                        blindOptions: {
+                            maxDetections: 120,
+                            maxBlindVerifyDetections: 120,
+                            maxCatalogStars: 320,
+                            maxCatalogTriangleStars: 300,
+                            maxCatalogTriangles: 44000,
+                            maxDetectionTriangleStars: 110,
+                            maxDetectionTriangles: 5200,
+                            maxBlindCandidateRotations: 18000,
+                            blindEarlyAcceptMatches: 11,
+                            ambiguityMaxMagnitude: 6.5,
+                            ...centeredFisheyeBlind,
+                        },
+                    });
+                    Object.assign(stages[2], {
+                        phase: "fisheye annulus weak-star bootstrap",
+                        maxDetections: 260,
+                        maxMagnitude: 6.5,
+                        blindOptions: {
+                            maxDetections: 260,
+                            maxBlindVerifyDetections: 220,
+                            maxCatalogStars: 520,
+                            maxCatalogTriangleStars: 380,
+                            maxCatalogTriangles: 56000,
+                            maxAmbiguityCatalogStars: 620,
+                            maxDetectionTriangleStars: 190,
+                            maxDetectionTriangles: 16000,
+                            maxBlindCandidateRotations: 24000,
+                            blindEarlyAcceptMatches: 10,
+                            blindEarlyAcceptMedianDeg: 0.70,
+                            blindPixelMatchRadiusPx: 60,
+                            ambiguityMaxMagnitude: 7.0,
+                            ...centeredFisheyeBlind,
+                        },
+                    });
+                }
+            }
         } else if (optmod === BROWN_CONRADY_OPTMOD) {
             const legacyPhonePreflatten = {
                 preflattenModelCandidates: ["pinhole", "fisheye"],
@@ -7189,6 +7306,7 @@ end
         state.lastJunkStarFinderPoint = null;
         state.detectedStars = [];
         state.currentImageMetadata = null;
+        state.fisheyeDetection = null;
         state.deletedDetectionIds = new Set();
         state.autoMatches = [];
         state.asterismEdges = [];
@@ -7345,6 +7463,8 @@ end
                     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
                 }
                 hint.style.display = "none";
+                setLoadingProgress(88, "Checking for fisheye horizon annulus...");
+                const fisheyeDetection = detectAndApplyFisheyeInitialGuess(metadataName, exifMetadata);
                 if (metadataLooksLikeIphone(exifMetadata)) {
                     controls.optmod.value = String(BROWN_CONRADY_OPTMOD);
                     state.baseOptpar = null;
@@ -7356,8 +7476,16 @@ end
                 if (metadataLooksLikeIphone(exifMetadata) && !appliedExif.includes("iPhone camera")) {
                     appliedExif.push("iPhone camera");
                 }
+                const loadMessages = [];
                 if (appliedExif.length > 0) {
-                    state.fitMessage = `image metadata: used ${appliedExif.join(", ")}`;
+                    loadMessages.push(`image metadata: used ${appliedExif.join(", ")}`);
+                }
+                const fisheyeText = detectedFisheyeMessage(fisheyeDetection);
+                if (fisheyeText) {
+                    loadMessages.push(`${fisheyeText}; optmod 2 initial model seeded`);
+                }
+                if (loadMessages.length > 0) {
+                    state.fitMessage = loadMessages.join("; ");
                 }
                 state.pendingMatch = null;
                 if (onLoaded) {

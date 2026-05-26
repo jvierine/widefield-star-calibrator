@@ -270,6 +270,210 @@
         return model === 20 ? common.concat([0, 0, 0, 0]) : common;
     }
 
+    function luminanceAt(imageData, x, y) {
+        const width = Number(imageData && imageData.width) || 0;
+        const height = Number(imageData && imageData.height) || 0;
+        const data = imageData && imageData.data;
+        const ix = Math.max(0, Math.min(width - 1, Math.round(x)));
+        const iy = Math.max(0, Math.min(height - 1, Math.round(y)));
+        const k = 4 * (iy * width + ix);
+        if (!data || k + 2 >= data.length) {
+            return 0;
+        }
+        return 0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2];
+    }
+
+    function median(values) {
+        if (!values.length) {
+            return NaN;
+        }
+        const sorted = values.slice().sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 ? sorted[mid] : 0.5 * (sorted[mid - 1] + sorted[mid]);
+    }
+
+    function robustSpread(values, center) {
+        if (!values.length || !Number.isFinite(center)) {
+            return NaN;
+        }
+        return 1.4826 * median(values.map(value => Math.abs(value - center)));
+    }
+
+    function ringEdgeScore(imageData, cx, cy, radius, options) {
+        const width = imageData.width;
+        const height = imageData.height;
+        const samples = options.samples || 96;
+        const gap = options.gapPx || Math.max(2, 0.006 * Math.min(width, height));
+        const inside = [];
+        const outside = [];
+        for (let i = 0; i < samples; i += 1) {
+            const a = 2 * Math.PI * i / samples;
+            const ca = Math.cos(a);
+            const sa = Math.sin(a);
+            const xIn = cx + (radius - gap) * ca;
+            const yIn = cy + (radius - gap) * sa;
+            const xOut = cx + (radius + gap) * ca;
+            const yOut = cy + (radius + gap) * sa;
+            if (xIn < 0 || xIn >= width || yIn < 0 || yIn >= height ||
+                    xOut < 0 || xOut >= width || yOut < 0 || yOut >= height) {
+                continue;
+            }
+            inside.push(luminanceAt(imageData, xIn, yIn));
+            outside.push(luminanceAt(imageData, xOut, yOut));
+        }
+        if (inside.length < samples * 0.62) {
+            return {score: -Infinity, validFraction: inside.length / samples};
+        }
+        const medInside = median(inside);
+        const medOutside = median(outside);
+        const spread = robustSpread(inside.concat(outside), median(inside.concat(outside)));
+        const contrast = medInside - medOutside;
+        const normalized = contrast / Math.max(8, spread || 0);
+        return {
+            score: normalized + 0.004 * contrast - 10.0 * Math.max(0, 0.92 - inside.length / samples),
+            validFraction: inside.length / samples,
+            contrast,
+            medInside,
+            medOutside,
+            spread,
+        };
+    }
+
+    function looksLikeIrfFisheyeName(name) {
+        const filename = String(name || "").split(/[\\/]/).pop();
+        return /(?:KRN|MER|SIL|TJA|ABK|NIL)\.(?:jpe?g|png|tiff?)$/i.test(filename) ||
+            /(?:KRN|MER|SIL|TJA|ABK|NIL)(?:\D|$)/i.test(filename);
+    }
+
+    function fisheyeAlphaCandidates(preferred = 0.46) {
+        const raw = [preferred, 0.38, 0.42, 0.46, 0.50, 0.54, 0.60, 0.66]
+            .filter(value => Number.isFinite(value) && value > 0.05 && value < 1.2);
+        return Array.from(new Set(raw.map(value => Number(value.toFixed(4)))));
+    }
+
+    function fisheyeOptparFromAnnulus(detection, width, height, alpha = 0.46) {
+        if (!detection || !detection.detected) {
+            return defaultOptparForImageSize(width, height, 2, alpha);
+        }
+        const w = Number(width) || Number(detection.width) || 1;
+        const h = Number(height) || Number(detection.height) || 1;
+        const a = Number.isFinite(Number(alpha)) ? Number(alpha) : Number(detection.alpha) || 0.46;
+        const radiusNormX = Number(detection.radiusPx) / w;
+        const horizonScale = Math.sin(a * Math.PI / 2);
+        const f1 = radiusNormX / Math.max(1e-6, horizonScale);
+        const f2 = f1 * w / h;
+        const du = (Number(detection.centerX) + 1) / w - 0.5;
+        const dv = (Number(detection.centerY) + 1) / h - 0.5;
+        return [f1, f2, 0, 0, 0, du, dv, a];
+    }
+
+    function fisheyePreflattenFromAnnulus(detection) {
+        if (!detection || !detection.detected) {
+            return null;
+        }
+        const width = Number(detection.width) || 1;
+        const height = Number(detection.height) || width;
+        const alphas = fisheyeAlphaCandidates(Number(detection.alpha) || 0.46);
+        const radiusNormX = Number(detection.radiusPx) / width;
+        const f1s = alphas
+            .map(alpha => radiusNormX / Math.max(1e-6, Math.sin(alpha * Math.PI / 2)))
+            .filter(value => Number.isFinite(value) && value > 0.2 && value < 2.0)
+            .map(value => Number(value.toFixed(4)));
+        return {
+            preflattenModelCandidates: ["fisheye"],
+            preflattenF1Candidates: Array.from(new Set(f1s)),
+            preflattenRadialAlphaCandidates: alphas,
+            preflattenDu: (Number(detection.centerX) + 1) / width - 0.5,
+            preflattenDv: (Number(detection.centerY) + 1) / height - 0.5,
+            minBlindMatchSpanXFraction: 0.36,
+            minBlindMatchSpanYFraction: 0.36,
+        };
+    }
+
+    function detectFisheyeAnnulus(imageData, options = {}) {
+        const width = Number(imageData && imageData.width) || 0;
+        const height = Number(imageData && imageData.height) || 0;
+        if (!imageData || !imageData.data || width < 80 || height < 80) {
+            return {detected: false, reason: "image too small or unavailable"};
+        }
+        const minSide = Math.min(width, height);
+        const filenameHint = looksLikeIrfFisheyeName(options.filename || options.name || "");
+        const radiusMin = (Number.isFinite(options.radiusMinFraction) ? options.radiusMinFraction : 0.40) * minSide;
+        const radiusMax = (Number.isFinite(options.radiusMaxFraction) ? options.radiusMaxFraction : 0.515) * minSide;
+        const centerSpan = (Number.isFinite(options.centerSpanFraction) ? options.centerSpanFraction : 0.055) * minSide;
+        const centerStep = Math.max(6, Number.isFinite(options.centerStepPx) ?
+            options.centerStepPx :
+            Math.round(minSide / 96));
+        const radiusStep = Math.max(4, Number.isFinite(options.radiusStepPx) ?
+            options.radiusStepPx :
+            Math.round(minSide / 128));
+        const cx0 = 0.5 * (width - 1);
+        const cy0 = 0.5 * (height - 1);
+        let best = null;
+        for (let cy = cy0 - centerSpan; cy <= cy0 + centerSpan + 1e-9; cy += centerStep) {
+            for (let cx = cx0 - centerSpan; cx <= cx0 + centerSpan + 1e-9; cx += centerStep) {
+                for (let radius = radiusMin; radius <= radiusMax + 1e-9; radius += radiusStep) {
+                    const score = ringEdgeScore(imageData, cx, cy, radius, options);
+                    if (!best || score.score > best.score) {
+                        best = {cx, cy, radius, ...score};
+                    }
+                }
+            }
+        }
+        if (!best || !Number.isFinite(best.score)) {
+            return {detected: false, reason: "no complete circular edge found"};
+        }
+
+        // One cheap refinement pass around the coarse maximum.
+        const fineCenterStep = Math.max(2, Math.round(centerStep / 3));
+        const fineRadiusStep = Math.max(1, Math.round(radiusStep / 4));
+        const coarse = best;
+        for (let cy = coarse.cy - centerStep; cy <= coarse.cy + centerStep + 1e-9; cy += fineCenterStep) {
+            for (let cx = coarse.cx - centerStep; cx <= coarse.cx + centerStep + 1e-9; cx += fineCenterStep) {
+                for (let radius = coarse.radius - radiusStep; radius <= coarse.radius + radiusStep + 1e-9; radius += fineRadiusStep) {
+                    if (radius < radiusMin || radius > radiusMax) {
+                        continue;
+                    }
+                    const score = ringEdgeScore(imageData, cx, cy, radius, {...options, samples: options.fineSamples || 144});
+                    if (score.score > best.score) {
+                        best = {cx, cy, radius, ...score};
+                    }
+                }
+            }
+        }
+
+        const radiusFraction = best.radius / minSide;
+        const centerOffsetFraction = Math.hypot(best.cx - cx0, best.cy - cy0) / minSide;
+        const shapePlausible = radiusFraction >= 0.40 && radiusFraction <= 0.515 &&
+            centerOffsetFraction <= 0.09 &&
+            best.validFraction >= 0.80;
+        const strong = best.score >= 1.15 && best.contrast > 12;
+        const hinted = filenameHint && best.score >= 0.75 && best.contrast > 8;
+        const detected = shapePlausible && (strong || hinted);
+        const alpha = Number.isFinite(Number(options.alpha)) ? Number(options.alpha) : 0.46;
+        const detection = {
+            detected,
+            reason: detected ? "circular horizon annulus" : "annulus score below threshold",
+            width,
+            height,
+            centerX: best.cx,
+            centerY: best.cy,
+            radiusPx: best.radius,
+            radiusFraction,
+            centerOffsetFraction,
+            score: best.score,
+            confidence: Math.max(0, Math.min(1, (best.score - 0.65) / 1.4)),
+            contrast: best.contrast,
+            validFraction: best.validFraction,
+            filenameHint,
+            alpha,
+        };
+        detection.alphaCandidates = fisheyeAlphaCandidates(alpha);
+        detection.initialOptpar = fisheyeOptparFromAnnulus(detection, width, height, alpha);
+        detection.preflatten = fisheyePreflattenFromAnnulus(detection);
+        return detection;
+    }
+
     const ALLSKY7_STATION_METADATA = [
         // Public allsky7 station coordinates are intentionally coarsened.
         {tokens: ["010760"], latDeg: 51.0, lonDeg: 7.2},
@@ -633,7 +837,10 @@
         RAD,
         dateToDatetimeLocal,
         datetimeLocalToDate,
+        detectFisheyeAnnulus,
         defaultOptparForImageSize,
+        fisheyeOptparFromAnnulus,
+        fisheyePreflattenFromAnnulus,
         guessAllsky7StationMetadata,
         guessIrfAllskyStationMetadata,
         guessStationMetadataFromName,

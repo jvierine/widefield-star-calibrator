@@ -335,6 +335,61 @@ test("default focal ratios follow image width and height", () => {
     assert.equal(brown[7], 0.0);
 });
 
+function syntheticFisheyeImage(width = 320, height = 320, cx = 166, cy = 154, radius = 150) {
+    const data = new Uint8Array(width * height * 4);
+    for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+            const distance = Math.hypot(x - cx, y - cy);
+            const inside = distance <= radius;
+            const annulus = Math.abs(distance - radius) <= 2.2;
+            const texture = 6 * Math.sin(0.09 * x) + 4 * Math.cos(0.07 * y);
+            const value = Math.max(0, Math.min(255, (inside ? 82 : 10) + texture + (annulus ? 25 : 0)));
+            const k = 4 * (y * width + x);
+            data[k] = value;
+            data[k + 1] = value;
+            data[k + 2] = value;
+            data[k + 3] = 255;
+        }
+    }
+    return {width, height, data};
+}
+
+test("fisheye annulus detector finds a circular horizon and initial optmod 2 guess", () => {
+    const image = syntheticFisheyeImage();
+    const detection = AidaTools.detectFisheyeAnnulus(image, {
+        filename: "2026-02-12T19.04.00.000KRN.jpeg",
+        centerStepPx: 12,
+        radiusStepPx: 5,
+        samples: 96,
+    });
+    assert.equal(detection.detected, true);
+    assert.ok(Math.abs(detection.centerX - 166) < 8, `center x ${detection.centerX}`);
+    assert.ok(Math.abs(detection.centerY - 154) < 8, `center y ${detection.centerY}`);
+    assert.ok(Math.abs(detection.radiusPx - 150) < 8, `radius ${detection.radiusPx}`);
+    assert.equal(detection.initialOptpar.length, 8);
+    assertNear(detection.initialOptpar[7], 0.46, 1e-12);
+    assert.deepEqual(Array.from(detection.preflatten.preflattenModelCandidates), ["fisheye"]);
+    assert.ok(detection.preflatten.preflattenF1Candidates.length >= 3);
+});
+
+test("fisheye annulus detector rejects flat images", () => {
+    const width = 240;
+    const height = 240;
+    const data = new Uint8Array(width * height * 4);
+    for (let i = 0; i < data.length; i += 4) {
+        data[i] = 40;
+        data[i + 1] = 40;
+        data[i + 2] = 40;
+        data[i + 3] = 255;
+    }
+    const detection = AidaTools.detectFisheyeAnnulus({width, height, data}, {
+        filename: "flat.png",
+        centerStepPx: 12,
+        radiusStepPx: 5,
+    });
+    assert.equal(detection.detected, false);
+});
+
 test("EXIF parser extracts GPS position, altitude, and timestamp", () => {
     const metadata = AidaTools.parseExifMetadata(bufferToArrayBuffer(makeExifJpeg()));
     assert.equal(metadata.timestampUtc.toISOString(), "2025-02-19T01:47:01.000Z");
