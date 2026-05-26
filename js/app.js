@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.10";
+    const APP_VERSION = "v0.2.11";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
@@ -120,6 +120,7 @@
         modelOptpar: null,
         loadedTestCaseId: "",
         imageLoadId: 0,
+        fitBusy: false,
         flipX: false,
         flipY: false,
         imageFlipX: false,
@@ -3628,6 +3629,15 @@ end
         return new Promise(resolve => window.requestAnimationFrame(() => resolve()));
     }
 
+    function setFitControlsDisabled(disabled) {
+        controls.fitLens.disabled = disabled;
+        controls.fitLensLm.disabled = disabled;
+        controls.luckyFit.disabled = disabled;
+        if (controls.closeAssociateFit) {
+            controls.closeAssociateFit.disabled = disabled;
+        }
+    }
+
     function detectorStarRadius() {
         return 5;
     }
@@ -5250,6 +5260,87 @@ end
         return {x: simplex[0].x, fx: simplex[0].fx, iterations};
     }
 
+    async function nelderMeadAsync(objective, start, steps, maxIter, optmod = Number(controls.optmod.value) || 2, progress = {}) {
+        const boundedStart = clampFitVectorToBounds(start, optmod);
+        const n = boundedStart.length;
+        let simplex = [{x: boundedStart.slice(), fx: objective(boundedStart)}];
+        for (let i = 0; i < n; i++) {
+            const x = boundedStart.slice();
+            x[i] += steps[i];
+            const bounded = clampFitVectorToBounds(x, optmod);
+            simplex.push({x: bounded, fx: objective(bounded)});
+        }
+
+        const alpha = 1.0;
+        const gamma = 2.0;
+        const rho = 0.5;
+        const sigma = 0.5;
+        const p0 = Number.isFinite(progress.start) ? progress.start : 20;
+        const p1 = Number.isFinite(progress.end) ? progress.end : 90;
+        const label = progress.label || "Nelder-Mead lens fit";
+        let iterations = 0;
+
+        for (; iterations < maxIter; iterations++) {
+            if (iterations % 10 === 0) {
+                const percent = p0 + (p1 - p0) * iterations / Math.max(1, maxIter);
+                setLoadingProgress(percent, `${label}: iteration ${iterations}/${maxIter}`);
+                await yieldToBrowser();
+            }
+            simplex.sort((a, b) => a.fx - b.fx);
+            const best = simplex[0].fx;
+            const spread = simplex.reduce((acc, p) => Math.max(acc, Math.abs(p.fx - best)), 0);
+            if (spread < 1e-6) {
+                break;
+            }
+
+            const centroid = Array(n).fill(0);
+            for (let i = 0; i < n; i++) {
+                for (let j = 0; j < n; j++) {
+                    centroid[j] += simplex[i].x[j] / n;
+                }
+            }
+
+            const worst = simplex[n].x;
+            const reflected = clampFitVectorToBounds(
+                centroid.map((c, j) => c + alpha * (c - worst[j])),
+                optmod
+            );
+            const fr = objective(reflected);
+
+            if (fr < simplex[0].fx) {
+                const expanded = clampFitVectorToBounds(
+                    centroid.map((c, j) => c + gamma * (reflected[j] - c)),
+                    optmod
+                );
+                const fe = objective(expanded);
+                simplex[n] = fe < fr ? {x: expanded, fx: fe} : {x: reflected, fx: fr};
+            } else if (fr < simplex[n - 1].fx) {
+                simplex[n] = {x: reflected, fx: fr};
+            } else {
+                const contracted = clampFitVectorToBounds(
+                    centroid.map((c, j) => c + rho * (worst[j] - c)),
+                    optmod
+                );
+                const fc = objective(contracted);
+                if (fc < simplex[n].fx) {
+                    simplex[n] = {x: contracted, fx: fc};
+                } else {
+                    for (let i = 1; i <= n; i++) {
+                        const x = clampFitVectorToBounds(
+                            simplex[0].x.map((v, j) => v + sigma * (simplex[i].x[j] - v)),
+                            optmod
+                        );
+                        simplex[i] = {x, fx: objective(x)};
+                    }
+                }
+            }
+        }
+        setLoadingProgress(p1, `${label}: finished ${iterations} iterations`);
+        await yieldToBrowser();
+        simplex.sort((a, b) => a.fx - b.fx);
+        return {x: simplex[0].x, fx: simplex[0].fx, iterations};
+    }
+
     function fitStartCandidates(objective, start, optmod = Number(controls.optmod.value) || 2) {
         const starts = [];
         const seen = new Set();
@@ -5427,6 +5518,96 @@ end
         return {x, fx, iterations, accepted};
     }
 
+    async function levenbergMarquardtAsync(residualFn, start, maxIter = 80, optmod = Number(controls.optmod.value) || 2, progress = {}) {
+        const n = start.length;
+        const diffSteps = optmod === BROWN_CONRADY_OPTMOD
+            ? [1e-4, 1e-4, 1e-3, 1e-3, 1e-3, 1e-5, 1e-5, 1e-5, 1e-6, 1e-6, 1e-6, 1e-6]
+            : [1e-4, 1e-4, 1e-3, 1e-3, 1e-3, 1e-5, 1e-5, 1e-4];
+        let x = clampFitVectorToBounds(start, optmod);
+        let residuals = residualFn(x);
+        let fx = residualSumSquares(residuals);
+        let lambda = 1e-3;
+        let iterations = 0;
+        let accepted = 0;
+        const p0 = Number.isFinite(progress.start) ? progress.start : 20;
+        const p1 = Number.isFinite(progress.end) ? progress.end : 90;
+        const label = progress.label || "Levenberg-Marquardt lens fit";
+        for (; iterations < maxIter; iterations++) {
+            const percent = p0 + (p1 - p0) * iterations / Math.max(1, maxIter);
+            setLoadingProgress(percent, `${label}: iteration ${iterations}/${maxIter}, accepted ${accepted}`);
+            await yieldToBrowser();
+            if (!residuals || !Number.isFinite(fx)) {
+                break;
+            }
+            const m = residuals.length;
+            const jac = Array.from({length: m}, () => Array(n).fill(0));
+            for (let col = 0; col < n; col++) {
+                const h = diffSteps[col];
+                const xp = x.slice();
+                xp[col] += h;
+                const rp = residualFn(xp);
+                if (!rp) {
+                    continue;
+                }
+                for (let row = 0; row < m; row++) {
+                    jac[row][col] = (rp[row] - residuals[row]) / h;
+                }
+            }
+            const jtj = Array.from({length: n}, () => Array(n).fill(0));
+            const jtr = Array(n).fill(0);
+            for (let row = 0; row < m; row++) {
+                for (let i = 0; i < n; i++) {
+                    jtr[i] += jac[row][i] * residuals[row];
+                    for (let j = 0; j < n; j++) {
+                        jtj[i][j] += jac[row][i] * jac[row][j];
+                    }
+                }
+            }
+            let improved = false;
+            for (let attempt = 0; attempt < 8; attempt++) {
+                const a = jtj.map((row, i) => row.map((value, j) => {
+                    if (i !== j) {
+                        return value;
+                    }
+                    return value + lambda * Math.max(1, Math.abs(value));
+                }));
+                const step = solveLinearSystem(a, jtr.map(value => -value));
+                if (!step) {
+                    lambda *= 10;
+                    continue;
+                }
+                const xCandidate = clampFitVectorToBounds(x.map((value, i) => value + step[i]), optmod);
+                if (fitPenalty(xCandidate, optmod) > 0) {
+                    lambda *= 10;
+                    continue;
+                }
+                const candidateResiduals = residualFn(xCandidate);
+                const candidateFx = residualSumSquares(candidateResiduals);
+                if (candidateResiduals && candidateFx < fx) {
+                    x = xCandidate;
+                    residuals = candidateResiduals;
+                    fx = candidateFx;
+                    lambda = Math.max(lambda / 3, 1e-9);
+                    accepted += 1;
+                    improved = true;
+                    if (Math.sqrt(step.reduce((acc, value) => acc + value * value, 0)) < 1e-7) {
+                        setLoadingProgress(p1, `${label}: converged after ${iterations + 1} iterations`);
+                        await yieldToBrowser();
+                        return {x, fx, iterations: iterations + 1, accepted};
+                    }
+                    break;
+                }
+                lambda *= 10;
+            }
+            if (!improved) {
+                break;
+            }
+        }
+        setLoadingProgress(p1, `${label}: finished ${iterations} iterations`);
+        await yieldToBrowser();
+        return {x, fx, iterations, accepted};
+    }
+
     function acceptFitResult(result, start, residualFn, methodLabel, detail, fitCount, objectiveLabel, fitScopeText = null) {
         const startSse = residualSumSquares(residualFn(start));
         const recentered = recenterFitVectorOnResidualMean(result.x, residualFn);
@@ -5515,6 +5696,61 @@ end
         );
     }
 
+    async function fitLensFromMatchesAsync(options = {}) {
+        const matchesForFit = Array.isArray(options.matches) ? options.matches : fittingMatches();
+        const fitCount = matchesForFit.length;
+        const optmod = Number(controls.optmod.value) || 2;
+        const minPairs = Math.ceil(requiredOptparLength(optmod) / 2);
+        if (!state.image || fitCount < minPairs) {
+            state.fitMessage = `lens fit: need at least ${minPairs} matched star pairs with mag <= ` +
+                `${Number(controls.maxMag.value).toFixed(1)} (${fitCount}/${state.matches.length} available)`;
+            render();
+            return {accepted: false, reason: "not enough matched star pairs", fitCount};
+        }
+
+        const residualFn = matchResidualFactory(matchesForFit);
+        const objective = matchObjectiveFactory(residualFn, optmod);
+        const start = currentFitVector();
+        const steps = optmod === BROWN_CONRADY_OPTMOD
+            ? [0.05, 0.05, 1.5, 1.5, 2.0, 0.006, 0.006, 0.02, 0.006, 0.003, 0.001, 0.001]
+            : [0.05, 0.05, 1.5, 1.5, 2.0, 0.006, 0.006, 0.03];
+        setLoadingProgress(5, "Nelder-Mead lens fit: choosing start points...");
+        await yieldToBrowser();
+        const starts = fitStartCandidates(objective, start, optmod);
+        let result = null;
+        let totalIterations = 0;
+        for (let i = 0; i < starts.length; i += 1) {
+            const p0 = 8 + 86 * i / Math.max(1, starts.length);
+            const p1 = 8 + 86 * (i + 1) / Math.max(1, starts.length);
+            const candidateResult = await nelderMeadAsync(objective, starts[i].x, steps, 800, optmod, {
+                start: p0,
+                end: p1,
+                label: `Nelder-Mead lens fit start ${i + 1}/${starts.length}`,
+            });
+            totalIterations += candidateResult.iterations;
+            if (!result || candidateResult.fx < result.fx) {
+                result = candidateResult;
+            }
+        }
+        if (!result) {
+            state.fitMessage = "lens fit rejected: no valid grid-search start points";
+            render();
+            return {accepted: false, reason: "no valid grid-search start points", fitCount};
+        }
+        setLoadingProgress(96, "Nelder-Mead lens fit: accepting best solution...");
+        await yieldToBrowser();
+        return acceptFitResult(
+            result,
+            start,
+            residualFn,
+            options.methodLabel || "Nelder-Mead lens fit",
+            `${starts.length} starts including random perturbations, ${totalIterations} iterations`,
+            fitCount,
+            optmod === BROWN_CONRADY_OPTMOD ? "Brown-Conrady monotonic robust Huber objective" : "robust Huber objective",
+            options.fitScopeText || null
+        );
+    }
+
     function fitLensLevenbergMarquardt(options = {}) {
         const matchesForFit = Array.isArray(options.matches) ? options.matches : fittingMatches();
         const fitCount = matchesForFit.length;
@@ -5549,6 +5785,62 @@ end
             render();
             return {accepted: false, reason: "no valid start points", fitCount};
         }
+        return acceptFitResult(
+            result,
+            start,
+            residualFn,
+            options.methodLabel || "Levenberg-Marquardt lens fit",
+            `${starts.length} starts, ${totalIterations} iterations, ${accepted} accepted steps`,
+            fitCount,
+            optmod === BROWN_CONRADY_OPTMOD ? "Brown-Conrady monotonic ordinary least-squares objective" : "ordinary least-squares objective",
+            options.fitScopeText || null
+        );
+    }
+
+    async function fitLensLevenbergMarquardtAsync(options = {}) {
+        const matchesForFit = Array.isArray(options.matches) ? options.matches : fittingMatches();
+        const fitCount = matchesForFit.length;
+        const optmod = Number(controls.optmod.value) || 2;
+        const minPairs = Math.ceil(requiredOptparLength(optmod) / 2);
+        if (!state.image || fitCount < minPairs) {
+            state.fitMessage = `LM lens fit: need at least ${minPairs} matched star pairs with mag <= ` +
+                `${Number(controls.maxMag.value).toFixed(1)} (${fitCount}/${state.matches.length} available)`;
+            render();
+            return {accepted: false, reason: "not enough matched star pairs", fitCount};
+        }
+        const residualFn = matchResidualFactory(matchesForFit);
+        const lmResidualFn = optmod === BROWN_CONRADY_OPTMOD ?
+            regularizedResidualFactory(residualFn, optmod) :
+            residualFn;
+        const objective = leastSquaresObjectiveFactory(lmResidualFn, optmod);
+        const start = currentFitVector();
+        setLoadingProgress(5, "Levenberg-Marquardt lens fit: choosing start points...");
+        await yieldToBrowser();
+        const starts = fitStartCandidates(objective, start, optmod).slice(0, 12);
+        let result = null;
+        let totalIterations = 0;
+        let accepted = 0;
+        for (let i = 0; i < starts.length; i += 1) {
+            const p0 = 8 + 86 * i / Math.max(1, starts.length);
+            const p1 = 8 + 86 * (i + 1) / Math.max(1, starts.length);
+            const candidateResult = await levenbergMarquardtAsync(lmResidualFn, starts[i].x, 80, optmod, {
+                start: p0,
+                end: p1,
+                label: `Levenberg-Marquardt lens fit start ${i + 1}/${starts.length}`,
+            });
+            totalIterations += candidateResult.iterations;
+            accepted += candidateResult.accepted;
+            if (!result || candidateResult.fx < result.fx) {
+                result = candidateResult;
+            }
+        }
+        if (!result) {
+            state.fitMessage = "LM lens fit rejected: no valid start points";
+            render();
+            return {accepted: false, reason: "no valid start points", fitCount};
+        }
+        setLoadingProgress(96, "Levenberg-Marquardt lens fit: accepting best solution...");
+        await yieldToBrowser();
         return acceptFitResult(
             result,
             start,
@@ -5646,7 +5938,7 @@ end
                 ensureMaxMagnitudeForMatches(state.matches);
                 setLoadingProgress(88, "Close auto-associate: fitting robust lens model...");
                 await yieldToBrowser();
-                const fit = fitLensFromMatches({
+                const fit = await fitLensFromMatchesAsync({
                     methodLabel: "Close auto-associate Nelder-Mead fit",
                     fitScopeText: "using manual plus close-projection automatic pairs",
                 });
@@ -5656,7 +5948,7 @@ end
                 if (prune.removed > 0) {
                     setLoadingProgress(93, `Close auto-associate: pruned ${prune.removed} outlier pairings and refitting...`);
                     await yieldToBrowser();
-                    const refit = fitLensFromMatches({
+                    const refit = await fitLensFromMatchesAsync({
                         methodLabel: "Close auto-associate refit",
                         fitScopeText: "after robust automatic outlier pruning",
                     });
@@ -5704,6 +5996,29 @@ end
             return Infinity;
         }
         return Math.sqrt(residualSumSquares(residuals) / fitCount);
+    }
+
+    async function runManualLensFit(kind) {
+        if (state.fitBusy || state.autoIdentifyBusy || state.luckyFitBusy) {
+            return;
+        }
+        state.fitBusy = true;
+        setFitControlsDisabled(true);
+        try {
+            const result = kind === "lm" ?
+                await fitLensLevenbergMarquardtAsync() :
+                await fitLensFromMatchesAsync();
+            if (result && result.accepted) {
+                playInteractionSound("fit");
+            }
+        } catch (error) {
+            state.fitMessage = `${kind === "lm" ? "LM" : "Nelder-Mead"} lens fit failed: ${error.message || error}`;
+            render();
+        } finally {
+            hideLoadingProgress();
+            setFitControlsDisabled(false);
+            state.fitBusy = false;
+        }
     }
 
     function sortedLuckyFitMatches() {
@@ -5906,7 +6221,7 @@ end
                     `${label}: robust fit of selected optmod ${optmod} using ${count} brightest pairs...`
                 );
                 await yieldToBrowser();
-                const nm = fitLensFromMatches({
+                const nm = await fitLensFromMatchesAsync({
                     matches: subset,
                     methodLabel: `${label} Nelder-Mead sweep`,
                     fitScopeText: scope,
@@ -5920,7 +6235,7 @@ end
                 `${label}: Levenberg-Marquardt sweep of selected optmod ${optmod} using ${count} brightest pairs...`
             );
             await yieldToBrowser();
-            const lm = fitLensLevenbergMarquardt({
+            const lm = await fitLensLevenbergMarquardtAsync({
                 matches: subset,
                 methodLabel: `${label} LM sweep`,
                 fitScopeText: scope,
@@ -8183,11 +8498,11 @@ end
     });
     controls.fitLens.addEventListener("click", () => {
         playInteractionSound("fit");
-        fitLensFromMatches();
+        runManualLensFit("nm");
     });
     controls.fitLensLm.addEventListener("click", () => {
         playInteractionSound("fit");
-        fitLensLevenbergMarquardt();
+        runManualLensFit("lm");
     });
     if (controls.closeAssociateFit) {
         controls.closeAssociateFit.addEventListener("click", () => {
@@ -8443,11 +8758,11 @@ end
         } else if ((event.key === "f" || event.key === "F") && !event.repeat) {
             event.preventDefault();
             playInteractionSound("fit");
-            fitLensFromMatches();
+            runManualLensFit("nm");
         } else if ((event.key === "g" || event.key === "G") && !event.repeat) {
             event.preventDefault();
             playInteractionSound("fit");
-            fitLensLevenbergMarquardt();
+            runManualLensFit("lm");
         } else if (event.key === "Escape" && state.pendingMatch) {
             event.preventDefault();
             clearDensityEstimate();
