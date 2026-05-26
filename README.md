@@ -70,6 +70,29 @@ and JPEG input conversion uses macOS `sips`.
 - Includes an optional generated ambient audio mode with subtle interaction
   feedback.
 
+## Views And Controls
+
+- `C`: toggle star pairing view and Stellarium-style catalog view.
+- `X`: alternate pure image view and pure Stellarium view. Labels and pairings
+  are hidden, but the az/el grid remains visible if enabled.
+- `N`: show or hide star names in the current view.
+- `K`: show only the picked KDE subpixel star positions.
+- `T`: show or hide the lucky asterism line overlay.
+- `R`: show or hide residual view.
+- `A`: show or hide the az/el grid.
+- `D` + click: delete the nearest matched star pair.
+- `H`: show or hide automatic star-detection markers.
+- `M` + click or drag: paint fast 128x128 black not-star mask tiles. Masked
+  tiles are ignored by later star finding.
+- `Z`: show the zoom/magnifier view.
+- `Cmd/Ctrl Z`: undo the most recent accepted fit.
+- `Esc`: cancel the current interaction or close the density popup.
+- `I'm feeling lucky...`: run automatic star finding, asterism identification,
+  and staged lens fitting for the currently selected optical model.
+
+Manual KDE-based star picking remains the most controlled way to add or correct
+pairings after an automatic run.
+
 ## Basic Workflow
 
 1. Open `index.html` in a browser.
@@ -94,35 +117,41 @@ and JPEG input conversion uses macOS `sips`.
 11. Press `R` to inspect residuals and remove bad pairs if needed.
 12. Export the fitted model with the copy buttons.
 
-## Views And Controls
+## Automatic Command-Line Lens Calibration
 
-- `C`: toggle star pairing view and Stellarium-style catalog view.
-- `X`: alternate pure image view and pure Stellarium view. Labels and pairings
-  are hidden, but the az/el grid remains visible if enabled.
-- `N`: show or hide star names in the current view.
-- `K`: show only the picked KDE subpixel star positions.
-- `T`: show or hide the lucky asterism line overlay.
-- `R`: show or hide residual view.
-- `A`: show or hide the az/el grid.
-- `D` + click: delete the nearest matched star pair.
-- `H`: show or hide automatic star-detection markers.
-- `M` + click or drag: paint fast 128x128 black not-star mask tiles. Masked
-  tiles are ignored by later star finding.
-- `Z`: show the zoom/magnifier view.
-- `Cmd/Ctrl Z`: undo the most recent accepted fit.
-- `Esc`: cancel the current interaction or close the density popup.
-- `I'm feeling lucky...`: run automatic star finding, asterism identification,
-  and staged lens fitting for the currently selected optical model.
+Run the browser-style "I'm feeling lucky" calibration from the command line by
+giving an image filename. Latitude, longitude, altitude, and UTC time may be
+provided as flags; if they are omitted, saved test-case metadata and image
+EXIF-derived metadata are used by default when available, followed by filename
+or fallback values.
 
-Manual KDE-based star picking remains the most controlled way to add or correct
-pairings after an automatic run.
+```bash
+widefield-star-calibrate calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
+```
 
-## Image Display
+The script runs the same automatic star finding and asterism matching strategy
+as the GUI, fits the selected lens model, and writes:
 
-The image is high-pass filtered by default with a 100 px Gaussian background
-estimate. Brightness and contrast are applied after high-pass filtering. The
-default brightness is slightly raised so background noise and weak stars remain
-visible.
+- `lucky-report/index.html`: visual overlay report with raw detections,
+  asterisms, matched stars, residuals, timing, and fitted `optpar`.
+- `lucky-report/summary.json`: machine-readable calibration summary with
+  `optmod`, `[optmod, ...optpar]`, RMS, match count, site/time metadata, and
+  timing totals.
+- `calibration.json`: compact machine-readable optpar output when
+  `--optpar-out` is used. This is the file a meteor-camera pipeline should
+  consume automatically.
+- `lucky-report/code/*_mapper.py`: mapper source code when `--code` is used.
+  Supported code languages are `python`, `julia`, `c`, and `matlab`.
+
+Saved `test_cases/*/metadata.json` files are used when available. Otherwise
+the script infers allsky7 timestamps and station metadata from filenames, and
+falls back to a Tromso default. HEIC and JPEG inputs are normalized to PNG
+report assets with macOS `sips`.
+
+For scripted meteor-camera operation, run the command after each image or
+stacked frame is available, then read `calibration.json`. A failed solve keeps
+`solved: false` and `optpar: null`, so automation can reject it without parsing
+the visual HTML report.
 
 ## Coordinates And Camera Models
 
@@ -179,38 +208,3 @@ The camera-model cross-check starts Python and imports `aida_tools_py`. Set
 `PYTHON=/path/to/python` if the default `/opt/miniconda3/bin/python` is not the
 right environment.
 
-## Automatic Command-Line Lens Calibration
-
-Run the browser-style "I'm feeling lucky" calibration from the command line by
-giving an image filename. Latitude, longitude, altitude, and UTC time may be
-provided as flags; if they are omitted, saved test-case metadata and image
-EXIF-derived metadata are used by default when available, followed by filename
-or fallback values.
-
-```bash
-widefield-star-calibrate calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
-```
-
-The script runs the same automatic star finding and asterism matching strategy
-as the GUI, fits the selected lens model, and writes:
-
-- `lucky-report/index.html`: visual overlay report with raw detections,
-  asterisms, matched stars, residuals, timing, and fitted `optpar`.
-- `lucky-report/summary.json`: machine-readable calibration summary with
-  `optmod`, `[optmod, ...optpar]`, RMS, match count, site/time metadata, and
-  timing totals.
-- `calibration.json`: compact machine-readable optpar output when
-  `--optpar-out` is used. This is the file a meteor-camera pipeline should
-  consume automatically.
-- `lucky-report/code/*_mapper.py`: mapper source code when `--code` is used.
-  Supported code languages are `python`, `julia`, `c`, and `matlab`.
-
-Saved `test_cases/*/metadata.json` files are used when available. Otherwise
-the script infers allsky7 timestamps and station metadata from filenames, and
-falls back to a Tromso default. HEIC and JPEG inputs are normalized to PNG
-report assets with macOS `sips`.
-
-For scripted meteor-camera operation, run the command after each image or
-stacked frame is available, then read `calibration.json`. A failed solve keeps
-`solved: false` and `optpar: null`, so automation can reject it without parsing
-the visual HTML report.
