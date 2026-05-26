@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.9";
+    const APP_VERSION = "v0.2.10";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
@@ -601,8 +601,7 @@
     function defaultOptparForImage(image = state.image, optmod = Number(controls.optmod.value) || 2) {
         const width = image && Number.isFinite(image.width) && image.width > 0 ? image.width : 16;
         const height = image && Number.isFinite(image.height) && image.height > 0 ? image.height : 9;
-        const common = [1.0, width / height, 0, 0, 0, 0, 0, defaultRadialAlphaForOptmod(optmod)];
-        return optmod === BROWN_CONRADY_OPTMOD ? common.concat([0, 0, 0, 0]) : common;
+        return AidaTools.defaultOptparForImageSize(width, height, optmod, defaultRadialAlphaForOptmod(optmod));
     }
 
     function cameraAnglesFromRotation(rot) {
@@ -6841,6 +6840,7 @@ end
         hideZoomCanvas();
         hideLoadingProgress();
         state.baseOptpar = null;
+        state.activeOptmod = Number(controls.optmod.value) || 2;
         state.loadedTestCaseId = "";
         state.flipX = false;
         state.flipY = false;
@@ -7146,7 +7146,6 @@ end
 
     async function loadImageFile(file) {
         resetForNewImage();
-        applyOptpar(null);
         if (state.localImageUrl) {
             URL.revokeObjectURL(state.localImageUrl);
         }
@@ -8510,7 +8509,6 @@ end
         refreshTestCaseList();
         if (!state.image) {
             resetForNewImage();
-            applyOptpar(null);
             loadImageSource(defaultImage.url, defaultImage.name, null, false, defaultImage.metadata, defaultImage.metadataName);
         }
     }

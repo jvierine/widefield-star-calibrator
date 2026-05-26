@@ -319,6 +319,22 @@ test("ALIS station metadata parser handles station codes from IRF report 279", (
     assert.equal(mer.name, "Merasjärvi");
 });
 
+test("default focal ratios follow image width and height", () => {
+    const square = AidaTools.defaultOptparForImageSize(2832, 2832, 2);
+    assert.equal(square[0], 1.0);
+    assert.equal(square[1], 1.0);
+    assert.equal(square[7], 0.35);
+
+    const wide = AidaTools.defaultOptparForImageSize(1920, 1080, 2);
+    assert.equal(wide[0], 1.0);
+    assertNear(wide[1], 1920 / 1080);
+
+    const brown = AidaTools.defaultOptparForImageSize(2832, 2832, 20);
+    assert.equal(brown.length, 12);
+    assert.equal(brown[1], 1.0);
+    assert.equal(brown[7], 0.0);
+});
+
 test("EXIF parser extracts GPS position, altitude, and timestamp", () => {
     const metadata = AidaTools.parseExifMetadata(bufferToArrayBuffer(makeExifJpeg()));
     assert.equal(metadata.timestampUtc.toISOString(), "2025-02-19T01:47:01.000Z");

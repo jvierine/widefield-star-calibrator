@@ -250,6 +250,26 @@
         return guessTimestampFromIrfAllskyName(name) || guessTimestampFromAllsky7Name(name);
     }
 
+    function defaultOptparForImageSize(width, height, optmod = 2, radialAlpha = null) {
+        const w = Number.isFinite(Number(width)) && Number(width) > 0 ? Number(width) : 16;
+        const h = Number.isFinite(Number(height)) && Number(height) > 0 ? Number(height) : 9;
+        const model = Number(optmod) || 2;
+        let alpha = radialAlpha;
+        if (alpha === null || alpha === undefined || !Number.isFinite(Number(alpha))) {
+            if (model === 20 || model === 12) {
+                alpha = 0.0;
+            } else if (model === 1 || model === 4) {
+                alpha = 1.0;
+            } else if (model === 5) {
+                alpha = 0.5;
+            } else {
+                alpha = 0.35;
+            }
+        }
+        const common = [1.0, w / h, 0, 0, 0, 0, 0, Number(alpha)];
+        return model === 20 ? common.concat([0, 0, 0, 0]) : common;
+    }
+
     const ALLSKY7_STATION_METADATA = [
         // Public allsky7 station coordinates are intentionally coarsened.
         {tokens: ["010760"], latDeg: 51.0, lonDeg: 7.2},
@@ -613,6 +633,7 @@
         RAD,
         dateToDatetimeLocal,
         datetimeLocalToDate,
+        defaultOptparForImageSize,
         guessAllsky7StationMetadata,
         guessIrfAllskyStationMetadata,
         guessStationMetadataFromName,
