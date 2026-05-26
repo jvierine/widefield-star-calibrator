@@ -38,6 +38,23 @@ function splitOptpar(metadata) {
     return {optmod: Number(metadata.optmod) || 2, optpar: raw};
 }
 
+function fisheyeHorizonMask(detection, marginDiameterFraction = 0.10) {
+    if (!detection || !detection.detected) {
+        return null;
+    }
+    const margin = Math.max(0, Number(marginDiameterFraction) || 0) * 2 * Number(detection.radiusPx);
+    const usableRadius = Math.max(0, Number(detection.radiusPx) - margin);
+    const r2 = usableRadius * usableRadius;
+    return {
+        usableRadius,
+        maskPredicate: (x, y) => {
+            const dx = x - detection.centerX;
+            const dy = y - detection.centerY;
+            return dx * dx + dy * dy > r2;
+        },
+    };
+}
+
 function horizonFromOptpar(metadata, width, height) {
     const {optmod, optpar} = splitOptpar(metadata);
     if (optmod !== 2 || optpar.length < 8) {
@@ -86,12 +103,15 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
     });
     const reference = horizonFromOptpar(metadata, imageData.width, imageData.height);
     const maxMagnitude = Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 4.5;
+    const catalogMaxZenithDeg = Number.isFinite(options.catalogMaxZenithDeg) ? options.catalogMaxZenithDeg : 80;
     const visible = visibleStars({
         date: new Date(metadata.timestampUtc),
         latDeg: Number(metadata.latDeg),
         lonDeg: Number(metadata.lonDeg),
         maxMag: maxMagnitude,
+        maxZenithDeg: catalogMaxZenithDeg,
     }, maxMagnitude);
+    const horizonMask = fisheyeHorizonMask(detection, 0.10);
     const detectedStars = await StarDetector.detectBrightStars(imageData, {
         maxDetections: Number.isFinite(options.maxDetections) ? options.maxDetections : 90,
         thresholdSigma: 2.1,
@@ -103,6 +123,7 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
         crowdingRadiusPx: 34,
         maxCrowding: 8,
         crowdingScorePower: 1.15,
+        maskPredicate: horizonMask ? horizonMask.maskPredicate : null,
         ...(options.detectorOptions || {}),
     });
     const preflatten = detection.detected ? AidaTools.fisheyePreflattenFromAnnulus(detection) : {};
@@ -116,6 +137,7 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
         imageWidth: imageData.width,
         imageHeight: imageData.height,
         maxMagnitude,
+        catalogMaxZenithDeg,
         maxDetections: Number.isFinite(options.maxDetections) ? options.maxDetections : 90,
         maxBlindVerifyDetections: 90,
         maxCatalogStars: 260,
@@ -149,6 +171,7 @@ async function runFisheyeLuckyCase(caseId = DEFAULT_CASE_ID, options = {}) {
         reference,
         detectedStars: detectedStars.detections,
         visible,
+        horizonMask,
         identification,
         score,
     };
@@ -169,6 +192,8 @@ function writeReport(result, options = {}) {
         ["Annulus score", Number(ann.score).toFixed(3)],
         ["Detected center", `${Number(ann.centerX).toFixed(1)}, ${Number(ann.centerY).toFixed(1)} px`],
         ["Detected horizon radius", `${Number(ann.radiusPx).toFixed(1)} px`],
+        ["Bootstrap usable radius", result.horizonMask ? `${result.horizonMask.usableRadius.toFixed(1)} px` : "n/a"],
+        ["Bootstrap catalog zenith limit", "80 deg (stars >=10 deg elevation)"],
         ["Reference center", ref ? `${ref.centerX.toFixed(1)}, ${ref.centerY.toFixed(1)} px` : "n/a"],
         ["Reference horizon radius", ref ? `${ref.radiusPx.toFixed(1)} px` : "n/a"],
         ["Detected stars", result.detectedStars.length],

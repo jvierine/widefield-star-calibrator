@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.12";
+    const APP_VERSION = "v0.2.13";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
     const NOT_STAR_TILE_SIZE = 128;
@@ -612,6 +612,29 @@
         }
         return `fisheye horizon annulus r=${detection.radiusPx.toFixed(0)} px, ` +
             `center ${detection.centerX.toFixed(0)},${detection.centerY.toFixed(0)}`;
+    }
+
+    function fisheyeHorizonExclusionOptions(detection, marginDiameterFraction = 0.10) {
+        if (!detection || !detection.detected) {
+            return null;
+        }
+        const margin = Math.max(0, Number(marginDiameterFraction) || 0) * 2 * Number(detection.radiusPx);
+        const usableRadius = Math.max(0, Number(detection.radiusPx) - margin);
+        const r2 = usableRadius * usableRadius;
+        return {
+            horizonExclusionRadiusPx: usableRadius,
+            maskPredicate: (x, y) => {
+                const dx = x - detection.centerX;
+                const dy = y - detection.centerY;
+                return dx * dx + dy * dy > r2;
+            },
+        };
+    }
+
+    function fisheyeEarlyCatalogueGuard(degAboveHorizon = 10) {
+        return {
+            catalogMaxZenithDeg: 90 - Math.max(0, Number(degAboveHorizon) || 0),
+        };
     }
 
     function detectAndApplyFisheyeInitialGuess(name, exifMetadata = null) {
@@ -1983,11 +2006,14 @@ end
         });
     }
 
-    function visibleStarsForMatching(maxMag) {
+    function visibleStarsForMatching(maxMag, options = {}) {
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
-        return AidaTools.visibleStars(window.AIDA_STAR_CATALOG, date, lat, lon, maxMag, 88)
+        const maxZenithDeg = Number.isFinite(options.maxZenithDeg) ?
+            options.maxZenithDeg :
+            Number.isFinite(options.catalogMaxZenithDeg) ? options.catalogMaxZenithDeg : 88;
+        return AidaTools.visibleStars(window.AIDA_STAR_CATALOG, date, lat, lon, maxMag, maxZenithDeg)
             .map(star => ({...star, key: catalogKey(star)}));
     }
 
@@ -2015,7 +2041,7 @@ end
 
     function skyPlaneStarsForAsterismIdentification(maxMag, options = {}) {
         return pruneCatalogByAngularSeparation(
-            visibleStarsForMatching(maxMag),
+            visibleStarsForMatching(maxMag, options),
             options.minSeparationDeg
         )
             .map(star => {
@@ -2351,7 +2377,7 @@ end
                     Number.isFinite(options.blindOptions && options.blindOptions.ambiguityMaxMagnitude) ?
                         options.blindOptions.ambiguityMaxMagnitude :
                         maxMag
-                )),
+                ), options.blindOptions || options),
                 activeDetectedStars(),
                 {
                     ...commonOptions,
@@ -2380,7 +2406,7 @@ end
                 window.AidaAutoIdentifier.identifyStarsByAsterismsAsync :
                 window.AidaAutoIdentifier.identifyStarsByAsterisms;
             result = await skyPlaneMatcher(
-                skyPlaneStarsForAsterismIdentification(maxMag),
+                skyPlaneStarsForAsterismIdentification(maxMag, options.asterismOptions || options),
                 activeDetectedStars(),
                 {
                     ...commonOptions,
@@ -2447,7 +2473,10 @@ end
             await yieldToBrowser();
             const matchRadius = Math.max(22, Math.min(48, 0.018 * diag));
             result = window.AidaAutoIdentifier.identifyStars(
-                projectedStarsForAutoIdentification(),
+                Number.isFinite(options.projectedOptions && options.projectedOptions.catalogMaxZenithDeg) ?
+                    projectedStarsForAutoIdentification()
+                        .filter(star => Number.isFinite(star.ze) && star.ze * 180 / Math.PI <= options.projectedOptions.catalogMaxZenithDeg) :
+                    projectedStarsForAutoIdentification(),
                 activeDetectedStars(),
                 {
                     ...commonOptions,
@@ -6732,8 +6761,11 @@ end
                     typeof AidaTools.fisheyePreflattenFromAnnulus === "function") {
                 const annulusPreflatten = AidaTools.fisheyePreflattenFromAnnulus(state.fisheyeDetection);
                 if (annulusPreflatten) {
+                    const horizonDetectorGuard = fisheyeHorizonExclusionOptions(state.fisheyeDetection, 0.10) || {};
+                    const catalogGuard = fisheyeEarlyCatalogueGuard(10);
                     const centeredFisheyeBlind = {
                         ...annulusPreflatten,
+                        ...catalogGuard,
                         maxCatalogLocalNeighbors: 24,
                         maxBlindNeighborTriangles: 10,
                         rejectAmbiguousBlindMatches: true,
@@ -6748,6 +6780,7 @@ end
                         maxDetections: 60,
                         maxMagnitude: 4.0,
                         detectorOptions: {
+                            ...horizonDetectorGuard,
                             thresholdSigma: 2.15,
                             localThresholdSigma: 2.15,
                             requireGlobalThreshold: false,
@@ -6769,11 +6802,17 @@ end
                             ambiguityMaxMagnitude: 6.0,
                             ...centeredFisheyeBlind,
                         },
+                        asterismOptions: catalogGuard,
+                        projectedOptions: catalogGuard,
                     });
                     Object.assign(stages[1], {
                         phase: "fisheye annulus extended bright-star bootstrap",
                         maxDetections: 120,
                         maxMagnitude: 5.0,
+                        detectorOptions: {
+                            ...stages[1].detectorOptions,
+                            ...horizonDetectorGuard,
+                        },
                         blindOptions: {
                             maxDetections: 120,
                             maxBlindVerifyDetections: 120,
@@ -6787,11 +6826,17 @@ end
                             ambiguityMaxMagnitude: 6.5,
                             ...centeredFisheyeBlind,
                         },
+                        asterismOptions: catalogGuard,
+                        projectedOptions: catalogGuard,
                     });
                     Object.assign(stages[2], {
                         phase: "fisheye annulus weak-star bootstrap",
                         maxDetections: 260,
                         maxMagnitude: 6.5,
+                        detectorOptions: {
+                            ...stages[2].detectorOptions,
+                            ...horizonDetectorGuard,
+                        },
                         blindOptions: {
                             maxDetections: 260,
                             maxBlindVerifyDetections: 220,

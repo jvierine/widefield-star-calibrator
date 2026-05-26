@@ -558,7 +558,8 @@ function catalogKey(star) {
 }
 
 function visibleStars(testCase, maxMag = testCase.maxMag) {
-    return AidaTools.visibleStars(YaleCatalog, testCase.date, testCase.latDeg, testCase.lonDeg, maxMag, 88)
+    const maxZenithDeg = Number.isFinite(testCase.maxZenithDeg) ? testCase.maxZenithDeg : 88;
+    return AidaTools.visibleStars(YaleCatalog, testCase.date, testCase.latDeg, testCase.lonDeg, maxMag, maxZenithDeg)
         .map(star => ({...star, key: catalogKey(star)}));
 }
 
