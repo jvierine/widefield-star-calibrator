@@ -10,7 +10,7 @@ PROJECT_METADATA = json.loads((ROOT / "project_metadata.json").read_text(encodin
 
 setup(
     name="wisc-lens",
-    version="0.2.7",
+    version="0.2.18",
     description="Reusable Python WISC wide-field star calibrator lens-model mapper",
     py_modules=["wisc_lens"],
     install_requires=["numpy"],

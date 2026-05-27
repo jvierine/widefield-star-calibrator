@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.2.17";
+    const APP_VERSION = "v0.2.18";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED =
         (location.protocol === "http:" || location.protocol === "https:") &&

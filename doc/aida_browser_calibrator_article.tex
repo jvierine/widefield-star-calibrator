@@ -29,7 +29,7 @@
 
 \title{WISC: A Browser-Based Widefield Star Calibrator}
 \author{\WiscAuthors}
-\date{Draft for WISC v0.2.7}
+\date{Draft for WISC v0.2.18}
 
 \begin{document}
 \maketitle
@@ -163,6 +163,50 @@ The local sky vector is transformed into camera coordinates by
   \qquad
   \mathbf{s} = (s_1, s_2, s_3).
 \end{equation}
+Here \(\mathbf{s}\) is no longer an east--north--up vector. It is the same
+unit ray expressed in the camera frame. The first two components,
+\(s_1\) and \(s_2\), are the horizontal and vertical coordinates in the
+camera image plane, while \(s_3\) is the coordinate along the optical axis
+or boresight. Thus a point near the center of the image has small
+\(s_1\) and \(s_2\) compared with \(s_3\), and the ratios \(s_1/s_3\) and
+\(s_2/s_3\) are the usual rectilinear normalized image-plane coordinates.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[scale=1.0, >=Latex, line cap=round, line join=round]
+  \coordinate (O) at (0,0);
+  \coordinate (P) at (3.0,1.15);
+  \coordinate (S1) at (3.0,0);
+  \coordinate (S2) at (3.0,1.15);
+  \coordinate (S3) at (4.2,-1.0);
+
+  \fill[blue!5] (2.0,-1.2) -- (4.45,-0.55) -- (4.45,1.75) -- (2.0,1.1) -- cycle;
+  \draw[blue!55!black, thick] (2.0,-1.2) -- (4.45,-0.55) -- (4.45,1.75) -- (2.0,1.1) -- cycle;
+  \node[blue!55!black, align=center] at (4.95,0.75) {image\\plane};
+
+  \draw[->, thick] (O) -- (4.4,0) node[below right] {\(s_3\), optical axis};
+  \draw[->, thick] (O) -- (P) node[above right] {star ray \(\mathbf{s}\)};
+  \draw[dashed] (P) -- (3.0,0);
+  \draw[dashed] (P) -- (2.0,1.15);
+  \draw[->, thick, red!70!black] (3.0,0) -- (P) node[midway,right] {\(s_2\)};
+  \draw[->, thick, orange!80!black] (2.0,1.15) -- (P) node[midway,above] {\(s_1\)};
+
+  \draw[->, blue!55!black] (2.35,-0.95) -- (3.0,-0.78) node[midway,below] {image \(s_1\)};
+  \draw[->, blue!55!black] (2.35,-0.95) -- (2.35,-0.15) node[midway,left] {image \(s_2\)};
+
+  \draw[->] (0.75,0) arc[start angle=0,end angle=21,radius=0.75];
+  \node at (0.98,0.18) {\(\theta\)};
+  \fill (O) circle (1.4pt) node[below left] {camera center};
+\end{tikzpicture}
+\caption{Meaning of the camera-frame components. After rotation from local
+east--north--up coordinates, the same unit star ray is represented as
+\(\mathbf{s}=(s_1,s_2,s_3)\). The \(s_3\) axis is the optical axis. The
+\(s_1\) and \(s_2\) components locate where the ray pierces the camera image
+plane, and their ratios to \(s_3\) give the rectilinear normalized image
+coordinates.}
+\label{fig:camera-frame-components}
+\end{figure}
+
 The radial angle from the optical axis is
 \begin{equation}
   \theta = \tan^{-1}\left(\frac{\sqrt{s_1^2+s_2^2}}{s_3}\right).
@@ -303,6 +347,9 @@ The current blind matcher is a local, browser-sized version of an astrometric
 index. It does not use a precomputed all-sky quad index. Instead, for each
 image and observing time it builds a temporary index from stars that are above
 the local horizon and bright enough for the current search stage.
+In the code this is the blind-detection stage of the lucky solver: it tries to
+turn a list of anonymous image peaks into named catalog-star associations
+without first knowing the camera pointing.
 
 The main input sets are:
 \begin{enumerate}
@@ -314,6 +361,77 @@ The main input sets are:
         focal scales, radial parameters, signs, and approximate projection
         families.
 \end{enumerate}
+The browser display can use Tycho--2 for deeper star rendering, but the current
+lucky fitting path deliberately uses the Yale bright-star catalog for its
+automatic bootstrap. This keeps the matching problem smaller and preserves the
+well-tested behavior of older successful cases. Deeper Tycho--2 stars are still
+valuable for display, manual inspection, and future experiments, but simply
+adding many fainter catalog stars is not a cure for bad bootstrap detections.
+
+Astrometry.net uses a related but stronger idea based on four-star
+asterisms, usually called quads. In a quad, two stars are labeled \(A\) and
+\(B\) and used as the backbone that fixes translation, scale, and rotation.
+The remaining stars, \(C\) and \(D\), are then described by their normalized
+coordinates in the coordinate system defined by the \(A\)--\(B\) backbone.
+If an image quad and a catalog quad have nearby normalized \(C,D\)
+coordinates, the two quads are considered a matching quad. This is only a
+hypothesis: astrometry.net then verifies the implied sky solution by checking
+whether many additional catalog stars land on image detections.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[scale=1.0, >=Latex, line cap=round, line join=round]
+  \coordinate (A) at (0,0);
+  \coordinate (B) at (5.0,0);
+  \coordinate (C) at (1.45,2.2);
+  \coordinate (D) at (3.65,1.15);
+
+  \draw[very thick, blue!60] (A) -- (B);
+  \draw[blue!45] (A) -- (C) -- (B) -- (D) -- cycle;
+  \draw[blue!45] (A) -- (D);
+  \draw[blue!45] (B) -- (C);
+
+  \fill[black] (A) circle (2.2pt) node[below left] {\(A\)};
+  \fill[black] (B) circle (2.2pt) node[below right] {\(B\)};
+  \fill[black] (C) circle (2.2pt) node[above] {\(C\)};
+  \fill[black] (D) circle (2.2pt) node[above right] {\(D\)};
+
+  \draw[->, thick] (A) -- (1.3,0) node[midway,below] {backbone};
+  \node[align=center] at (2.5,-0.65)
+      {\(A\)--\(B\) defines the local origin,\\scale, and rotation};
+
+  \draw[dashed] (C) -- (1.45,0);
+  \draw[dashed] (D) -- (3.65,0);
+  \draw[->, red!70!black, thick] (1.45,0) -- (C)
+      node[midway,right] {\(C_y\)};
+  \draw[->, orange!80!black, thick] (A) -- (1.45,0)
+      node[midway,below] {\(C_x\)};
+  \draw[->, red!70!black, thick] (3.65,0) -- (D)
+      node[midway,right] {\(D_y\)};
+  \draw[->, orange!80!black, thick] (A) -- (3.65,0)
+      node[midway,above] {\(D_x\)};
+
+  \begin{scope}[xshift=7.0cm, yshift=0.05cm]
+    \draw[->] (-0.2,0) -- (3.0,0) node[right] {normalized \(x\)};
+    \draw[->] (0,-0.2) -- (0,2.8) node[above] {normalized \(y\)};
+    \draw[very thick, blue!60] (0,0) -- (2.5,0);
+    \fill[black] (0,0) circle (2pt) node[below left] {\(A\)};
+    \fill[black] (2.5,0) circle (2pt) node[below right] {\(B\)};
+    \fill[green!55!black] (0.72,1.55) circle (2pt) node[above] {\(C\)};
+    \fill[green!55!black] (1.82,0.82) circle (2pt) node[right] {\(D\)};
+    \node[align=center] at (1.55,-0.75)
+        {quad code\\\((C_x,C_y,D_x,D_y)\)};
+  \end{scope}
+\end{tikzpicture}
+\caption{Astrometry.net-style quad geometry. Stars \(A\) and \(B\) form a
+backbone. After translating, rotating, and scaling by this backbone, the
+positions of \(C\) and \(D\) form a scale-free, rotation-free quad code. A
+matching quad is a catalog quad whose code is close to the image quad code.
+The quad match is only a proposal; the proposed sky solution is accepted only
+after additional stars support it.}
+\label{fig:quad-signature}
+\end{figure}
+
 For a candidate pre-flattening model, every selected image detection is mapped
 from pixel coordinates into an approximate unit vector
 \(\tilde{\mathbf{v}}_i\). The mapping is intentionally rough: its purpose is
@@ -336,7 +454,7 @@ location.
   \node[box] (img) {image pixels\\bright detections};
   \node[box, right=1.6cm of img] (flat) {pre-flatten\\with trial lens};
   \node[box, right=1.6cm of flat] (triimg) {detection\\triangles};
-  \node[smallbox, below=1.0cm of img] (cat) {Yale catalog\\visible stars};
+  \node[smallbox, below=1.0cm of img] (cat) {local catalog\\visible stars};
   \node[smallbox, right=1.6cm of cat] (sky) {local sky\\unit vectors};
   \node[smallbox, right=1.6cm of sky] (tric) {catalog\\triangles};
   \node[box, right=1.6cm of triimg] (kd) {triangle signature\\KD-tree lookup};
@@ -358,6 +476,49 @@ on demand for the local sky at the image time. The detection side is rebuilt
 for several approximate lens pre-flattening hypotheses.}
 \label{fig:asterism-pipeline}
 \end{figure}
+
+\subsection{Blind Detection As Implemented}
+
+The current blind-detection loop can be summarized as follows. First, the image
+star detector produces a ranked list of compact local maxima. The ranking is
+not simply brightness. It combines peak contrast, aperture flux, compactness,
+core concentration, peak dominance, elongation, saturation, local crowding, and
+matched-filter signal-to-noise. This ranking is useful for suppressing aurora,
+buildings, clouds, hot pixels, and compression artifacts, but it can still be
+fooled by sharp non-stellar features or by real but geometrically unhelpful
+faint stars.
+
+Second, the lucky solver selects only the first \(N\) detections for a stage.
+For Brown--Conrady phone-image bootstraps, typical stages use \(N=80\), then
+\(N=160\), and then a deeper stage with more detections if no seed has been
+accepted. For the allsky7-like optmod-2 path, the early \(N\) values are kept
+smaller and the pre-flattening grid is more constrained, because that recipe is
+known to work for full-sky fisheye images.
+
+Third, the selected detections are pre-flattened by each trial lens guess. In
+the Brown--Conrady blind stage this pre-flattening is intentionally simple:
+pixel coordinates are treated as approximately pinhole rays, with the focal
+scale searched over a small grid and with the \(f_1/f_2\) ratio initialized
+from the image aspect ratio. The Brown--Conrady radial and tangential
+coefficients are not used to generate the blind asterisms; they are fitted only
+after star pairings have been established. For optmod 2, the trial grid also
+includes the radial parameter \(a_r\).
+
+Fourth, the code builds image triangles and catalog triangles, compares their
+\((a/c,b/c)\) signatures, and scores the rotation hypotheses implied by nearby
+signature pairs. The score is based on how many catalog stars are explained by
+the same rotation, the angular residuals, ambiguity checks, and conflicts. A
+candidate that explains only its seed triangle is not trusted. It must extend
+to other stars, and later projected stages are guarded by pixel-space RMS so
+that bad additions can be rejected.
+
+The important practical consequence is that the blind matcher is only as good
+as the early detection list. If the first detections contain enough real stars
+with approximately correct centroids, the triangle matcher is quite robust. If
+the same list is dominated by false positives, locally repeated texture, or
+stars that are a poor geometric subset, the matcher can find a self-consistent
+but wrong sky orientation. In that failure mode, increasing the catalog depth
+may make the ambiguity worse rather than better.
 
 \subsection{Triangle Signature}
 
@@ -478,18 +639,17 @@ same geometric track. The main steps are:
   \item \textbf{Blind spherical bootstrap.} Candidate image detections are
         pre-flattened with a small grid of lens hypotheses and converted to
         unit vectors. Triangular asterisms from the image are matched against
-        local catalog triangles. The image is also divided into six partially
-        overlapping regions; the search keeps a capped set of promising
-        asterisms from each region so that one cluttered part of the frame
-        does not dominate the search.
+        local catalog triangles. Some blind-search modes can request regional
+        detection coverage so that one cluttered part of the frame does not
+        dominate the selected detections, but the current Brown--Conrady lucky
+        recipe primarily relies on whole-image detections and global scoring.
   \item \textbf{Support-triangle verification.} A seed asterism is not accepted
         by itself. The candidate rotation must extend to neighboring stars:
         each seed star is tested in additional triangles with nearby provisional
         matches. These support triangles use the same minimum side length,
         maximum side length, and minimum height limits as the main asterisms.
-        When regional detection coverage is enabled, support must span at
-        least two image regions. Accepted support triangles are drawn in the
-        GUI as cyan diagnostic asterisms.
+        Accepted support triangles can be drawn in the GUI as diagnostic
+        asterisms while the search is running.
   \item \textbf{Stop on an empty first stage.} If the first blind asterism
         stage finds no matched stars, the lucky workflow stops. It does not
         proceed to fainter stars, because the later stages would otherwise have
@@ -535,12 +695,17 @@ the detected fisheye diameter. Later projected stages can use more of the field
 after the model has become stable.
 
 For ordinary phone-camera images, including iPhone photographs, the generic
-lucky path starts with a deeper blind catalog limit, allows both pinhole and
-fisheye pre-flattening hypotheses, and later widens the radial grid. This is
-useful because phone images can have a less all-sky-like field geometry and
-often benefit from more candidate stars in the first blind stage. In both
-paths, the same rule is used after the first stage: weaker stars are only added
-after a seed exists, and they are checked against local asterisms and the RMS
+lucky path allows both pinhole and fisheye pre-flattening hypotheses and later
+widens the focal-scale/radial grid if no seed is accepted. These images often
+contain many detectable stars, but the first blind stage does not necessarily
+need very faint catalog stars. Recent \texttt{IMG\_4274} diagnostics showed
+that a magnitude limit near \(6\) is sufficient when the input star centers are
+the saved known-good centers: the blind matcher recovers a clean seed. The
+same image fails with the current automatic detections, even when detections
+are re-ranked by flux or refined with the KDE centroid. This indicates a
+detector/ranking/false-positive problem, not primarily a need to go deeper in
+catalog magnitude. In both all-sky and phone paths, weaker stars are only added
+after a seed exists, and they are checked against local geometry and the RMS
 guard before being trusted.
 
 For the Brown-Conrady model, the blind bootstrap assumes a locally flat field
@@ -567,6 +732,11 @@ still retaining as many true stellar peaks as possible. False detections can
 dominate the triangle search space and lead the blind matcher down incorrect
 hypotheses, while missed true stars remove the geometric redundancy needed to
 reject those hypotheses.
+The \texttt{IMG\_4274} asterism-settings report strengthens this conclusion.
+For that case, saved/manual star centers solve at \(m\lesssim6\), whereas the
+current automatic detector variants produce wrong or unknown blind seeds. This
+is exactly the failure mode expected when the first-stage candidate list is
+geometrically misleading.
 The pinhole scale search is one-dimensional: \(f_2\) is initialized from
 \(f_1\) and the image aspect ratio,
 \begin{equation}

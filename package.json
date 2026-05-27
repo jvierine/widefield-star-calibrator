@@ -1,5 +1,6 @@
 {
   "name": "wisc",
+  "version": "0.2.18",
   "license": "CC-BY-4.0",
   "scripts": {
     "test": "node --test tests/*.test.js",
@@ -17,6 +18,7 @@
     "report:img9970-astropy-altaz": "python3 tools/astropy_altaz_report.py --tracked --case IMG_9970 --write-report --out test-report/img9970-astropy-altaz",
     "report:close-projection": "node tools/close_projection_report.js",
     "report:star-detector-oracle": "node tools/star_detector_oracle_report.js",
+    "report:img4274-asterisms": "node tools/img4274_asterism_settings_report.js",
     "report:fisheye-lucky": "node tools/fisheye_lucky_report.js",
     "train:star-nn": "node tools/train_star_patch_nn.js",
     "metadata:generate": "node tools/generate_project_metadata_js.js",

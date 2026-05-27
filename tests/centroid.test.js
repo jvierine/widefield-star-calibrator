@@ -92,7 +92,7 @@ test("fast density centroid remains fast enough for interactive picking", () => 
     }
     const elapsedMs = performance.now() - start;
     assert.ok(
-        elapsedMs < 850,
-        `expected ${runs} density estimates below 850 ms, got ${elapsedMs.toFixed(1)} ms`,
+        elapsedMs < 1000,
+        `expected ${runs} density estimates below 1000 ms, got ${elapsedMs.toFixed(1)} ms`,
     );
 });

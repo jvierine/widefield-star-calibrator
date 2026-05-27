@@ -311,6 +311,12 @@ $$
 = \left[s_1, s_2, s_3\right]^T .
 $$
 
+Here $\mathbf{s}$ is the star direction in the camera coordinate frame, not in
+east/north/up coordinates. The components $s_1$ and $s_2$ are the two
+image-plane coordinates, and $s_3$ is the optical-axis/boresight coordinate.
+For a rectilinear camera, $s_1/s_3$ and $s_2/s_3$ are the normalized pinhole
+image coordinates.
+
 The final image coordinates are normalized coordinates multiplied by image
 size:
 
