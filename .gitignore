@@ -11,3 +11,9 @@ __pycache__/
 test-report/
 lucky-report/
 test_cases/report/
+
+# Raw Tycho-2 catalogue downloads are large; keep generated browser subsets.
+data/catalog.dat
+data/index.dat
+data/suppl_1.dat
+data/suppl_2.dat

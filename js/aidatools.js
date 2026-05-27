@@ -245,7 +245,7 @@
             }
             const azze = starAzZe(row[0], row[1], date, latDeg, lonDeg);
             if (Number.isFinite(azze.az) && Number.isFinite(azze.ze) && azze.ze * RAD < maxZenithDeg) {
-                out.push({raHours: row[0], decDeg: row[1], mag, name: row[3], az: azze.az, ze: azze.ze});
+                out.push({raHours: row[0], decDeg: row[1], mag, name: row[3], id: row[4], az: azze.az, ze: azze.ze});
             }
         }
         out.sort((a, b) => a.mag - b.mag);

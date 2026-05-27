@@ -1,0 +1,59 @@
+{
+  "sources": [
+    {
+      "source": "data/catalog.dat",
+      "rightAscensionColumn": 25,
+      "declinationColumn": 26,
+      "vtMagnitudeColumn": 20,
+      "inputRows": 2539913,
+      "acceptedRows": 41907,
+      "skippedRows": 2498006,
+      "duplicateRows": 0
+    },
+    {
+      "source": "data/suppl_1.dat",
+      "rightAscensionColumn": 3,
+      "declinationColumn": 4,
+      "vtMagnitudeColumn": 14,
+      "inputRows": 17588,
+      "acceptedRows": 163,
+      "skippedRows": 17425,
+      "duplicateRows": 0
+    },
+    {
+      "source": "data/suppl_2.dat",
+      "rightAscensionColumn": 3,
+      "declinationColumn": 4,
+      "vtMagnitudeColumn": 14,
+      "inputRows": 1146,
+      "acceptedRows": 2,
+      "skippedRows": 1144,
+      "duplicateRows": 0
+    }
+  ],
+  "output": "data/tycho2_mag8.bin.gz",
+  "selection": "merged Tycho-2 main catalogue plus supplement-1 and supplement-2, filtered to V_T < maxMagnitudeExclusive",
+  "format": {
+    "container": "gzip-compressed byte stream",
+    "payloadMagic": "WISCAT1\\0",
+    "byteOrder": "little-endian",
+    "integerEncoding": "unsigned 32-bit little-endian",
+    "floatEncoding": "IEEE-754 binary32 little-endian",
+    "headerBytes": 16,
+    "header": [
+      "bytes 0..7: ASCII magic WISCAT1\\0",
+      "bytes 8..11: uint32 star count",
+      "bytes 12..15: uint32 float stride, currently 3"
+    ],
+    "record": [
+      "float32 right ascension in hours, ICRS/J2000",
+      "float32 declination in degrees, ICRS/J2000",
+      "float32 Tycho V_T magnitude"
+    ]
+  },
+  "maxMagnitudeExclusive": 8,
+  "stars": 42072,
+  "uncompressedBytes": 504880,
+  "compressedBytes": 358610,
+  "generatedAtUtc": "2026-05-26T22:23:53.973Z"
+}

@@ -376,10 +376,10 @@ h2 {
 }
 
 .paired-marker {
-    border: 2px solid #33ff77;
+    border: 2px solid rgba(51, 255, 119, 0.62);
     border-radius: 50%;
     background: rgba(51, 255, 119, 0.08);
-    box-shadow: 0 0 5px rgba(51, 255, 119, 0.85);
+    box-shadow: 0 0 4px rgba(51, 255, 119, 0.45);
 }
 
 .mag-radius-2 {
@@ -428,8 +428,8 @@ h2 {
 }
 
 .match-pending {
-    border-color: #33ff77;
-    box-shadow: 0 0 5px rgba(51, 255, 119, 0.85);
+    border-color: rgba(51, 255, 119, 0.75);
+    box-shadow: 0 0 5px rgba(51, 255, 119, 0.55);
 }
 
 .centroid-preview-marker {
@@ -466,8 +466,8 @@ h2 {
 }
 
 .catalog-pairing-marker {
-    border-color: rgba(255, 60, 60, 0.95);
-    box-shadow: 0 0 5px rgba(255, 60, 60, 0.75);
+    border-color: rgba(255, 60, 60, 0.62);
+    box-shadow: 0 0 4px rgba(255, 60, 60, 0.42);
 }
 
 .catalog-pairing-label {

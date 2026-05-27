@@ -4,6 +4,7 @@
     const APP_VERSION = "v0.3.0";
     const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
     const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
+    const FITTING_CATALOG_NAME = "yale";
     const NOT_STAR_TILE_SIZE = 128;
     const MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION = 8 / 4032;
     const FISHEYE_AUTO_MIN_ELEVATION_DEG = 10;
@@ -62,6 +63,7 @@
         altM: document.getElementById("altM"),
         brightness: document.getElementById("brightness"),
         brightnessValue: document.getElementById("brightnessValue"),
+        starCatalog: document.getElementById("starCatalog"),
         contrast: document.getElementById("contrast"),
         contrastValue: document.getElementById("contrastValue"),
         highPassImage: document.getElementById("highPassImage"),
@@ -162,6 +164,11 @@
         lastJunkStarFinderPoint: null,
         detectedStars: [],
         currentImageMetadata: null,
+        catalogs: {
+            yale: window.AIDA_STAR_CATALOG || [],
+            tycho2: null,
+        },
+        catalogStatus: "Tycho-2 catalogue loading...",
         fisheyeDetection: null,
         showAutoDetectionMarkers: true,
         deletedDetectionIds: new Set(),
@@ -1936,12 +1943,167 @@ end
     }
 
     function catalogKey(star) {
+        if (star && star.id) {
+            return String(star.id);
+        }
         return `${star.name}|${star.raHours.toFixed(7)}|${star.decDeg.toFixed(7)}`;
+    }
+
+    function selectedCatalogName() {
+        return controls.starCatalog ? controls.starCatalog.value : "tycho2";
+    }
+
+    function activeStarCatalogName() {
+        const selected = selectedCatalogName();
+        if (selected === "tycho2" && Array.isArray(state.catalogs.tycho2)) {
+            return "tycho2";
+        }
+        return "yale";
+    }
+
+    function activeStarCatalog() {
+        return state.catalogs[activeStarCatalogName()] || state.catalogs.yale || [];
+    }
+
+    function fittingStarCatalogName() {
+        return FITTING_CATALOG_NAME;
+    }
+
+    function catalogRowsForName(name) {
+        if (name === "tycho2" && Array.isArray(state.catalogs.tycho2)) {
+            return state.catalogs.tycho2;
+        }
+        return state.catalogs.yale || [];
+    }
+
+    const GREEK_STAR_LABELS = new Map([
+        ["alpha", "α"], ["beta", "β"], ["gamma", "γ"], ["delta", "δ"],
+        ["epsilon", "ε"], ["epsilo", "ε"], ["zeta", "ζ"], ["eta", "η"],
+        ["theta", "θ"], ["iota", "ι"], ["kappa", "κ"], ["lambda", "λ"],
+        ["mu", "μ"], ["nu", "ν"], ["xi", "ξ"], ["omicron", "ο"],
+        ["pi", "π"], ["rho", "ρ"], ["sigma", "σ"], ["tau", "τ"],
+        ["upsilon", "υ"], ["phi", "φ"], ["chi", "χ"], ["psi", "ψ"],
+        ["omega", "ω"],
+    ]);
+
+    const UNICODE_SUBSCRIPT_DIGITS = new Map([
+        ["0", "₀"], ["1", "₁"], ["2", "₂"], ["3", "₃"], ["4", "₄"],
+        ["5", "₅"], ["6", "₆"], ["7", "₇"], ["8", "₈"], ["9", "₉"],
+    ]);
+
+    function unicodeSubscriptDigits(text) {
+        return String(text || "").replace(/\d/g, digit => UNICODE_SUBSCRIPT_DIGITS.get(digit) || digit);
+    }
+
+    function compactStarDisplayName(name) {
+        return String(name || "").trim().replace(
+            /\b(Alpha|Beta|Gamma|Delta|Epsilon|Epsilo|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|Xi|Omicron|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)(\d*)-?(\d*)\b/g,
+            (match, greek, componentSuffix, catalogueSuffix) => {
+                const symbol = GREEK_STAR_LABELS.get(greek.toLowerCase());
+                if (!symbol) {
+                    return match;
+                }
+                return `${symbol}${unicodeSubscriptDigits(`${componentSuffix || ""}${catalogueSuffix || ""}`)}`;
+            }
+        );
+    }
+
+    function angularDistanceDegBetweenRaDec(raHoursA, decDegA, raHoursB, decDegB) {
+        const raA = raHoursA * 15 * AidaTools.DEG;
+        const raB = raHoursB * 15 * AidaTools.DEG;
+        const decA = decDegA * AidaTools.DEG;
+        const decB = decDegB * AidaTools.DEG;
+        const dot = Math.sin(decA) * Math.sin(decB) +
+            Math.cos(decA) * Math.cos(decB) * Math.cos(raA - raB);
+        return Math.acos(Math.max(-1, Math.min(1, dot))) * AidaTools.RAD;
+    }
+
+    function annotateTycho2StarNames(rows) {
+        const yaleNames = (state.catalogs.yale || [])
+            .filter(row => row[3] && row[2] <= 4.0)
+            .map(row => ({
+                raHours: row[0],
+                decDeg: row[1],
+                mag: row[2],
+                name: row[3],
+            }));
+        for (const row of rows) {
+            if (row[2] > 4.0) {
+                row[3] = "";
+                continue;
+            }
+            let best = null;
+            for (const yale of yaleNames) {
+                if (Math.abs(row[1] - yale.decDeg) > 0.12) {
+                    continue;
+                }
+                const draDeg = Math.abs(wrapDegrees180((row[0] - yale.raHours) * 15));
+                if (draDeg > 0.18) {
+                    continue;
+                }
+                const distanceDeg = angularDistanceDegBetweenRaDec(row[0], row[1], yale.raHours, yale.decDeg);
+                if (!best || distanceDeg < best.distanceDeg) {
+                    best = {...yale, distanceDeg};
+                }
+            }
+            row[3] = best && best.distanceDeg <= 0.08 ? best.name : "";
+        }
+        return rows;
+    }
+
+    async function loadTycho2Catalog() {
+        if (!window.WiscCatalogs || typeof window.WiscCatalogs.loadWiscatFloat32Catalog !== "function") {
+            state.catalogStatus = "Tycho-2 catalogue unavailable: catalogue loader missing";
+            return;
+        }
+        try {
+            const rows = await window.WiscCatalogs.loadWiscatFloat32Catalog(
+                "data/tycho2_mag8.bin.gz?v=20260527-merged-j2000",
+                {cache: "no-cache"},
+            );
+            state.catalogs.tycho2 = annotateTycho2StarNames(rows);
+            state.catalogStatus = `Tycho-2 catalogue: ${rows.length} stars with VT < 8 loaded`;
+            if (controls.starCatalog && controls.starCatalog.value === "tycho2") {
+                state.pendingMatch = null;
+                updateProjection();
+                render();
+            }
+        } catch (error) {
+            state.catalogStatus = `Tycho-2 catalogue unavailable (${error.message || error}); using Yale`;
+            if (controls.starCatalog && controls.starCatalog.value === "tycho2") {
+                updateProjection();
+                render();
+            }
+        }
     }
 
     function isMatchedCatalogStar(star) {
         const key = catalogKey(star);
-        return state.matches.some(match => match.catalog.key === key);
+        return state.matches.some(match => {
+            if (match.catalog.key === key) {
+                return true;
+            }
+            return catalogStarsReferToSameSkyPosition(star, match.catalog);
+        });
+    }
+
+    function matchingCatalogIndex(star) {
+        const key = catalogKey(star);
+        return state.matches.findIndex(match => {
+            if (match.catalog.key === key) {
+                return true;
+            }
+            return catalogStarsReferToSameSkyPosition(star, match.catalog);
+        });
+    }
+
+    function catalogStarsReferToSameSkyPosition(a, b) {
+        if (!a || !b ||
+                !Number.isFinite(a.raHours) || !Number.isFinite(a.decDeg) ||
+                !Number.isFinite(b.raHours) || !Number.isFinite(b.decDeg)) {
+            return false;
+        }
+        return angularDistanceDegBetweenRaDec(a.raHours, a.decDeg, b.raHours, b.decDeg) <= 0.03;
     }
 
     function fittingMatches() {
@@ -1958,7 +2120,7 @@ end
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
-        const stars = AidaTools.visibleStars(window.AIDA_STAR_CATALOG, date, lat, lon, 7, 88);
+        const stars = AidaTools.visibleStars(activeStarCatalog(), date, lat, lon, 7, 88);
         const optpar = currentOptpar();
         const optmod = Number(controls.optmod.value);
         state.projected = [];
@@ -2014,8 +2176,12 @@ end
         }
     }
 
-    function projectedStarsForAutoIdentification() {
-        return state.projected.map(star => {
+    function projectedStarsForAutoIdentification(options = {}) {
+        const catalogName = options.catalogName || fittingStarCatalogName();
+        const projectedStars = catalogName === activeStarCatalogName() ?
+            state.projected :
+            projectCatalogForMatching(catalogName, Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 7);
+        return projectedStars.map(star => {
             const [rawX, rawY] = rawImagePixelFromModelImagePixel(star.x, star.y);
             return {
                 ...star,
@@ -2026,14 +2192,42 @@ end
         });
     }
 
+    function projectCatalogForMatching(catalogName, maxMagnitude = 7) {
+        if (!state.image) {
+            return [];
+        }
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value);
+        const rows = catalogRowsForName(catalogName);
+        return AidaTools.visibleStars(rows, date, lat, lon, maxMagnitude, 88)
+            .map(star => {
+                const xy = AidaTools.cameraModel(
+                    star.az,
+                    star.ze,
+                    optpar,
+                    optmod,
+                    state.image.width,
+                    state.image.height,
+                );
+                return Number.isFinite(xy.x) && Number.isFinite(xy.y) ?
+                    {...star, x: xy.x, y: xy.y, key: catalogKey(star)} :
+                    null;
+            })
+            .filter(Boolean);
+    }
+
     function visibleStarsForMatching(maxMag, options = {}) {
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
+        const catalogName = options.catalogName || options.matchingCatalogName || fittingStarCatalogName();
         const maxZenithDeg = Number.isFinite(options.maxZenithDeg) ?
             options.maxZenithDeg :
             Number.isFinite(options.catalogMaxZenithDeg) ? options.catalogMaxZenithDeg : 88;
-        return AidaTools.visibleStars(window.AIDA_STAR_CATALOG, date, lat, lon, maxMag, maxZenithDeg)
+        return AidaTools.visibleStars(catalogRowsForName(catalogName), date, lat, lon, maxMag, maxZenithDeg)
             .map(star => ({...star, key: catalogKey(star)}));
     }
 
@@ -3200,7 +3394,7 @@ end
         for (const star of visibleCatalogStars()) {
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
             const label = star.name && star.name.trim()
-                ? star.name.trim()
+                ? compactStarDisplayName(star.name)
                 : `mag ${star.mag.toFixed(1)}`;
             addOverlayLabel(label, [x + offset, y - offset], "star-name-label");
         }
@@ -3226,7 +3420,7 @@ end
             addOverlayCircle([x, y], `catalog-pairing-marker ${starMagnitudeClass(star.mag)}`);
             if (state.showStarNames) {
                 const label = star.name && star.name.trim()
-                    ? star.name.trim()
+                    ? compactStarDisplayName(star.name)
                     : `mag ${star.mag.toFixed(1)}`;
                 addOverlayLabel(label, [x + offset, y - offset], "catalog-pairing-label");
             }
@@ -3240,7 +3434,7 @@ end
         const labelOffset = 16 * (window.devicePixelRatio || 1);
         for (const match of state.matches) {
             const matchLabel = match.catalog.name && match.catalog.name.trim()
-                ? match.catalog.name.trim()
+                ? compactStarDisplayName(match.catalog.name)
                 : `mag ${match.catalog.mag.toFixed(1)}`;
             const markerClass = `paired-marker ${starMagnitudeClass(match.catalog.mag)}`;
             if (state.showPickedMatchMarkers) {
@@ -3466,6 +3660,7 @@ end
             `site: lat ${controls.latDeg.value} deg, lon ${controls.lonDeg.value} deg, alt ${controls.altM.value} m\n` +
             `optpar: [${optparWithModel}]\n` +
             `image high-pass: ${controls.highPassImage.checked ? `${controls.highPassWidth.value} px Gaussian` : "off"}\n` +
+            `star catalogue: ${activeStarCatalogName()} (${state.catalogStatus})\n` +
             `catalog stars <= mag ${controls.maxMag.value}: ` +
             `${state.projected.filter(star => star.mag <= Number(controls.maxMag.value)).length}\n` +
             `f1/f2: ${optpar[0].toFixed(6)}, ${optpar[1].toFixed(6)}\n` +
@@ -4142,6 +4337,9 @@ end
         zoomContext.lineTo(64, 50);
         zoomContext.stroke();
         drawKdeContoursOnZoom(point, size, half);
+        drawCatalogStarPositionsOnZoom(point, size, half);
+        drawPairedStarPositionsOnZoom(point, size, half);
+        drawDetectedStarCentersOnZoom(point, size, half);
 
         const panelRect = canvas.parentElement.getBoundingClientRect();
         const cssX = event.clientX - panelRect.left;
@@ -4158,6 +4356,95 @@ end
         zoomCanvas.style.left = `${Math.max(8, left)}px`;
         zoomCanvas.style.top = `${Math.max(8, top)}px`;
         zoomCanvas.classList.add("visible");
+    }
+
+    function zoomPatchPoint(rawX, rawY, point, size, half, pad = 12) {
+        const x = rawX - point.x + half;
+        const y = rawY - point.y + half;
+        return x >= -pad && x <= size + pad && y >= -pad && y <= size + pad ? {x, y} : null;
+    }
+
+    function drawZoomCross(x, y, color, radius = 7, lineWidth = 1.5) {
+        zoomContext.save();
+        zoomContext.strokeStyle = color;
+        zoomContext.lineWidth = lineWidth;
+        zoomContext.shadowColor = color;
+        zoomContext.shadowBlur = 3;
+        zoomContext.beginPath();
+        zoomContext.moveTo(x - radius, y);
+        zoomContext.lineTo(x + radius, y);
+        zoomContext.moveTo(x, y - radius);
+        zoomContext.lineTo(x, y + radius);
+        zoomContext.stroke();
+        zoomContext.restore();
+    }
+
+    function drawZoomDot(x, y, fill = "rgba(0, 0, 0, 0.95)", radius = 1.4) {
+        zoomContext.save();
+        zoomContext.fillStyle = fill;
+        zoomContext.beginPath();
+        zoomContext.arc(x, y, radius, 0, 2 * Math.PI);
+        zoomContext.fill();
+        zoomContext.restore();
+    }
+
+    function drawDetectedStarCentersOnZoom(point, size, half) {
+        for (const detection of activeDetectedStars()) {
+            const p = zoomPatchPoint(detection.x, detection.y, point, size, half, 5);
+            if (p) {
+                drawZoomDot(p.x, p.y);
+            }
+        }
+    }
+
+    function drawCatalogStarPositionsOnZoom(point, size, half) {
+        const maxMag = Number(controls.maxMag.value) || 4;
+        for (const star of state.projected) {
+            if (star.mag > maxMag || isMatchedCatalogStar(star)) {
+                continue;
+            }
+            const [rawX, rawY] = rawImagePixelFromModelImagePixel(star.x, star.y);
+            const p = zoomPatchPoint(rawX, rawY, point, size, half, 5);
+            if (p) {
+                drawZoomCross(p.x, p.y, "rgba(255, 60, 60, 0.72)", 4, 1);
+            }
+        }
+    }
+
+    function pairedCatalogRawPoint(match) {
+        if (!state.image || !match || !match.catalog) {
+            return null;
+        }
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const optmod = Number(controls.optmod.value);
+        const optpar = currentOptpar();
+        const azze = AidaTools.radecToAzZe(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
+        const xy = AidaTools.cameraModel(azze.az, azze.ze, optpar, optmod, state.image.width, state.image.height);
+        if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
+            return null;
+        }
+        const [rawX, rawY] = rawImagePixelFromModelImagePixel(xy.x, xy.y);
+        return {x: rawX, y: rawY};
+    }
+
+    function drawPairedStarPositionsOnZoom(point, size, half) {
+        for (const match of state.matches) {
+            if (match.image) {
+                const imagePoint = zoomPatchPoint(match.image.x, match.image.y, point, size, half, 10);
+                if (imagePoint) {
+                    drawZoomDot(imagePoint.x, imagePoint.y, "rgba(0, 0, 0, 0.98)", 1.5);
+                }
+            }
+            const catalogPoint = pairedCatalogRawPoint(match);
+            if (catalogPoint) {
+                const p = zoomPatchPoint(catalogPoint.x, catalogPoint.y, point, size, half, 10);
+                if (p) {
+                    drawZoomCross(p.x, p.y, "rgba(34, 255, 102, 0.98)", 6, 1.4);
+                }
+            }
+        }
     }
 
     function drawKdeContoursOnZoom(point, size, half) {
@@ -4792,9 +5079,9 @@ end
         return {x: result.x, y: result.y, sigma: result.sigma, method: result.method};
     }
 
-    function nearestProjectedStar(event) {
+    function nearestProjectedStar(event, options = {}) {
         const [cx, cy] = eventToCanvasPixel(event);
-        return nearestProjectedStarFromCanvasPixel(cx, cy);
+        return nearestProjectedStarFromCanvasPixel(cx, cy, options);
     }
 
     function isMatchedDetection(detection) {
@@ -4825,13 +5112,14 @@ end
         return best && bestD2 <= maxDist * maxDist ? {...best, distancePx: Math.sqrt(bestD2)} : null;
     }
 
-    function nearestProjectedStarFromCanvasPixel(cx, cy) {
+    function nearestProjectedStarFromCanvasPixel(cx, cy, options = {}) {
         const maxMag = Number(controls.maxMag.value) || 4;
         const margin = 20 * (window.devicePixelRatio || 1);
+        const includeMatched = options.includeMatched === true;
         let best = null;
         let bestD2 = Infinity;
         for (const star of state.projected) {
-            if (star.mag > maxMag || isMatchedCatalogStar(star)) {
+            if (star.mag > maxMag || (!includeMatched && isMatchedCatalogStar(star))) {
                 continue;
             }
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
@@ -4930,17 +5218,19 @@ end
     }
 
     function handleCatalogPairClick(event) {
-        const star = nearestProjectedStar(event);
+        const star = nearestProjectedStar(event, {includeMatched: true});
         if (!star) {
             state.fitMessage = "star match: click the matching red catalog star";
             render();
             return;
         }
-        state.matches.push({
-            id: state.matches.length + 1,
-            image: state.pendingMatch.image,
-            detectionId: null,
-            catalog: {
+        const existingIndex = matchingCatalogIndex(star);
+        if (existingIndex >= 0) {
+            const match = state.matches[existingIndex];
+            match.image = state.pendingMatch.image;
+            match.detectionId = null;
+            match.detectionGeneration = null;
+            match.catalog = {
                 key: catalogKey(star),
                 raHours: star.raHours,
                 decDeg: star.decDeg,
@@ -4948,9 +5238,28 @@ end
                 name: star.name,
                 az: star.az,
                 ze: star.ze,
-            },
-        });
+            };
+            state.fitMessage = `updated paired star ${match.id}: ${match.catalog.name || match.catalog.key || "(unnamed)"}`;
+        } else {
+            state.matches.push({
+                id: state.matches.length + 1,
+                image: state.pendingMatch.image,
+                detectionId: null,
+                catalog: {
+                    key: catalogKey(star),
+                    raHours: star.raHours,
+                    decDeg: star.decDeg,
+                    mag: star.mag,
+                    name: star.name,
+                    az: star.az,
+                    ze: star.ze,
+                },
+            });
+            state.fitMessage = `paired star ${state.matches.length}: ${star.name || catalogKey(star)}`;
+        }
         state.pendingMatch = null;
+        state.lastFitVector = null;
+        updateAutoMatches();
         clearDensityEstimate();
         state.showPickedMatchMarkers = true;
         playPairingRewardSound();
@@ -8594,7 +8903,7 @@ end
     for (const el of document.querySelectorAll(".controls input, .controls select")) {
         if (el !== controls.file &&
                 el !== controls.highPassImage && el !== controls.highPassWidth &&
-                el !== controls.maxMag && el !== controls.optmod &&
+                el !== controls.maxMag && el !== controls.optmod && el !== controls.starCatalog &&
                 el !== controls.exportLanguage) {
             el.addEventListener("input", () => {
                 syncModelOptparFromControls();
@@ -8604,6 +8913,14 @@ end
     }
     controls.highPassImage.addEventListener("change", refreshDisplayImage);
     controls.highPassWidth.addEventListener("input", refreshDisplayImage);
+    if (controls.starCatalog) {
+        controls.starCatalog.addEventListener("change", () => {
+            state.pendingMatch = null;
+            state.automaticMatchingStatus = `star catalogue switched to ${activeStarCatalogName()}`;
+            playInteractionSound("mode");
+            recomputeAndRender();
+        });
+    }
     controls.maxMag.addEventListener("input", () => {
         if (Object.prototype.hasOwnProperty.call(state.maxMagByMode, state.displayMode)) {
             state.maxMagByMode[state.displayMode] = Number(controls.maxMag.value) || 4.0;
@@ -9068,6 +9385,7 @@ end
         }
         initializeApp.done = true;
         state.lastLensEquation = "";
+        loadTycho2Catalog();
         updateLensEquation(currentOptpar(), Number(controls.optmod.value));
         refreshTestCaseList();
         if (!state.image) {
