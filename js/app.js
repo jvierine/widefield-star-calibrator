@@ -972,11 +972,15 @@
     }
 
     function projectRotationPoint(point, scale, centerX, centerY) {
-        const distance = 3.4;
-        const z = point[2] + distance;
+        const east = point[0];
+        const north = point[1];
+        const up = point[2];
+        const oblique = 0.38;
+        const groundDrop = -0.23;
+        const displayScale = 0.35 * scale;
         return [
-            centerX + point[0] / z * scale,
-            centerY - point[1] / z * scale,
+            centerX + (east + oblique * north) * displayScale,
+            centerY + (groundDrop * north - up) * displayScale,
         ];
     }
 
@@ -989,6 +993,38 @@
         ctx.moveTo(pa[0], pa[1]);
         ctx.lineTo(pb[0], pb[1]);
         ctx.stroke();
+        return pb;
+    }
+
+    function drawRotationArrow(ctx, a, b, color, width, scale, centerX, centerY, arrowSize) {
+        const pa = projectRotationPoint(a, scale, centerX, centerY);
+        const pb = projectRotationPoint(b, scale, centerX, centerY);
+        const dx = pb[0] - pa[0];
+        const dy = pb[1] - pa[1];
+        const len = Math.hypot(dx, dy);
+        if (len <= 1e-6) {
+            return pb;
+        }
+        const ux = dx / len;
+        const uy = dy / len;
+        const px = -uy;
+        const py = ux;
+        const head = Math.max(4, arrowSize);
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(pa[0], pa[1]);
+        ctx.lineTo(pb[0], pb[1]);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(pb[0], pb[1]);
+        ctx.lineTo(pb[0] - ux * head + px * head * 0.45, pb[1] - uy * head + py * head * 0.45);
+        ctx.lineTo(pb[0] - ux * head - px * head * 0.45, pb[1] - uy * head - py * head * 0.45);
+        ctx.closePath();
+        ctx.fill();
+        ctx.lineCap = "butt";
         return pb;
     }
 
@@ -1012,18 +1048,45 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, w, h);
         const cx = w * 0.5;
-        const cy = h * 0.56;
+        const cy = h * 0.67;
         const scale = Math.min(w, h) * 2.25;
-        const rot = AidaTools.cameraRot(
-            Number(controls.rotAlpha.value) || 0,
-            Number(controls.rotBeta.value) || 0,
-            Number(controls.rotGamma.value) || 0
-        );
+        const alphaDeg = Number(controls.rotAlpha.value) || 0;
+        const betaDeg = Number(controls.rotBeta.value) || 0;
+        const gammaDeg = Number(controls.rotGamma.value) || 0;
+        const rot = AidaTools.cameraRot(alphaDeg, betaDeg, gammaDeg);
         const transform = p => [
             p[0] * rot[0] + p[1] * rot[1] + p[2] * rot[2],
             p[0] * rot[3] + p[1] * rot[4] + p[2] * rot[5],
             p[0] * rot[6] + p[1] * rot[7] + p[2] * rot[8],
         ];
+        const groundCorners = [
+            [-0.72, -0.72, 0],
+            [0.72, -0.72, 0],
+            [0.72, 0.72, 0],
+            [-0.72, 0.72, 0],
+        ].map(p => projectRotationPoint(p, scale, cx, cy));
+        ctx.fillStyle = "rgba(148, 163, 184, 0.12)";
+        ctx.strokeStyle = "rgba(100, 116, 139, 0.24)";
+        ctx.lineWidth = 1 * dpr;
+        ctx.beginPath();
+        ctx.moveTo(groundCorners[0][0], groundCorners[0][1]);
+        for (let i = 1; i < groundCorners.length; i++) {
+            ctx.lineTo(groundCorners[i][0], groundCorners[i][1]);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        const localAxes = [
+            {label: "E", color: "rgba(220, 38, 38, 0.52)", end: [0.55, 0, 0]},
+            {label: "N", color: "rgba(22, 163, 74, 0.52)", end: [0, 0.55, 0]},
+            {label: "U", color: "rgba(37, 99, 235, 0.52)", end: [0, 0, 0.62]},
+        ];
+        for (const axis of localAxes) {
+            const end = drawRotationArrow(ctx, [0, 0, 0], axis.end, axis.color, 1.2 * dpr, scale, cx, cy, 5 * dpr);
+            ctx.fillStyle = axis.color;
+            ctx.font = `${10 * dpr}px ui-monospace, Menlo, Consolas, monospace`;
+            ctx.fillText(axis.label, end[0] + 3 * dpr, end[1] - 3 * dpr);
+        }
         const bodyPoints = [
             [-0.46, -0.32, 0],
             [0.46, -0.32, 0],
@@ -1054,6 +1117,20 @@
         ctx.beginPath();
         ctx.arc(nose[0], nose[1], 3.5 * dpr, 0, Math.PI * 2);
         ctx.fill();
+        const zAxisTip = drawRotationArrow(
+            ctx,
+            transform([0, 0, 0.12]),
+            transform([0, 0, 0.92]),
+            "#f59e0b",
+            2.6 * dpr,
+            scale,
+            cx,
+            cy,
+            8 * dpr
+        );
+        ctx.fillStyle = "#b45309";
+        ctx.font = `${11 * dpr}px ui-monospace, Menlo, Consolas, monospace`;
+        ctx.fillText("z", zAxisTip[0] + 4 * dpr, zAxisTip[1] - 4 * dpr);
         ctx.fillStyle = "rgba(15, 23, 42, 0.45)";
         ctx.beginPath();
         ctx.ellipse(center[0], center[1] + 0.34 * scale / 3.4, 0.20 * scale / 3.4, 0.06 * scale / 3.4, 0, 0, Math.PI * 2);
@@ -1061,7 +1138,6 @@
         const axes = [
             {label: "x", color: "#dc2626", end: transform([0.82, 0, 0])},
             {label: "y", color: "#16a34a", end: transform([0, 0.82, 0])},
-            {label: "z", color: "#2563eb", end: transform([0, 0, 0.95])},
         ];
         for (const axis of axes) {
             const end = drawRotationLine(ctx, transform([0, 0, 0]), axis.end, axis.color, 2.4 * dpr, scale, cx, cy);
@@ -1069,13 +1145,11 @@
             ctx.font = `${11 * dpr}px ui-monospace, Menlo, Consolas, monospace`;
             ctx.fillText(axis.label, end[0] + 4 * dpr, end[1] - 4 * dpr);
         }
-        ctx.fillStyle = "#475569";
-        ctx.font = `${10 * dpr}px system-ui, sans-serif`;
-        ctx.fillText(
-            `alpha ${Number(controls.rotAlpha.value || 0).toFixed(1)}  beta ${Number(controls.rotBeta.value || 0).toFixed(1)}  gamma ${Number(controls.rotGamma.value || 0).toFixed(1)}`,
-            8 * dpr,
-            h - 9 * dpr
-        );
+        const boresight = boresightAzElFromCameraAngles(alphaDeg, betaDeg);
+        ctx.font = `${10 * dpr}px ui-monospace, Menlo, Consolas, monospace`;
+        ctx.fillStyle = "#334155";
+        ctx.fillText(`az ${boresight.az.toFixed(1)}°  el ${boresight.el.toFixed(1)}°`, 8 * dpr, 18 * dpr);
+        ctx.fillText(`α ${alphaDeg.toFixed(1)}°  β ${betaDeg.toFixed(1)}°  γ ${gammaDeg.toFixed(1)}°`, 8 * dpr, h - 9 * dpr);
     }
 
     function pythonFloat(value) {
