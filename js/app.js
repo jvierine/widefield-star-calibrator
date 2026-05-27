@@ -4414,7 +4414,6 @@ end
         drawKdeContoursOnZoom(point, size, half);
         drawCatalogStarPositionsOnZoom(point, size, half);
         drawPairedStarPositionsOnZoom(point, size, half);
-        drawDetectedStarCentersOnZoom(point, size, half);
 
         const panelRect = canvas.parentElement.getBoundingClientRect();
         const cssX = event.clientX - panelRect.left;
@@ -4431,6 +4430,7 @@ end
         zoomCanvas.style.left = `${Math.max(8, left)}px`;
         zoomCanvas.style.top = `${Math.max(8, top)}px`;
         zoomCanvas.classList.add("visible");
+        drawDetectedStarCentersOnZoom(point, size, half);
     }
 
     function zoomPatchPoint(rawX, rawY, point, size, half, pad = 12) {
