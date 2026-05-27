@@ -299,9 +299,83 @@
         }
     `);
 
+    const markerProgram = program(`
+        attribute vec2 a_pixel;
+        attribute float a_size;
+        attribute float a_type;
+        attribute vec4 a_color;
+        uniform vec2 u_canvas_size;
+        varying vec4 v_color;
+        varying float v_type;
+        varying float v_size;
+        void main() {
+            vec2 clip = vec2(
+                (a_pixel.x / u_canvas_size.x) * 2.0 - 1.0,
+                1.0 - (a_pixel.y / u_canvas_size.y) * 2.0
+            );
+            gl_Position = vec4(clip, 0.0, 1.0);
+            gl_PointSize = max(1.0, a_size);
+            v_color = a_color;
+            v_type = a_type;
+            v_size = a_size;
+        }
+    `, `
+        precision mediump float;
+        varying vec4 v_color;
+        varying float v_type;
+        varying float v_size;
+        void main() {
+            vec2 p = gl_PointCoord - vec2(0.5);
+            float r = length(p);
+            float alpha = 0.0;
+            if (v_type < 0.5) {
+                float lineWidth = clamp(2.0 / max(v_size, 1.0), 0.055, 0.18);
+                alpha = smoothstep(lineWidth, 0.0, abs(r - 0.42));
+            } else if (v_type < 1.5) {
+                alpha = smoothstep(0.50, 0.42, r);
+            } else {
+                float arm = max(0.055, 1.6 / max(v_size, 1.0));
+                float span = 0.42;
+                float cross = min(abs(p.x), abs(p.y));
+                float extent = max(abs(p.x), abs(p.y));
+                alpha = smoothstep(arm, 0.0, cross) * smoothstep(span, span - 0.055, extent);
+            }
+            if (alpha <= 0.01) discard;
+            gl_FragColor = vec4(v_color.rgb, v_color.a * alpha);
+        }
+    `);
+
+    const labelProgram = program(`
+        attribute vec2 a_pos;
+        attribute vec2 a_tex;
+        varying vec2 v_tex;
+        void main() {
+            gl_Position = vec4(a_pos, 0.0, 1.0);
+            v_tex = a_tex;
+        }
+    `, `
+        precision mediump float;
+        uniform sampler2D u_label;
+        varying vec2 v_tex;
+        void main() {
+            vec4 color = texture2D(u_label, v_tex);
+            if (color.a <= 0.01) discard;
+            gl_FragColor = color;
+        }
+    `);
+
     const quadBuffer = gl.createBuffer();
     const pointBuffer = gl.createBuffer();
     const lineBuffer = gl.createBuffer();
+    const markerBuffer = gl.createBuffer();
+    const labelBuffer = gl.createBuffer();
+    const labelTexture = gl.createTexture();
+    const labelCanvas = document.createElement("canvas");
+    const labelContext = labelCanvas.getContext("2d");
+    const annotationQueue = {
+        markers: [],
+        labels: [],
+    };
 
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
@@ -476,6 +550,92 @@
         el.style.left = `${left}px`;
         el.style.top = `${top}px`;
         cardinalLayer.appendChild(el);
+        return true;
+    }
+
+    function resetWebglAnnotations() {
+        annotationQueue.markers.length = 0;
+        annotationQueue.labels.length = 0;
+    }
+
+    function markerSizeForMagnitude(mag) {
+        const dpr = window.devicePixelRatio || 1;
+        if (mag <= 2) {
+            return 12 * dpr;
+        }
+        if (mag <= 4) {
+            return 8 * dpr;
+        }
+        return 4 * dpr;
+    }
+
+    function markerColor(name, alpha = 1) {
+        if (name === "green") return [0.20, 1.0, 0.47, alpha];
+        if (name === "red") return [1.0, 0.24, 0.24, alpha];
+        if (name === "yellow") return [1.0, 0.86, 0.27, alpha];
+        if (name === "cyan") return [0.37, 0.92, 0.83, alpha];
+        if (name === "teal") return [0.0, 1.0, 0.70, alpha];
+        if (name === "black") return [0.0, 0.0, 0.0, alpha];
+        if (name === "white") return [1.0, 1.0, 1.0, alpha];
+        return [1.0, 1.0, 1.0, alpha];
+    }
+
+    function queueMarker(backingPixel, options = {}) {
+        if (!Array.isArray(backingPixel)) {
+            return false;
+        }
+        const x = Number(backingPixel[0]);
+        const y = Number(backingPixel[1]);
+        const size = Number(options.size) || 10;
+        const pad = Math.max(size, 24);
+        if (!Number.isFinite(x) || !Number.isFinite(y) ||
+                x < -pad || x > canvas.width + pad || y < -pad || y > canvas.height + pad) {
+            return false;
+        }
+        const type = options.type === "dot" ? 1 : options.type === "cross" ? 2 : 0;
+        const color = Array.isArray(options.color) ? options.color : markerColor(options.colorName || "white", options.alpha);
+        annotationQueue.markers.push(x, y, size, type, color[0], color[1], color[2], color[3]);
+        return true;
+    }
+
+    function labelStyleForClass(className = "") {
+        if (className.includes("catalog-pairing")) {
+            return {
+                border: "rgba(255, 60, 60, 0.85)",
+                background: "rgba(40, 0, 0, 0.68)",
+                color: "#ffb3ad",
+            };
+        }
+        if (className.includes("match")) {
+            return {
+                border: "rgba(51, 255, 119, 0.65)",
+                background: "rgba(0, 28, 12, 0.72)",
+                color: "#74ff9a",
+            };
+        }
+        return {
+            border: "rgba(145, 190, 255, 0.42)",
+            background: "rgba(0, 8, 24, 0.62)",
+            color: "#d8e8ff",
+        };
+    }
+
+    function queueStarLabel(text, backingPixel, className = "") {
+        if (!text || !Array.isArray(backingPixel)) {
+            return false;
+        }
+        const x = Number(backingPixel[0]);
+        const y = Number(backingPixel[1]);
+        if (!Number.isFinite(x) || !Number.isFinite(y) ||
+                x < -80 || x > canvas.width + 80 || y < -40 || y > canvas.height + 40) {
+            return false;
+        }
+        annotationQueue.labels.push({
+            text: String(text),
+            x,
+            y,
+            style: labelStyleForClass(className),
+        });
         return true;
     }
 
@@ -2975,6 +3135,116 @@ end
         gl.disable(gl.BLEND);
     }
 
+    function drawQueuedMarkers() {
+        if (annotationQueue.markers.length === 0) {
+            return;
+        }
+        const data = new Float32Array(annotationQueue.markers);
+        gl.useProgram(markerProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, markerBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+        const stride = 8 * 4;
+        const aPixel = gl.getAttribLocation(markerProgram, "a_pixel");
+        const aSize = gl.getAttribLocation(markerProgram, "a_size");
+        const aType = gl.getAttribLocation(markerProgram, "a_type");
+        const aColor = gl.getAttribLocation(markerProgram, "a_color");
+        gl.enableVertexAttribArray(aPixel);
+        gl.enableVertexAttribArray(aSize);
+        gl.enableVertexAttribArray(aType);
+        gl.enableVertexAttribArray(aColor);
+        gl.vertexAttribPointer(aPixel, 2, gl.FLOAT, false, stride, 0);
+        gl.vertexAttribPointer(aSize, 1, gl.FLOAT, false, stride, 8);
+        gl.vertexAttribPointer(aType, 1, gl.FLOAT, false, stride, 12);
+        gl.vertexAttribPointer(aColor, 4, gl.FLOAT, false, stride, 16);
+        gl.uniform2f(gl.getUniformLocation(markerProgram, "u_canvas_size"), canvas.width, canvas.height);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArrays(gl.POINTS, 0, data.length / 8);
+        gl.disable(gl.BLEND);
+    }
+
+    function roundedRectPath(ctx, x, y, w, h, r) {
+        const rr = Math.min(r, w / 2, h / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + rr, y);
+        ctx.lineTo(x + w - rr, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+        ctx.lineTo(x + w, y + h - rr);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+        ctx.lineTo(x + rr, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+        ctx.lineTo(x, y + rr);
+        ctx.quadraticCurveTo(x, y, x + rr, y);
+        ctx.closePath();
+    }
+
+    function drawQueuedLabels() {
+        if (!labelContext || annotationQueue.labels.length === 0) {
+            return;
+        }
+        if (labelCanvas.width !== canvas.width || labelCanvas.height !== canvas.height) {
+            labelCanvas.width = canvas.width;
+            labelCanvas.height = canvas.height;
+        }
+        const ctx = labelContext;
+        ctx.clearRect(0, 0, labelCanvas.width, labelCanvas.height);
+        const dpr = window.devicePixelRatio || 1;
+        ctx.font = `${Math.round(11 * dpr)}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+        ctx.textBaseline = "middle";
+        ctx.lineWidth = Math.max(1, dpr);
+        for (const label of annotationQueue.labels) {
+            const padX = 5 * dpr;
+            const padY = 2.5 * dpr;
+            const textWidth = ctx.measureText(label.text).width;
+            const boxW = textWidth + 2 * padX;
+            const boxH = 18 * dpr;
+            const x = label.x;
+            const y = label.y - boxH / 2;
+            roundedRectPath(ctx, x, y, boxW, boxH, 5 * dpr);
+            ctx.fillStyle = label.style.background;
+            ctx.fill();
+            ctx.strokeStyle = label.style.border;
+            ctx.stroke();
+            ctx.fillStyle = label.style.color;
+            ctx.font = `800 ${Math.round(11 * dpr)}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+            ctx.fillText(label.text, x + padX, y + boxH / 2);
+        }
+
+        gl.useProgram(labelProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, labelBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+            -1, 1, 0, 0,
+            1, 1, 1, 0,
+            -1, -1, 0, 1,
+            1, -1, 1, 1,
+        ]), gl.STATIC_DRAW);
+        const aPos = gl.getAttribLocation(labelProgram, "a_pos");
+        const aTex = gl.getAttribLocation(labelProgram, "a_tex");
+        gl.enableVertexAttribArray(aPos);
+        gl.enableVertexAttribArray(aTex);
+        gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 16, 0);
+        gl.vertexAttribPointer(aTex, 2, gl.FLOAT, false, 16, 8);
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, labelTexture);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, labelCanvas);
+        gl.uniform1i(gl.getUniformLocation(labelProgram, "u_label"), 1);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        gl.disable(gl.BLEND);
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    }
+
+    function drawQueuedAnnotations() {
+        drawQueuedMarkers();
+        drawQueuedLabels();
+    }
+
     function visibleCatalogStars(maxMag = Number(controls.maxMag.value) || 4) {
         const margin = 20 * (window.devicePixelRatio || 1);
         return state.projected.filter(star => {
@@ -3476,7 +3746,7 @@ end
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
             const label = displayedCatalogLabel(star);
             if (label) {
-                addOverlayLabel(label, [x + offset, y - offset], "star-name-label");
+                queueStarLabel(label, [x + offset, y - offset], "star-name-label");
             }
         }
     }
@@ -3498,11 +3768,15 @@ end
                 continue;
             }
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
-            addOverlayCircle([x, y], `catalog-pairing-marker ${starMagnitudeClass(star.mag)}`);
+            queueMarker([x, y], {
+                type: "ring",
+                size: markerSizeForMagnitude(star.mag) + 10 * (window.devicePixelRatio || 1),
+                color: markerColor("red", 0.62),
+            });
             if (state.showStarNames) {
                 const label = displayedCatalogLabel(star);
                 if (label) {
-                    addOverlayLabel(label, [x + offset, y - offset], "catalog-pairing-label");
+                    queueStarLabel(label, [x + offset, y - offset], "catalog-pairing-label");
                 }
             }
         }
@@ -3518,9 +3792,13 @@ end
             const markerClass = `paired-marker ${starMagnitudeClass(match.catalog.mag)}`;
             if (state.showPickedMatchMarkers) {
                 const imagePoint = imageMarkerCanvasPixel(match.image.x, match.image.y);
-                const visible = addOverlayCircle(imagePoint, markerClass);
+                const visible = queueMarker(imagePoint, {
+                    type: "ring",
+                    size: markerSizeForMagnitude(match.catalog.mag) + 10 * (window.devicePixelRatio || 1),
+                    color: markerColor("green", 0.70),
+                });
                 if (visible && state.showStarNames && matchLabel) {
-                    addOverlayLabel(matchLabel, [imagePoint[0] + labelOffset, imagePoint[1] - labelOffset],
+                    queueStarLabel(matchLabel, [imagePoint[0] + labelOffset, imagePoint[1] - labelOffset],
                         "match-label");
                 }
             }
@@ -3535,28 +3813,39 @@ end
                 optmod,
                 false
             );
-            if (catalogPoint && addOverlayCircle(catalogPoint, markerClass)) {
+            if (catalogPoint && queueMarker(catalogPoint, {
+                type: "ring",
+                size: markerSizeForMagnitude(match.catalog.mag) + 10 * (window.devicePixelRatio || 1),
+                color: markerColor("green", 0.70),
+            })) {
                 if (state.showStarNames && matchLabel) {
-                    addOverlayLabel(matchLabel, [catalogPoint[0] + labelOffset, catalogPoint[1] - labelOffset],
+                    queueStarLabel(matchLabel, [catalogPoint[0] + labelOffset, catalogPoint[1] - labelOffset],
                         "match-label");
                 }
             }
         }
 
         if (state.pendingMatch) {
-            addOverlayCircle(imageMarkerCanvasPixel(state.pendingMatch.image.x, state.pendingMatch.image.y),
-                "paired-marker mag-radius-6 match-pending");
+            queueMarker(imageMarkerCanvasPixel(state.pendingMatch.image.x, state.pendingMatch.image.y), {
+                type: "ring",
+                size: 22 * (window.devicePixelRatio || 1),
+                color: markerColor("green", 0.85),
+            });
         }
         if (state.centroidPreview && Date.now() < state.centroidPreview.expiresAt) {
             const point = imageMarkerCanvasPixel(state.centroidPreview.x, state.centroidPreview.y);
-            addOverlayCircle(point, "centroid-preview-marker");
+            queueMarker(point, {type: "ring", size: 34 * (window.devicePixelRatio || 1), color: markerColor("cyan", 0.90)});
         }
 
     }
 
     function drawKdePositionDots() {
         for (const match of state.matches) {
-            addOverlayCircle(imageMarkerCanvasPixel(match.image.x, match.image.y), "kde-position-dot");
+            queueMarker(imageMarkerCanvasPixel(match.image.x, match.image.y), {
+                type: "dot",
+                size: 5 * (window.devicePixelRatio || 1),
+                color: markerColor("black", 1),
+            });
         }
     }
 
@@ -3566,7 +3855,11 @@ end
             return;
         }
         for (const detection of activeDetectedStars()) {
-            addOverlayCircle(imageMarkerCanvasPixel(detection.x, detection.y), "detected-marker");
+            queueMarker(imageMarkerCanvasPixel(detection.x, detection.y), {
+                type: "ring",
+                size: 18 * (window.devicePixelRatio || 1),
+                color: markerColor("yellow", 0.95),
+            });
         }
     }
 
@@ -3604,7 +3897,11 @@ end
             );
         }
         for (const detection of state.badStarFinderDetections) {
-            addOverlayCircle(imageMarkerCanvasPixel(detection.x, detection.y), "bad-detected-marker");
+            queueMarker(imageMarkerCanvasPixel(detection.x, detection.y), {
+                type: "ring",
+                size: 20 * (window.devicePixelRatio || 1),
+                color: markerColor("teal", 0.98),
+            });
         }
     }
 
@@ -3676,6 +3973,7 @@ end
 
     function render() {
         resizeCanvas();
+        resetWebglAnnotations();
         canvas.classList.toggle("match-mode", state.starMatchMode);
         canvas.classList.toggle("probe-mode", false);
         canvas.classList.toggle("delete-mode", state.deleteDetectionMode);
@@ -3693,6 +3991,7 @@ end
             } else {
                 drawFitResiduals(rows);
             }
+            drawQueuedAnnotations();
             updateResidualHistogram(rows);
         } else {
             updateResidualHistogram([]);
@@ -3708,6 +4007,7 @@ end
                     drawStars();
                 }
                 drawOverlayLabels();
+                drawQueuedAnnotations();
             }
         }
         updateTriangleDebugPlot();
