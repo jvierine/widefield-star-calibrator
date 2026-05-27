@@ -2082,6 +2082,13 @@ end
         );
     }
 
+    function displayedCatalogLabel(star) {
+        if (star && star.mag < 4.0 && star.name && star.name.trim()) {
+            return compactStarDisplayName(star.name);
+        }
+        return `mag ${Number(star && star.mag || 0).toFixed(1)}`;
+    }
+
     function angularDistanceDegBetweenRaDec(raHoursA, decDegA, raHoursB, decDegB) {
         const raA = raHoursA * 15 * AidaTools.DEG;
         const raB = raHoursB * 15 * AidaTools.DEG;
@@ -3467,9 +3474,7 @@ end
         const offset = 12 * (window.devicePixelRatio || 1);
         for (const star of visibleCatalogStars()) {
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
-            const label = star.name && star.name.trim()
-                ? compactStarDisplayName(star.name)
-                : `mag ${star.mag.toFixed(1)}`;
+            const label = displayedCatalogLabel(star);
             addOverlayLabel(label, [x + offset, y - offset], "star-name-label");
         }
     }
@@ -3493,9 +3498,7 @@ end
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
             addOverlayCircle([x, y], `catalog-pairing-marker ${starMagnitudeClass(star.mag)}`);
             if (state.showStarNames) {
-                const label = star.name && star.name.trim()
-                    ? compactStarDisplayName(star.name)
-                    : `mag ${star.mag.toFixed(1)}`;
+                const label = displayedCatalogLabel(star);
                 addOverlayLabel(label, [x + offset, y - offset], "catalog-pairing-label");
             }
         }
@@ -3507,9 +3510,7 @@ end
         const lon = Number(controls.lonDeg.value) || 0;
         const labelOffset = 16 * (window.devicePixelRatio || 1);
         for (const match of state.matches) {
-            const matchLabel = match.catalog.name && match.catalog.name.trim()
-                ? compactStarDisplayName(match.catalog.name)
-                : `mag ${match.catalog.mag.toFixed(1)}`;
+            const matchLabel = displayedCatalogLabel(match.catalog);
             const markerClass = `paired-marker ${starMagnitudeClass(match.catalog.mag)}`;
             if (state.showPickedMatchMarkers) {
                 const imagePoint = imageMarkerCanvasPixel(match.image.x, match.image.y);
