@@ -2083,12 +2083,10 @@ end
     }
 
     function displayedCatalogLabel(star) {
-        if (!star || star.mag > 4.0) {
+        if (!star || star.mag > 4.0 || !star.name || !star.name.trim()) {
             return "";
         }
-        return star.name && star.name.trim() ?
-            compactStarDisplayName(star.name) :
-            `mag ${Number(star.mag || 0).toFixed(1)}`;
+        return compactStarDisplayName(star.name);
     }
 
     function angularDistanceDegBetweenRaDec(raHoursA, decDegA, raHoursB, decDegB) {
