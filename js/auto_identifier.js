@@ -100,6 +100,62 @@
         }
     }
 
+
+
+    class KdTreeN {
+        constructor(points, dimensions) {
+            this.dimensions = Math.max(1, Math.floor(dimensions || 1));
+            this.root = this.build(points.slice(), 0);
+        }
+
+        build(points, depth) {
+            if (points.length === 0) {
+                return null;
+            }
+            const axis = depth % this.dimensions;
+            points.sort((a, b) => a.coords[axis] - b.coords[axis]);
+            const mid = Math.floor(points.length / 2);
+            return {
+                point: points[mid],
+                axis,
+                left: this.build(points.slice(0, mid), depth + 1),
+                right: this.build(points.slice(mid + 1), depth + 1),
+            };
+        }
+
+        range(coords, radius) {
+            const radius2 = radius * radius;
+            const out = [];
+            const visit = node => {
+                if (!node) {
+                    return;
+                }
+                const point = node.point;
+                let d2 = 0;
+                for (let i = 0; i < this.dimensions; i += 1) {
+                    const d = point.coords[i] - coords[i];
+                    d2 += d * d;
+                    if (d2 > radius2) {
+                        break;
+                    }
+                }
+                if (d2 <= radius2) {
+                    out.push({...point, distance2: d2});
+                }
+                const delta = point.coords[node.axis] - coords[node.axis];
+                if (delta >= -radius) {
+                    visit(node.left);
+                }
+                if (delta <= radius) {
+                    visit(node.right);
+                }
+            };
+            visit(this.root);
+            out.sort((a, b) => a.distance2 - b.distance2);
+            return out;
+        }
+    }
+
     function starKey(star, index) {
         if (star.key) {
             return String(star.key);
@@ -319,6 +375,18 @@
         return new Set(ids).size === ids.length;
     }
 
+    function pointsHaveDistinctIdentities(points) {
+        if (!Array.isArray(points)) {
+            return false;
+        }
+        const refs = new Set(points);
+        if (refs.size !== points.length) {
+            return false;
+        }
+        const ids = points.map(pointIdentity).filter(Boolean);
+        return new Set(ids).size === ids.length;
+    }
+
     function pixelShortestSide(a, b, c) {
         if (![a, b, c].every(point => Number.isFinite(point.x) && Number.isFinite(point.y))) {
             return Infinity;
@@ -458,6 +526,10 @@
         return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
     }
 
+    function add3(a, b) {
+        return [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    }
+
     function scale3(a, s) {
         return [a[0] * s, a[1] * s, a[2] * s];
     }
@@ -594,6 +666,19 @@
         return [[0, 1], [1, 2], [2, 0]].map(([i, j]) => ({
             a: {x: points[i].x, y: points[i].y},
             b: {x: points[j].x, y: points[j].y},
+        }));
+    }
+
+    function quadEdgeRecords(quad, label = "searched quad") {
+        const points = quad && Array.isArray(quad.points) ? quad.points : [];
+        if (points.length !== 4 || !points.every(point =>
+                Number.isFinite(point.x) && Number.isFinite(point.y))) {
+            return [];
+        }
+        return [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]].map(([i, j]) => ({
+            a: {x: points[i].x, y: points[i].y},
+            b: {x: points[j].x, y: points[j].y},
+            label,
         }));
     }
 
@@ -768,6 +853,234 @@
         }
         records.sort((a, b) => a.rankScore - b.rankScore || b.area - a.area);
         return records.slice(0, maxTriangles);
+    }
+
+
+
+    function quadPixelGeometryOk(points, options = {}) {
+        if (!points.every(point => Number.isFinite(point.x) && Number.isFinite(point.y))) {
+            return true;
+        }
+        let shortest = Infinity;
+        let longest = 0;
+        for (let i = 0; i < points.length - 1; i += 1) {
+            for (let j = i + 1; j < points.length; j += 1) {
+                const d = Math.hypot(points[i].x - points[j].x, points[i].y - points[j].y);
+                shortest = Math.min(shortest, d);
+                longest = Math.max(longest, d);
+            }
+        }
+        if (Number.isFinite(options.minSidePx) && shortest < options.minSidePx) {
+            return false;
+        }
+        if (Number.isFinite(options.maxSidePx) && longest > options.maxSidePx) {
+            return false;
+        }
+        if (Number.isFinite(options.minHeightPx)) {
+            let bestHeight = 0;
+            for (let i = 0; i < points.length - 2; i += 1) {
+                for (let j = i + 1; j < points.length - 1; j += 1) {
+                    for (let k = j + 1; k < points.length; k += 1) {
+                        bestHeight = Math.max(
+                            bestHeight,
+                            pixelTriangleHeightToLongestSide(points[i], points[j], points[k])
+                        );
+                    }
+                }
+            }
+            if (bestHeight < options.minHeightPx) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    function normalizedQuadCode(rawPoints) {
+        if (!pointsHaveDistinctIdentities(rawPoints) ||
+                rawPoints.length !== 4 ||
+                !rawPoints.every(point => point && Array.isArray(point.vector))) {
+            return null;
+        }
+        let bestPair = null;
+        let bestDistance = -Infinity;
+        for (let i = 0; i < rawPoints.length - 1; i += 1) {
+            for (let j = i + 1; j < rawPoints.length; j += 1) {
+                const d = angularDistance(rawPoints[i].vector, rawPoints[j].vector);
+                if (Number.isFinite(d) && d > bestDistance) {
+                    bestDistance = d;
+                    bestPair = [i, j];
+                }
+            }
+        }
+        if (!bestPair || bestDistance < 1.5 * Math.PI / 180 || bestDistance > 75 * Math.PI / 180) {
+            return null;
+        }
+        const otherIndexes = [0, 1, 2, 3].filter(index => !bestPair.includes(index));
+        const makeCode = (aIndex, bIndex) => {
+            const a = rawPoints[aIndex];
+            const b = rawPoints[bIndex];
+            const mid = normalize3(add3(a.vector, b.vector));
+            if (!mid) {
+                return null;
+            }
+            const ex = normalize3(sub3(b.vector, scale3(mid, dot3(b.vector, mid))));
+            if (!ex) {
+                return null;
+            }
+            const ey = normalize3(cross3(mid, ex));
+            if (!ey) {
+                return null;
+            }
+            const xy = point => [dot3(point.vector, ex), dot3(point.vector, ey)];
+            const a2 = xy(a);
+            const b2 = xy(b);
+            const ab = [b2[0] - a2[0], b2[1] - a2[1]];
+            const ab2 = ab[0] * ab[0] + ab[1] * ab[1];
+            if (!Number.isFinite(ab2) || ab2 <= 1e-12) {
+                return null;
+            }
+            const coords = otherIndexes.map(index => {
+                const p = rawPoints[index];
+                const p2 = xy(p);
+                const ap = [p2[0] - a2[0], p2[1] - a2[1]];
+                return {
+                    point: p,
+                    x: (ap[0] * ab[0] + ap[1] * ab[1]) / ab2,
+                    y: (ab[0] * ap[1] - ab[1] * ap[0]) / ab2,
+                };
+            });
+            if (!coords.every(coord => Number.isFinite(coord.x) && Number.isFinite(coord.y))) {
+                return null;
+            }
+            coords.sort((p, q) => p.x - q.x || p.y - q.y);
+            return {
+                points: [a, b, coords[0].point, coords[1].point],
+                coords: [coords[0].x, coords[0].y, coords[1].x, coords[1].y],
+            };
+        };
+        let code = makeCode(bestPair[0], bestPair[1]);
+        if (!code) {
+            return null;
+        }
+        const meanX = 0.5 * (code.coords[0] + code.coords[2]);
+        if (meanX > 0.5) {
+            code = makeCode(bestPair[1], bestPair[0]);
+            if (!code) {
+                return null;
+            }
+        }
+        const areaVector = cross3(
+            sub3(code.points[2].vector, code.points[0].vector),
+            sub3(code.points[3].vector, code.points[0].vector)
+        );
+        const area = norm3(areaVector);
+        if (!Number.isFinite(area) || area < 1e-5) {
+            return null;
+        }
+        return {...code, area, baseline: bestDistance};
+    }
+
+    function sphericalQuadRecord(points, i, j, k, l, options = {}) {
+        const rawPoints = [points[i], points[j], points[k], points[l]];
+        if (!quadPixelGeometryOk(rawPoints, options)) {
+            return null;
+        }
+        const code = normalizedQuadCode(rawPoints);
+        if (!code) {
+            return null;
+        }
+        const regionIds = triangleRegionIds(code.points);
+        return {
+            coords: code.coords,
+            points: code.points,
+            rankScore: code.points.reduce((sum, point) => sum + point.rank, 0),
+            regionIds,
+            primaryRegion: regionIds.length ? regionIds[0] : null,
+            area: code.area,
+            baseline: code.baseline,
+        };
+    }
+
+    function localSphericalQuadRecords(points, maxQuads, neighborPoolSize) {
+        const records = [];
+        const seen = new Set();
+        const addRecord = indexes => {
+            const ids = indexes.slice().sort((a, b) => a - b);
+            const key = ids.join("-");
+            if (seen.has(key)) {
+                return;
+            }
+            seen.add(key);
+            const record = sphericalQuadRecord(points, ids[0], ids[1], ids[2], ids[3], {
+                minSidePx: neighborPoolSize.minSidePx,
+                maxSidePx: neighborPoolSize.maxSidePx,
+                minHeightPx: neighborPoolSize.minHeightPx,
+            });
+            if (record) {
+                records.push(record);
+            }
+        };
+        const maxSide = (Number.isFinite(neighborPoolSize.maxSideDeg) ?
+            neighborPoolSize.maxSideDeg : 75.0) * Math.PI / 180;
+        const poolSize = Math.max(4, Math.floor(neighborPoolSize.count));
+        for (let i = 0; i < points.length; i += 1) {
+            const neighbors = [];
+            for (let j = 0; j < points.length; j += 1) {
+                if (i === j) {
+                    continue;
+                }
+                const distance = angularDistance(points[i].vector, points[j].vector);
+                if (Number.isFinite(distance) && distance <= maxSide) {
+                    neighbors.push({index: j, distance});
+                }
+            }
+            neighbors.sort((a, b) => a.distance - b.distance ||
+                points[a.index].rank - points[b.index].rank);
+            const local = neighbors.slice(0, poolSize);
+            for (let a = 0; a < local.length - 2; a += 1) {
+                for (let b = a + 1; b < local.length - 1; b += 1) {
+                    for (let c = b + 1; c < local.length; c += 1) {
+                        addRecord([i, local[a].index, local[b].index, local[c].index]);
+                    }
+                }
+            }
+        }
+        records.sort((a, b) => a.rankScore - b.rankScore || b.area - a.area);
+        return records.slice(0, maxQuads);
+    }
+
+    function sphericalQuadRecords(points, options = {}) {
+        const maxQuads = Number.isFinite(options.maxQuads) ? options.maxQuads : 5000;
+        const maxPoints = Number.isFinite(options.maxQuadPoints) ? options.maxQuadPoints : points.length;
+        const p = points.slice(0, maxPoints);
+        if (Number.isFinite(options.localNeighborPoolSize) && options.localNeighborPoolSize >= 4) {
+            return localSphericalQuadRecords(p, maxQuads, {
+                count: options.localNeighborPoolSize,
+                maxSideDeg: options.localQuadMaxSideDeg,
+                minSidePx: options.minSidePx,
+                maxSidePx: options.maxSidePx,
+                minHeightPx: options.minHeightPx,
+            });
+        }
+        const records = [];
+        for (let i = 0; i < p.length - 3; i += 1) {
+            for (let j = i + 1; j < p.length - 2; j += 1) {
+                for (let k = j + 1; k < p.length - 1; k += 1) {
+                    for (let l = k + 1; l < p.length; l += 1) {
+                        const record = sphericalQuadRecord(p, i, j, k, l, {
+                            minSidePx: options.minSidePx,
+                            maxSidePx: options.maxSidePx,
+                            minHeightPx: options.minHeightPx,
+                        });
+                        if (record) {
+                            records.push(record);
+                        }
+                    }
+                }
+            }
+        }
+        records.sort((a, b) => a.rankScore - b.rankScore || b.area - a.area);
+        return records.slice(0, maxQuads);
     }
 
     function triadBasis(a, b) {
@@ -2671,7 +2984,9 @@
         };
     }
 
-    function identifyStarsBlind(catalogStars, detections, options = {}) {
+
+
+    function identifyStarsBlindQuad(catalogStars, detections, options = {}) {
         const maxMagnitude = Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 4.0;
         const catalog = catalogStars
             .filter((star, index) =>
@@ -2721,7 +3036,7 @@
                 rawMatches: [],
                 catalog,
                 detections: normalizedDetections,
-                status: "auto-identify: not enough bright stars for blind spherical matching",
+                status: "auto-identify: not enough bright stars for blind quad matching",
             };
         }
 
@@ -2741,10 +3056,11 @@
                 options.preflattenRadialAlphaCandidates :
                 [0.30, 0.60, 0.90] :
             [1.0];
-        const signatureRadius = Number.isFinite(options.blindTriangleSignatureRadius) ?
-            options.blindTriangleSignatureRadius : 0.018;
-        const maxNeighborTriangles = Number.isFinite(options.maxBlindNeighborTriangles) ?
-            options.maxBlindNeighborTriangles : 4;
+        const signatureRadius = Number.isFinite(options.blindQuadSignatureRadius) ?
+            options.blindQuadSignatureRadius : 0.035;
+        const maxNeighborQuads = Number.isFinite(options.maxBlindNeighborQuads) ?
+            options.maxBlindNeighborQuads :
+            Number.isFinite(options.maxBlindNeighborTriangles) ? options.maxBlindNeighborTriangles : 4;
         const maxCandidateRotations = Number.isFinite(options.maxBlindCandidateRotations) ?
             options.maxBlindCandidateRotations : 6000;
         const maxCandidateRotationsPerSign = Number.isFinite(options.maxBlindCandidateRotationsPerSign) ?
@@ -2752,34 +3068,27 @@
             maxCandidateRotations;
         const maxCandidateRotationsTotal = maxCandidateRotationsPerSign * Math.max(1, signCandidates.length);
 
-        const catalogTriangles = sphericalTriangleRecords(catalog, {
-            maxTriangles: Number.isFinite(options.maxCatalogTriangles) ? options.maxCatalogTriangles : 30000,
-            maxTrianglePoints: Number.isFinite(options.maxCatalogTriangleStars) ?
-                options.maxCatalogTriangleStars : catalog.length,
-            localNeighborPoolSize: Number.isFinite(options.maxCatalogLocalNeighbors) ?
-                options.maxCatalogLocalNeighbors : 20,
-            localTriangleMaxSideDeg: Number.isFinite(options.maxCatalogLocalTriangleSideDeg) ?
-                options.maxCatalogLocalTriangleSideDeg : 70,
+        const catalogQuads = sphericalQuadRecords(catalog, {
+            maxQuads: Number.isFinite(options.maxCatalogQuads) ? options.maxCatalogQuads :
+                Number.isFinite(options.maxCatalogTriangles) ? options.maxCatalogTriangles : 30000,
+            maxQuadPoints: Number.isFinite(options.maxCatalogQuadStars) ?
+                options.maxCatalogQuadStars :
+                Number.isFinite(options.maxCatalogTriangleStars) ? options.maxCatalogTriangleStars : catalog.length,
+            localNeighborPoolSize: Number.isFinite(options.maxCatalogLocalQuadNeighbors) ?
+                options.maxCatalogLocalQuadNeighbors :
+                Number.isFinite(options.maxCatalogLocalNeighbors) ? options.maxCatalogLocalNeighbors : 18,
+            localQuadMaxSideDeg: Number.isFinite(options.maxCatalogLocalQuadSideDeg) ?
+                options.maxCatalogLocalQuadSideDeg : 75,
         });
-        const catalogTriangleTree = new KdTree2(catalogTriangles.map((triangle, index) => ({
-            x: triangle.x,
-            y: triangle.y,
-            payload: {...triangle, index},
-        })));
-        reportTriangleDebug(options, {
-            mode: "blind",
-            stage: options.triangleDebugStage || `blind catalog <= mag ${maxMagnitude.toFixed(1)}`,
-            maxMagnitude,
-            preflattenModel: "catalog",
-            catalogTriangles,
-            detectionTriangles: [],
-        });
+        const catalogQuadTree = new KdTreeN(catalogQuads.map((quad, index) => ({
+            coords: quad.coords,
+            payload: {...quad, index},
+        })), 4);
 
         let best = null;
         let scored = 0;
         let preflattenCount = 0;
         let earlyAccepted = false;
-        let supportRejected = 0;
         const seen = new Set();
         const preflattenTrials = [];
         let trialOrder = 0;
@@ -2811,27 +3120,34 @@
                                     continue;
                                 }
                                 preflattenCount += 1;
-                                const detectionTriangles = sphericalTriangleRecords(vectorDetections, {
-                                    maxTriangles: Number.isFinite(options.maxDetectionTriangles) ? options.maxDetectionTriangles : 1400,
-                                    maxTrianglePoints: Number.isFinite(options.maxDetectionTriangleStars) ? options.maxDetectionTriangleStars : 40,
+                                const detectionQuads = sphericalQuadRecords(vectorDetections, {
+                                    maxQuads: Number.isFinite(options.maxDetectionQuads) ? options.maxDetectionQuads :
+                                        Number.isFinite(options.maxDetectionTriangles) ? options.maxDetectionTriangles : 1600,
+                                    maxQuadPoints: Number.isFinite(options.maxDetectionQuadStars) ?
+                                        options.maxDetectionQuadStars :
+                                        Number.isFinite(options.maxDetectionTriangleStars) ? options.maxDetectionTriangleStars : 42,
+                                    localNeighborPoolSize: Number.isFinite(options.maxDetectionLocalQuadNeighbors) ?
+                                        options.maxDetectionLocalQuadNeighbors : undefined,
                                     ...detectionTriangleGeometryOptions(options),
                                 });
-                                const catalogSnapshot = triangleRatioSnapshot(catalogTriangles);
-                                const detectionSnapshot = triangleRatioSnapshot(detectionTriangles);
+                                const catalogSnapshot = triangleRatioSnapshot(catalogQuads.map(quad => ({
+                                    x: quad.coords[0],
+                                    y: quad.coords[2],
+                                })));
+                                const detectionSnapshot = triangleRatioSnapshot(detectionQuads.map(quad => ({
+                                    x: quad.coords[0],
+                                    y: quad.coords[2],
+                                })));
                                 const quality = triangleDistributionQuality(catalogSnapshot, detectionSnapshot);
                                 preflattenTrials.push({
-                                    mode: "blind",
-                                    stage: options.triangleDebugStage || `blind <= mag ${maxMagnitude.toFixed(1)}`,
-                                    maxMagnitude,
-                                    preflattenModel,
                                     f1,
                                     radialAlpha,
                                     signX,
                                     signY,
                                     du,
                                     dv,
-                                    catalogTriangles,
-                                    detectionTriangles,
+                                    preflattenModel,
+                                    detectionQuads,
                                     vectorDetections,
                                     quality,
                                     qualityScore: triangleDistributionQualityScore(quality),
@@ -2858,89 +3174,74 @@
                 continue;
             }
             const candidateAsterisms = [];
-            const supportTriangles = {
-                accepted: [],
-                rejected: [],
-                acceptedEdges: [],
-                acceptedCount: 0,
-                rejectedCount: 0,
-            };
-            const maxSupportDebug = Number.isFinite(options.maxBlindAsterismSupportDebugTriangles) ?
-                options.maxBlindAsterismSupportDebugTriangles : 1200;
-            for (const detectionTriangle of trial.detectionTriangles) {
-                const neighbors = catalogTriangleTree.range(detectionTriangle.x, detectionTriangle.y, signatureRadius)
-                    .slice(0, maxNeighborTriangles);
+            for (const detectionQuad of trial.detectionQuads) {
+                const neighbors = catalogQuadTree.range(detectionQuad.coords, signatureRadius)
+                    .slice(0, maxNeighborQuads);
                 for (const neighbor of neighbors) {
-                    const catalogTriangle = neighbor.payload;
-                    if (options.disableTriangleCosineOrderCheck !== true &&
-                            !triangleCosinesQuasiMonotonic(detectionTriangle, catalogTriangle, options)) {
-                        continue;
-                    }
                     candidateAsterisms.push({
-                        detectionTriangle,
-                        catalogTriangle,
+                        detectionQuad,
+                        catalogQuad: neighbor.payload,
                     });
                 }
             }
-            const selectedAsterisms = selectRegionalAsterismCandidates(candidateAsterisms, options);
-            trial.candidateAsterisms = selectedAsterisms;
-            trial.regionalAsterismCandidateCount = selectedAsterisms.length;
-            trial.totalAsterismCandidateCount = candidateAsterisms.length;
-            reportTriangleDebug(options, trial);
+            const selectedAsterisms = candidateAsterisms
+                .sort((a, b) =>
+                    a.detectionQuad.rankScore - b.detectionQuad.rankScore ||
+                    a.catalogQuad.rankScore - b.catalogQuad.rankScore)
+                .slice(0, Number.isFinite(options.maxBlindQuadAsterismsAfterSelection) ?
+                    options.maxBlindQuadAsterismsAfterSelection : 800);
+            const maxDebugQuads = Number.isFinite(options.maxBlindQuadDebugQuads) ?
+                Math.max(0, Math.floor(options.maxBlindQuadDebugQuads)) : 45;
+            const quadEdges = [];
+            for (const candidate of selectedAsterisms.slice(0, maxDebugQuads)) {
+                quadEdges.push(...quadEdgeRecords(candidate.detectionQuad, "blind quad candidate"));
+            }
+            reportTriangleDebug(options, {
+                mode: "blind-quad",
+                stage: options.triangleDebugStage || `blind quad <= mag ${maxMagnitude.toFixed(1)}`,
+                maxMagnitude,
+                preflattenModel: trial.preflattenModel,
+                f1: trial.f1,
+                radialAlpha: trial.radialAlpha,
+                signX: trial.signX,
+                signY: trial.signY,
+                catalogTriangles: catalogQuads.map(quad => ({x: quad.coords[0], y: quad.coords[2]})),
+                detectionTriangles: trial.detectionQuads.map(quad => ({x: quad.coords[0], y: quad.coords[2]})),
+                regionalAsterismCandidateCount: selectedAsterisms.length,
+                totalAsterismCandidateCount: candidateAsterisms.length,
+                quadEdges,
+            });
             for (const asterism of selectedAsterisms) {
                 if (scored >= maxCandidateRotationsTotal ||
                         (signScored.get(signKey) || 0) >= maxCandidateRotationsPerSign) {
                     break;
                 }
-                const detectionTriangle = asterism.detectionTriangle;
-                const catalogTriangle = asterism.catalogTriangle;
+                const detectionQuad = asterism.detectionQuad;
+                const catalogQuad = asterism.catalogQuad;
                 const rot = rotationFromVectorPairs(
-                    detectionTriangle.points[0].vector,
-                    detectionTriangle.points[1].vector,
-                    catalogTriangle.points[0].vector,
-                    catalogTriangle.points[1].vector,
+                    detectionQuad.points[0].vector,
+                    detectionQuad.points[1].vector,
+                    catalogQuad.points[0].vector,
+                    catalogQuad.points[1].vector,
                 );
                 if (!rot) {
                     continue;
                 }
-                const thirdError = angularDistance(
-                    applyRot3(rot, detectionTriangle.points[2].vector),
-                    catalogTriangle.points[2].vector,
-                );
-                if (thirdError > (Number.isFinite(options.maxBlindTriangleThirdErrorDeg) ?
-                        options.maxBlindTriangleThirdErrorDeg : 1.2) * Math.PI / 180) {
-                    continue;
-                }
-                if (options.disableBlindAsterismNeighborSupport !== true) {
-                    const support = blindAsterismNeighborSupport(
-                        catalog,
-                        trial.vectorDetections,
-                        rot,
-                        detectionTriangle,
-                        catalogTriangle,
-                        options
+                const maxQuadError = (Number.isFinite(options.maxBlindQuadVertexErrorDeg) ?
+                    options.maxBlindQuadVertexErrorDeg : 1.2) * Math.PI / 180;
+                let quadErrorOk = true;
+                for (let pointIndex = 2; pointIndex < 4; pointIndex += 1) {
+                    const error = angularDistance(
+                        applyRot3(rot, detectionQuad.points[pointIndex].vector),
+                        catalogQuad.points[pointIndex].vector,
                     );
-                    asterism.neighborSupport = support;
-                    for (const record of support.supportRecords || []) {
-                        if (record.accepted) {
-                            supportTriangles.acceptedCount += 1;
-                            if (supportTriangles.accepted.length < maxSupportDebug) {
-                                supportTriangles.accepted.push(record.image);
-                            }
-                            if (supportTriangles.acceptedEdges.length < maxSupportDebug * 3) {
-                                supportTriangles.acceptedEdges.push(...(record.edges || []));
-                            }
-                        } else {
-                            supportTriangles.rejectedCount += 1;
-                            if (supportTriangles.rejected.length < maxSupportDebug) {
-                                supportTriangles.rejected.push(record.image);
-                            }
-                        }
+                    if (!Number.isFinite(error) || error > maxQuadError) {
+                        quadErrorOk = false;
+                        break;
                     }
-                    if (!support.accepted) {
-                        supportRejected += 1;
-                        continue;
-                    }
+                }
+                if (!quadErrorOk) {
+                    continue;
                 }
                 const key = [
                     trial.preflattenModel,
@@ -2980,7 +3281,7 @@
                         preflattenQuality: trial.quality,
                         preflattenQualityScore: trial.qualityScore,
                         vectorDetections: trial.vectorDetections,
-                        detectionTriangleCount: trial.detectionTriangles.length,
+                        detectionQuadCount: trial.detectionQuads.length,
                     };
                 }
                 const candidateMedian = candidate.matches.length ?
@@ -2993,8 +3294,6 @@
                     break;
                 }
             }
-            trial.supportTriangles = supportTriangles;
-            reportTriangleDebug(options, trial);
         }
 
         if (!best) {
@@ -3003,9 +3302,10 @@
                 rawMatches: [],
                 catalog,
                 detections: normalizedDetections,
-                status: "auto-identify: blind spherical matcher found no candidate rotations",
+                status: "auto-identify: blind quad matcher found no candidate rotations",
                 scoredRotations: scored,
                 preflattenCount,
+                catalogQuadCount: catalogQuads.length,
             };
         }
         best = refineBlindPreflatten(catalog, normalizedDetections, best, {
@@ -3019,19 +3319,18 @@
         const minMatches = Number.isFinite(options.minMatches) ? options.minMatches : 6;
         const medianDistance = best.matches.length ? median(best.matches.map(match => match.distance)) : Infinity;
         const qualityText = Number.isFinite(best.preflattenQualityScore) ?
-            `, triangle shape ${(100 * best.preflattenQualityScore).toFixed(0)}%` :
+            `, quad shape ${(100 * best.preflattenQualityScore).toFixed(0)}%` :
             "";
-        const supportText = supportRejected > 0 ? `, support rejected ${supportRejected}` : "";
         const preflattenText = best.preflattenModel === "pinhole" ?
             `flat pinhole f1 ${best.f1.toFixed(2)}, sign ${best.signX || 1}/${best.signY || 1}, ` :
             `preflatten f1 ${best.f1.toFixed(2)}, a ${best.radialAlpha.toFixed(2)}, ` +
                 `sign ${best.signX || 1}/${best.signY || 1}, `;
         const status = best.matches.length >= minMatches ?
-            `auto-identify: blind spherical matched ${best.matches.length} stars <= mag ${maxMagnitude.toFixed(1)}, ` +
+            `auto-identify: blind quad matched ${best.matches.length} stars <= mag ${maxMagnitude.toFixed(1)}, ` +
                 `median angular residual ${medianDistance.toFixed(2)} deg, ${preflattenText}` +
                 `du/dv ${best.du.toFixed(2)}/${best.dv.toFixed(2)}, ` +
-                `scored ${scored} rotations${qualityText}${supportText}` :
-            `auto-identify: blind spherical matcher found only ${best.matches.length} plausible stars`;
+                `scored ${scored} rotations${qualityText}` :
+            `auto-identify: blind quad matcher found only ${best.matches.length} plausible stars`;
         return {
             matches: best.matches,
             rawMatches: best.matches,
@@ -3053,13 +3352,428 @@
             status,
             scoredRotations: scored,
             preflattenCount,
-            supportRejected,
-            catalogTriangleCount: catalogTriangles.length,
-            detectionTriangleCount: best.detectionTriangleCount,
+            catalogQuadCount: catalogQuads.length,
+            detectionQuadCount: best.detectionQuadCount,
         };
     }
 
+    async function identifyStarsBlindQuadAsync(catalogStars, detections, options = {}) {
+        const yieldState = {lastYield: 0};
+        const maxMagnitude = Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 4.0;
+        const catalog = catalogStars
+            .filter((star, index) =>
+                Number.isFinite(star.az) && Number.isFinite(star.ze) &&
+                Number.isFinite(star.mag) && star.mag <= maxMagnitude &&
+                !setHas(options.existingCatalogKeys, starKey(star, index))
+            )
+            .map((star, index) => ({
+                ...star,
+                key: starKey(star, index),
+                vector: skyVector(star),
+                rank: index + 1,
+            }))
+            .sort((a, b) => a.mag - b.mag || a.key.localeCompare(b.key))
+            .slice(0, Number.isFinite(options.maxCatalogStars) ? options.maxCatalogStars : 220)
+            .map((star, index) => ({...star, rank: index + 1}));
+        const catalogKeys = new Set(catalog.map(star => star.key));
+        const ambiguityMagnitude = Number.isFinite(options.ambiguityMaxMagnitude) ?
+            Math.max(maxMagnitude, options.ambiguityMaxMagnitude) :
+            maxMagnitude;
+        const ambiguityCatalog = ambiguityMagnitude > maxMagnitude ?
+            catalogStars
+                .filter((star, index) =>
+                    Number.isFinite(star.az) && Number.isFinite(star.ze) &&
+                    Number.isFinite(star.mag) && star.mag <= ambiguityMagnitude &&
+                    !setHas(options.existingCatalogKeys, starKey(star, index))
+                )
+                .map((star, index) => ({
+                    ...star,
+                    key: starKey(star, index),
+                    vector: skyVector(star),
+                    rank: index + 1,
+                    ambiguityOnly: !catalogKeys.has(starKey(star, index)),
+                }))
+                .filter(star => star.vector && !catalogKeys.has(star.key))
+                .sort((a, b) => a.mag - b.mag || a.key.localeCompare(b.key))
+                .slice(0, Number.isFinite(options.maxAmbiguityCatalogStars) ?
+                    options.maxAmbiguityCatalogStars : 260) :
+            [];
+        const normalizedDetections = normalizeDetections(detections, {
+            ...options,
+            maxDetections: Number.isFinite(options.maxDetections) ? options.maxDetections : 80,
+        });
+        if (catalog.length < 6 || normalizedDetections.length < 6) {
+            return {
+                matches: [],
+                rawMatches: [],
+                catalog,
+                detections: normalizedDetections,
+                status: "auto-identify: not enough bright stars for blind quad matching",
+            };
+        }
+
+        const f1Candidates = Array.isArray(options.preflattenF1Candidates) ?
+            options.preflattenF1Candidates : [0.70, 0.85, 1.00];
+        const fixedDu = Number.isFinite(options.preflattenDu) ? options.preflattenDu : 0;
+        const fixedDv = Number.isFinite(options.preflattenDv) ? options.preflattenDv : 0;
+        const duCandidates = [fixedDu];
+        const dvCandidates = [fixedDv];
+        const signCandidates = Array.isArray(options.preflattenSignCandidates) ?
+            options.preflattenSignCandidates : [[1, 1], [-1, -1]];
+        const modelCandidates = Array.isArray(options.preflattenModelCandidates) ?
+            options.preflattenModelCandidates :
+            ["pinhole", "fisheye"];
+        const radialCandidates = modelCandidates.includes("fisheye") ?
+            Array.isArray(options.preflattenRadialAlphaCandidates) ?
+                options.preflattenRadialAlphaCandidates :
+                [0.30, 0.60, 0.90] :
+            [1.0];
+        const signatureRadius = Number.isFinite(options.blindQuadSignatureRadius) ?
+            options.blindQuadSignatureRadius : 0.035;
+        const maxNeighborQuads = Number.isFinite(options.maxBlindNeighborQuads) ?
+            options.maxBlindNeighborQuads :
+            Number.isFinite(options.maxBlindNeighborTriangles) ? options.maxBlindNeighborTriangles : 4;
+        const maxCandidateRotations = Number.isFinite(options.maxBlindCandidateRotations) ?
+            options.maxBlindCandidateRotations : 6000;
+        const maxCandidateRotationsPerSign = Number.isFinite(options.maxBlindCandidateRotationsPerSign) ?
+            options.maxBlindCandidateRotationsPerSign :
+            maxCandidateRotations;
+        const maxCandidateRotationsTotal = maxCandidateRotationsPerSign * Math.max(1, signCandidates.length);
+
+        const catalogQuads = sphericalQuadRecords(catalog, {
+            maxQuads: Number.isFinite(options.maxCatalogQuads) ? options.maxCatalogQuads :
+                Number.isFinite(options.maxCatalogTriangles) ? options.maxCatalogTriangles : 30000,
+            maxQuadPoints: Number.isFinite(options.maxCatalogQuadStars) ?
+                options.maxCatalogQuadStars :
+                Number.isFinite(options.maxCatalogTriangleStars) ? options.maxCatalogTriangleStars : catalog.length,
+            localNeighborPoolSize: Number.isFinite(options.maxCatalogLocalQuadNeighbors) ?
+                options.maxCatalogLocalQuadNeighbors :
+                Number.isFinite(options.maxCatalogLocalNeighbors) ? options.maxCatalogLocalNeighbors : 18,
+            localQuadMaxSideDeg: Number.isFinite(options.maxCatalogLocalQuadSideDeg) ?
+                options.maxCatalogLocalQuadSideDeg : 75,
+        });
+        const catalogQuadTree = new KdTreeN(catalogQuads.map((quad, index) => ({
+            coords: quad.coords,
+            payload: {...quad, index},
+        })), 4);
+
+        let best = null;
+        let scored = 0;
+        let preflattenCount = 0;
+        let earlyAccepted = false;
+        const seen = new Set();
+        const preflattenTrials = [];
+        let trialOrder = 0;
+        for (const modelCandidate of modelCandidates) {
+            const preflattenModel = modelCandidate === "pinhole" ? "pinhole" : "fisheye";
+            for (const signPair of signCandidates) {
+                const signX = Array.isArray(signPair) && signPair[0] === -1 ? -1 : 1;
+                const signY = Array.isArray(signPair) && signPair[1] === -1 ? -1 : 1;
+                for (const f1 of f1Candidates) {
+                    for (const radialAlpha of radialCandidates) {
+                        for (const du of duCandidates) {
+                            for (const dv of dvCandidates) {
+                                const vectorOptions = {
+                                    ...options,
+                                    preflattenDu: du,
+                                    preflattenDv: dv,
+                                    preflattenSignX: signX,
+                                    preflattenSignY: signY,
+                                    preflattenModel,
+                                };
+                                const vectorDetections = normalizedDetections
+                                    .map((detection, index) => ({
+                                        ...detection,
+                                        vector: preflattenDetectionVector(detection, vectorOptions, f1, radialAlpha, preflattenModel),
+                                        rank: index + 1,
+                                    }))
+                                    .filter(detection => detection.vector);
+                                if (vectorDetections.length < 6) {
+                                    continue;
+                                }
+                                preflattenCount += 1;
+                                const detectionQuads = sphericalQuadRecords(vectorDetections, {
+                                    maxQuads: Number.isFinite(options.maxDetectionQuads) ? options.maxDetectionQuads :
+                                        Number.isFinite(options.maxDetectionTriangles) ? options.maxDetectionTriangles : 1600,
+                                    maxQuadPoints: Number.isFinite(options.maxDetectionQuadStars) ?
+                                        options.maxDetectionQuadStars :
+                                        Number.isFinite(options.maxDetectionTriangleStars) ? options.maxDetectionTriangleStars : 42,
+                                    localNeighborPoolSize: Number.isFinite(options.maxDetectionLocalQuadNeighbors) ?
+                                        options.maxDetectionLocalQuadNeighbors : undefined,
+                                    ...detectionTriangleGeometryOptions(options),
+                                });
+                                const catalogSnapshot = triangleRatioSnapshot(catalogQuads.map(quad => ({
+                                    x: quad.coords[0],
+                                    y: quad.coords[2],
+                                })));
+                                const detectionSnapshot = triangleRatioSnapshot(detectionQuads.map(quad => ({
+                                    x: quad.coords[0],
+                                    y: quad.coords[2],
+                                })));
+                                const quality = triangleDistributionQuality(catalogSnapshot, detectionSnapshot);
+                                preflattenTrials.push({
+                                    f1,
+                                    radialAlpha,
+                                    signX,
+                                    signY,
+                                    du,
+                                    dv,
+                                    preflattenModel,
+                                    detectionQuads,
+                                    vectorDetections,
+                                    quality,
+                                    qualityScore: triangleDistributionQualityScore(quality),
+                                    order: trialOrder,
+                                });
+                                trialOrder += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if (options.disablePreflattenQualityOrdering !== true) {
+            preflattenTrials.sort((a, b) => b.qualityScore - a.qualityScore || a.order - b.order);
+        }
+
+        const signScored = new Map();
+        for (let trialIndex = 0; trialIndex < preflattenTrials.length; trialIndex += 1) {
+            const trial = preflattenTrials[trialIndex];
+            await cooperativeYield(
+                options,
+                20 + 55 * trialIndex / Math.max(1, preflattenTrials.length),
+                `Blind quad matcher: trial ${trialIndex + 1}/${preflattenTrials.length}, ${scored} rotations scored...`,
+                false,
+                yieldState
+            );
+            if (earlyAccepted || scored >= maxCandidateRotationsTotal) {
+                break;
+            }
+            const signKey = `${trial.preflattenModel}:${trial.signX}:${trial.signY}`;
+            if ((signScored.get(signKey) || 0) >= maxCandidateRotationsPerSign) {
+                continue;
+            }
+            const candidateAsterisms = [];
+            for (const detectionQuad of trial.detectionQuads) {
+                const neighbors = catalogQuadTree.range(detectionQuad.coords, signatureRadius)
+                    .slice(0, maxNeighborQuads);
+                for (const neighbor of neighbors) {
+                    candidateAsterisms.push({
+                        detectionQuad,
+                        catalogQuad: neighbor.payload,
+                    });
+                }
+            }
+            const selectedAsterisms = candidateAsterisms
+                .sort((a, b) =>
+                    a.detectionQuad.rankScore - b.detectionQuad.rankScore ||
+                    a.catalogQuad.rankScore - b.catalogQuad.rankScore)
+                .slice(0, Number.isFinite(options.maxBlindQuadAsterismsAfterSelection) ?
+                    options.maxBlindQuadAsterismsAfterSelection : 800);
+            const maxDebugQuads = Number.isFinite(options.maxBlindQuadDebugQuads) ?
+                Math.max(0, Math.floor(options.maxBlindQuadDebugQuads)) : 45;
+            const quadEdges = [];
+            for (const candidate of selectedAsterisms.slice(0, maxDebugQuads)) {
+                quadEdges.push(...quadEdgeRecords(candidate.detectionQuad, "blind quad candidate"));
+            }
+            reportTriangleDebug(options, {
+                mode: "blind-quad",
+                stage: options.triangleDebugStage || `blind quad <= mag ${maxMagnitude.toFixed(1)}`,
+                maxMagnitude,
+                preflattenModel: trial.preflattenModel,
+                f1: trial.f1,
+                radialAlpha: trial.radialAlpha,
+                signX: trial.signX,
+                signY: trial.signY,
+                catalogTriangles: catalogQuads.map(quad => ({x: quad.coords[0], y: quad.coords[2]})),
+                detectionTriangles: trial.detectionQuads.map(quad => ({x: quad.coords[0], y: quad.coords[2]})),
+                regionalAsterismCandidateCount: selectedAsterisms.length,
+                totalAsterismCandidateCount: candidateAsterisms.length,
+                quadEdges,
+            });
+            for (let asterismIndex = 0; asterismIndex < selectedAsterisms.length; asterismIndex += 1) {
+                const asterism = selectedAsterisms[asterismIndex];
+                if (scored >= maxCandidateRotationsTotal ||
+                        (signScored.get(signKey) || 0) >= maxCandidateRotationsPerSign) {
+                    break;
+                }
+                const detectionQuad = asterism.detectionQuad;
+                const catalogQuad = asterism.catalogQuad;
+                if (options.visualizeBlindQuadsOneByOne === true) {
+                    reportTriangleDebug(options, {
+                        mode: "blind-quad-current",
+                        stage: options.triangleDebugStage || `blind quad <= mag ${maxMagnitude.toFixed(1)}`,
+                        maxMagnitude,
+                        preflattenModel: trial.preflattenModel,
+                        f1: trial.f1,
+                        radialAlpha: trial.radialAlpha,
+                        signX: trial.signX,
+                        signY: trial.signY,
+                        catalogTriangles: catalogQuads.map(quad => ({x: quad.coords[0], y: quad.coords[2]})),
+                        detectionTriangles: trial.detectionQuads.map(quad => ({x: quad.coords[0], y: quad.coords[2]})),
+                        regionalAsterismCandidateCount: asterismIndex + 1,
+                        totalAsterismCandidateCount: selectedAsterisms.length,
+                        quadEdges: quadEdgeRecords(detectionQuad, "current blind quad"),
+                        currentQuadIndex: asterismIndex + 1,
+                        currentQuadTotal: selectedAsterisms.length,
+                    });
+                    await cooperativeYield(
+                        options,
+                        35 + 50 * Math.min(1, scored / Math.max(1, maxCandidateRotationsTotal)),
+                        `Blind quad matcher: testing quad ${asterismIndex + 1}/${selectedAsterisms.length}; scored ${scored} rotations...`,
+                        true,
+                        yieldState
+                    );
+                }
+                const rot = rotationFromVectorPairs(
+                    detectionQuad.points[0].vector,
+                    detectionQuad.points[1].vector,
+                    catalogQuad.points[0].vector,
+                    catalogQuad.points[1].vector,
+                );
+                if (!rot) {
+                    continue;
+                }
+                const maxQuadError = (Number.isFinite(options.maxBlindQuadVertexErrorDeg) ?
+                    options.maxBlindQuadVertexErrorDeg : 1.2) * Math.PI / 180;
+                let quadErrorOk = true;
+                for (let pointIndex = 2; pointIndex < 4; pointIndex += 1) {
+                    const error = angularDistance(
+                        applyRot3(rot, detectionQuad.points[pointIndex].vector),
+                        catalogQuad.points[pointIndex].vector,
+                    );
+                    if (!Number.isFinite(error) || error > maxQuadError) {
+                        quadErrorOk = false;
+                        break;
+                    }
+                }
+                if (!quadErrorOk) {
+                    continue;
+                }
+                const key = [
+                    trial.preflattenModel,
+                    trial.signX,
+                    trial.signY,
+                    Math.round(trial.f1 * 100),
+                    Math.round(trial.radialAlpha * 100),
+                    Math.round(trial.du * 1000),
+                    Math.round(trial.dv * 1000),
+                ].concat(rot.map(value => Math.round(value * 200))).join(",");
+                if (seen.has(key)) {
+                    continue;
+                }
+                seen.add(key);
+                let candidate = scoreBlindRotation(catalog, trial.vectorDetections, rot, {
+                    ...options,
+                    ambiguityCatalog,
+                });
+                const seedMedian = candidate.matches.length ?
+                    median(candidate.matches.map(match => match.distance)) : Infinity;
+                if (candidate.matches.length >= 5 && seedMedian <= 1.6) {
+                    candidate = refineBlindRotation(catalog, trial.vectorDetections, rot, options);
+                }
+                scored += 1;
+                signScored.set(signKey, (signScored.get(signKey) || 0) + 1);
+                if (!best || candidate.score > best.score) {
+                    best = {
+                        ...candidate,
+                        rotation: candidate.rotation || rot,
+                        f1: trial.f1,
+                        radialAlpha: trial.radialAlpha,
+                        du: trial.du,
+                        dv: trial.dv,
+                        signX: trial.signX,
+                        signY: trial.signY,
+                        preflattenModel: trial.preflattenModel,
+                        preflattenQuality: trial.quality,
+                        preflattenQualityScore: trial.qualityScore,
+                        vectorDetections: trial.vectorDetections,
+                        detectionQuadCount: trial.detectionQuads.length,
+                    };
+                }
+                const candidateMedian = candidate.matches.length ?
+                    median(candidate.matches.map(match => match.distance)) : Infinity;
+                if (candidate.matches.length >=
+                        (Number.isFinite(options.blindEarlyAcceptMatches) ? options.blindEarlyAcceptMatches : 14) &&
+                        candidateMedian <=
+                        (Number.isFinite(options.blindEarlyAcceptMedianDeg) ? options.blindEarlyAcceptMedianDeg : 0.5)) {
+                    earlyAccepted = true;
+                    break;
+                }
+            }
+        }
+
+        if (!best) {
+            return {
+                matches: [],
+                rawMatches: [],
+                catalog,
+                detections: normalizedDetections,
+                status: "auto-identify: blind quad matcher found no candidate rotations",
+                scoredRotations: scored,
+                preflattenCount,
+                catalogQuadCount: catalogQuads.length,
+            };
+        }
+        best = refineBlindPreflatten(catalog, normalizedDetections, best, {
+            ...options,
+            ambiguityCatalog,
+        });
+        best = expandBlindPixelMatches(catalog, best.vectorDetections || normalizedDetections, best, {
+            ...options,
+            ambiguityCatalog,
+        });
+        const minMatches = Number.isFinite(options.minMatches) ? options.minMatches : 6;
+        const medianDistance = best.matches.length ? median(best.matches.map(match => match.distance)) : Infinity;
+        const qualityText = Number.isFinite(best.preflattenQualityScore) ?
+            `, quad shape ${(100 * best.preflattenQualityScore).toFixed(0)}%` :
+            "";
+        const preflattenText = best.preflattenModel === "pinhole" ?
+            `flat pinhole f1 ${best.f1.toFixed(2)}, sign ${best.signX || 1}/${best.signY || 1}, ` :
+            `preflatten f1 ${best.f1.toFixed(2)}, a ${best.radialAlpha.toFixed(2)}, ` +
+                `sign ${best.signX || 1}/${best.signY || 1}, `;
+        const status = best.matches.length >= minMatches ?
+            `auto-identify: blind quad matched ${best.matches.length} stars <= mag ${maxMagnitude.toFixed(1)}, ` +
+                `median angular residual ${medianDistance.toFixed(2)} deg, ${preflattenText}` +
+                `du/dv ${best.du.toFixed(2)}/${best.dv.toFixed(2)}, ` +
+                `scored ${scored} rotations${qualityText}` :
+            `auto-identify: blind quad matcher found only ${best.matches.length} plausible stars`;
+        return {
+            matches: best.matches,
+            rawMatches: best.matches,
+            catalog,
+            detections: normalizedDetections,
+            rotation: best.rotation,
+            f1: best.f1,
+            radialAlpha: best.radialAlpha,
+            signX: best.signX || 1,
+            signY: best.signY || 1,
+            du: best.du,
+            dv: best.dv,
+            medianDistance,
+            score: best.score,
+            distractors: best.distractors,
+            conflicts: best.conflicts,
+            preflattenQuality: best.preflattenQuality,
+            preflattenQualityScore: best.preflattenQualityScore,
+            status,
+            scoredRotations: scored,
+            preflattenCount,
+            catalogQuadCount: catalogQuads.length,
+            detectionQuadCount: best.detectionQuadCount,
+        };
+    }
+
+
+    function identifyStarsBlind(catalogStars, detections, options = {}) {
+        return identifyStarsBlindQuad(catalogStars, detections, options);
+    }
+
     async function identifyStarsBlindAsync(catalogStars, detections, options = {}) {
+        return identifyStarsBlindQuadAsync(catalogStars, detections, options);
+    }
+
+    async function identifyStarsBlindTriangleAsync(catalogStars, detections, options = {}) {
         const yieldState = {lastYield: 0};
         const maxMagnitude = Number.isFinite(options.maxMagnitude) ? options.maxMagnitude : 4.0;
         await cooperativeYield(options, 2, "Blind matcher: preparing bright-star catalog...", true, yieldState);
@@ -3519,12 +4233,16 @@
         identifyStarsNearProjectionAsync,
         identifyStarsByAsterisms,
         identifyStarsByAsterismsAsync,
+        identifyStarsBlindQuad,
+        identifyStarsBlindQuadAsync,
         identifyStarsBlind,
         identifyStarsBlindAsync,
         estimateTranslation,
         normalizeProjectedStars,
         normalizeDetections,
         KdTree2,
+        KdTreeN,
+        sphericalQuadRecords,
         greedyMatch,
         robustFilterMatches,
         triangleCosinesQuasiMonotonic,

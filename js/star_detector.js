@@ -18,6 +18,18 @@
         return sorted.length % 2 ? sorted[mid] : 0.5 * (sorted[mid - 1] + sorted[mid]);
     }
 
+    function percentile(values, p) {
+        if (!values.length) {
+            return 0;
+        }
+        const sorted = values.slice().sort((a, b) => a - b);
+        const pos = Math.max(0, Math.min(sorted.length - 1, p * (sorted.length - 1)));
+        const lo = Math.floor(pos);
+        const hi = Math.ceil(pos);
+        const frac = pos - lo;
+        return sorted[lo] * (1 - frac) + sorted[hi] * frac;
+    }
+
     function grayAt(data, width, x, y) {
         const k = 4 * (y * width + x);
         return 0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2];
@@ -323,6 +335,134 @@
         return selected.map((detection, index) => ({...detection, rank: index + 1}));
     }
 
+    function candidateTooCloseToSelected(candidate, selected, suppression2) {
+        for (const existing of selected) {
+            const dx = existing.x - candidate.x;
+            const dy = existing.y - candidate.y;
+            if (dx * dx + dy * dy < suppression2) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function selectBalancedSuppressedCandidates(candidates, maxDetections, suppressionRadius, width, height, options = {}) {
+        const cols = Math.max(1, Math.floor(options.balanceGridCols || 6));
+        const rows = Math.max(1, Math.floor(options.balanceGridRows || 4));
+        const cellCount = cols * rows;
+        const defaultMaxPerCell = Math.max(1, Math.ceil(maxDetections / cellCount));
+        const maxPerCell = Math.max(1, Math.floor(options.balanceMaxPerCell || defaultMaxPerCell));
+        const fillRemainder = options.balanceFillRemainder !== false;
+        const selected = [];
+        const cellCounts = new Array(cellCount).fill(0);
+        const suppression2 = suppressionRadius * suppressionRadius;
+        const cellIndex = candidate => {
+            const ix = Math.max(0, Math.min(cols - 1, Math.floor(candidate.x / Math.max(1, width) * cols)));
+            const iy = Math.max(0, Math.min(rows - 1, Math.floor(candidate.y / Math.max(1, height) * rows)));
+            return iy * cols + ix;
+        };
+
+        for (const candidate of candidates) {
+            if (selected.length >= maxDetections) {
+                break;
+            }
+            const idx = cellIndex(candidate);
+            if (cellCounts[idx] >= maxPerCell ||
+                    candidateTooCloseToSelected(candidate, selected, suppression2)) {
+                continue;
+            }
+            selected.push({...candidate, id: selected.length + 1});
+            cellCounts[idx] += 1;
+        }
+
+        if (fillRemainder && selected.length < maxDetections) {
+            for (const candidate of candidates) {
+                if (selected.length >= maxDetections) {
+                    break;
+                }
+                if (candidateTooCloseToSelected(candidate, selected, suppression2)) {
+                    continue;
+                }
+                selected.push({...candidate, id: selected.length + 1});
+                cellCounts[cellIndex(candidate)] += 1;
+            }
+        }
+
+        return {
+            detections: selected.map((detection, index) => ({...detection, rank: index + 1})),
+            grid: {cols, rows, maxPerCell, fillRemainder},
+            occupiedCells: cellCounts.filter(count => count > 0).length,
+            maxCellCount: Math.max(0, ...cellCounts),
+        };
+    }
+
+    function summarizeCandidateMorphology(candidates) {
+        const sample = candidates
+            .filter(candidate => Number.isFinite(candidate.radius) && Number.isFinite(candidate.score))
+            .slice()
+            .sort((a, b) => b.score - a.score)
+            .slice(0, Math.min(160, candidates.length));
+        const values = key => sample.map(candidate => candidate[key]).filter(Number.isFinite);
+        const radii = values("radius");
+        const elongations = values("elongation");
+        const coreFractions = values("coreFluxFraction");
+        const outerFractions = values("outerFluxFraction");
+        const peakDominance = values("peakDominance");
+        const medianRadius = median(radii);
+        const pixelated = sample.filter(candidate =>
+            candidate.radius <= 0.95 ||
+            candidate.coreFluxFraction >= 0.48 && candidate.peakDominance >= 1.8
+        ).length;
+        const blurry = sample.filter(candidate =>
+            candidate.radius >= 3.4 ||
+            candidate.outerFluxFraction >= 0.46
+        ).length;
+        return {
+            sampleCount: sample.length,
+            radiusMedian: medianRadius,
+            radiusP25: percentile(radii, 0.25),
+            radiusP75: percentile(radii, 0.75),
+            elongationMedian: median(elongations),
+            coreMedian: median(coreFractions),
+            outerMedian: median(outerFractions),
+            peakDominanceMedian: median(peakDominance),
+            pixelatedFraction: sample.length ? pixelated / sample.length : 0,
+            blurryFraction: sample.length ? blurry / sample.length : 0,
+        };
+    }
+
+    function morphologyClass(summary) {
+        if (!summary || summary.sampleCount < 5) {
+            return "unknown";
+        }
+        if (summary.blurryFraction > 0.35 || summary.radiusMedian >= 3.2) {
+            return "large/blurry";
+        }
+        if (summary.pixelatedFraction > 0.42 || summary.radiusMedian <= 1.05) {
+            return "compact/pixelated";
+        }
+        return "moderate";
+    }
+
+    function applyMorphologyScoreAdjustment(candidates, summary, options = {}) {
+        if (!summary || summary.sampleCount < 5 || options.autoMorphology !== true) {
+            return candidates;
+        }
+        const targetRadius = Math.max(0.55, Math.min(6.5, summary.radiusMedian || 1.8));
+        const radiusSigma = Math.max(0.85, 0.55 * targetRadius, 0.5 * (summary.radiusP75 - summary.radiusP25));
+        return candidates.map(candidate => {
+            const radiusDelta = (candidate.radius - targetRadius) / radiusSigma;
+            const radiusAgreement = Math.exp(-0.5 * radiusDelta * radiusDelta);
+            const morphologyAdjustedScore = candidate.score * (0.45 + 0.55 * radiusAgreement);
+            return {
+                ...candidate,
+                score: morphologyAdjustedScore,
+                rawScore: candidate.score,
+                morphologyRadiusTarget: targetRadius,
+            };
+        });
+    }
+
     async function maybeYield(options, percent, text, force = false) {
         if (typeof options.onProgress === "function") {
             options.onProgress(percent, text);
@@ -429,7 +569,10 @@
         const centroidRadius = Number.isFinite(options.centroidRadiusPx) ? options.centroidRadiusPx : 5;
         const apertureRadius = Number.isFinite(options.apertureRadiusPx) ? options.apertureRadiusPx : 5;
         const minLocalSigma = Number.isFinite(options.localThresholdSigma) ? options.localThresholdSigma : 2.5;
-        const maxRadius = Number.isFinite(options.maxRadiusPx) ? options.maxRadiusPx : 3.0;
+        const requestedMaxRadius = Number.isFinite(options.maxRadiusPx) ? options.maxRadiusPx : 3.0;
+        const maxRadius = options.autoMorphology === true ?
+            Math.max(requestedMaxRadius, Number.isFinite(options.autoMorphologyMaxRadiusPx) ? options.autoMorphologyMaxRadiusPx : 8.0) :
+            requestedMaxRadius;
         const maxElongation = Number.isFinite(options.maxElongation) ? options.maxElongation : 2.7;
         const maxSaturated = Number.isFinite(options.maxSaturatedPixels) ? options.maxSaturatedPixels : 12;
         const requireGlobalThreshold = options.requireGlobalThreshold === true;
@@ -565,28 +708,30 @@
                 score,
             });
         }
+        const morphologySummary = summarizeCandidateMorphology(candidates);
+        let morphologyCandidates = applyMorphologyScoreAdjustment(candidates, morphologySummary, options);
         const crowdingRadius = Number.isFinite(options.crowdingRadiusPx) ? options.crowdingRadiusPx : 0;
         const maxCrowding = Number.isFinite(options.maxCrowding) ? options.maxCrowding : Infinity;
         const crowdingPower = Number.isFinite(options.crowdingScorePower) ? options.crowdingScorePower : 1.15;
-        let filteredCandidates = candidates;
-        if (crowdingRadius > 0 && candidates.length > 0) {
+        let filteredCandidates = morphologyCandidates;
+        if (crowdingRadius > 0 && morphologyCandidates.length > 0) {
             const r2 = crowdingRadius * crowdingRadius;
             filteredCandidates = [];
             lastYield = typeof performance === "object" && performance.now ? performance.now() : Date.now();
-            for (let candidateIndex = 0; candidateIndex < candidates.length; candidateIndex += 1) {
-                const candidate = candidates[candidateIndex];
+            for (let candidateIndex = 0; candidateIndex < morphologyCandidates.length; candidateIndex += 1) {
+                const candidate = morphologyCandidates[candidateIndex];
                 const now = typeof performance === "object" && performance.now ? performance.now() : Date.now();
                 if (now - lastYield > 35) {
                     await maybeYield(
                         options,
-                        88 + 8 * candidateIndex / Math.max(1, candidates.length),
-                        `Rejecting cluttered peaks: ${Math.round(100 * candidateIndex / Math.max(1, candidates.length))}%`,
+                        88 + 8 * candidateIndex / Math.max(1, morphologyCandidates.length),
+                        `Rejecting cluttered peaks: ${Math.round(100 * candidateIndex / Math.max(1, morphologyCandidates.length))}%`,
                         true
                     );
                     lastYield = now;
                 }
                 let neighbors = 0;
-                for (const other of candidates) {
+                for (const other of morphologyCandidates) {
                     const dx = candidate.x - other.x;
                     const dy = candidate.y - other.y;
                     if (dx * dx + dy * dy <= r2) {
@@ -607,10 +752,18 @@
             }
         }
         filteredCandidates.sort((a, b) => b.score - a.score);
-        const suppressionRadius = Number.isFinite(options.suppressionRadiusPx) ?
+        const baseSuppressionRadius = Number.isFinite(options.suppressionRadiusPx) ?
             options.suppressionRadiusPx :
             Math.max(18, Math.min(60, 0.010 * Math.hypot(width, height)));
-        const detections = selectSuppressedCandidates(filteredCandidates, maxDetections, suppressionRadius);
+        const suppressionRadius = options.autoMorphology === true && morphologySummary.sampleCount >= 5 ?
+            Math.max(baseSuppressionRadius, Math.min(42, 3.4 * Math.max(1, morphologySummary.radiusMedian))) :
+            baseSuppressionRadius;
+        const balancedSelection = options.spatialBalance === true ?
+            selectBalancedSuppressedCandidates(filteredCandidates, maxDetections, suppressionRadius, width, height, options) :
+            null;
+        const detections = balancedSelection ?
+            balancedSelection.detections :
+            selectSuppressedCandidates(filteredCandidates, maxDetections, suppressionRadius);
         return {
             detections,
             candidates: filteredCandidates,
@@ -621,11 +774,22 @@
             backgroundMeshSize: backgroundMap ? backgroundMap.meshSize : null,
             scannedLocalPeaks,
             rejectCounts,
+            morphology: morphologySummary,
             status: `bright-star detector: bg ${bg.toFixed(1)}, sigma ${sigma.toFixed(1)}, ` +
                 `thresholds scan/global ${scanThreshold.toFixed(1)}/${globalThreshold.toFixed(1)}, ` +
                 `${backgroundMap ? `mesh ${backgroundMap.meshSize} px, ` : ""}` +
                 `${scannedLocalPeaks} local peaks, ${filteredCandidates.length}/${candidates.length} star-like candidates after clutter, ` +
-                `selected top ${detections.length}/${maxDetections}, suppression radius ${suppressionRadius.toFixed(0)} px`,
+                `morphology ${morphologyClass(morphologySummary)} ` +
+                `(r ${morphologySummary.radiusMedian.toFixed(2)} px, ` +
+                `IQR ${morphologySummary.radiusP25.toFixed(2)}-${morphologySummary.radiusP75.toFixed(2)}, ` +
+                `elong ${morphologySummary.elongationMedian.toFixed(2)}), ` +
+                `selected ${balancedSelection ? "balanced " : "top "}${detections.length}/${maxDetections}, ` +
+                `suppression radius ${suppressionRadius.toFixed(0)} px` +
+                (balancedSelection ?
+                    `, grid ${balancedSelection.grid.cols}x${balancedSelection.grid.rows}, ` +
+                    `cell cap ${balancedSelection.grid.maxPerCell}, occupied ${balancedSelection.occupiedCells}, ` +
+                    `max cell ${balancedSelection.maxCellCount}` :
+                    ""),
         };
     }
 

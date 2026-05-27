@@ -1331,6 +1331,92 @@ test("blind asterism neighbor support accepts extendable triangle hypotheses", (
             Number.isFinite(record.image.y)));
 });
 
+test("blind matcher uses quad hypotheses for synthetic pinhole detections", () => {
+    const f1 = 0.72;
+    const f2 = f1 * WIDTH / HEIGHT;
+    const catalog = [];
+    for (let i = 0; i < 34; i += 1) {
+        const az = ((i * 67) % 360) * Math.PI / 180;
+        const ze = (8 + (i % 6) * 6 + Math.floor(i / 6) * 2.2) * Math.PI / 180;
+        catalog.push({
+            key: `synthetic-${i}`,
+            name: `synthetic-${i}`,
+            az,
+            ze,
+            mag: 1.4 + i * 0.11,
+        });
+    }
+    const detections = [];
+    let id = 1;
+    for (let i = 0; i < catalog.length; i += 1) {
+        const star = catalog[i];
+        const sinze = Math.sin(star.ze);
+        const vector = [
+            sinze * Math.sin(star.az),
+            sinze * Math.cos(star.az),
+            Math.cos(star.ze),
+        ];
+        const x = (0.5 + f1 * vector[0] / vector[2]) * WIDTH - 1;
+        const y = (0.5 + f2 * vector[1] / vector[2]) * HEIGHT - 1;
+        if (x < 20 || x > WIDTH - 20 || y < 20 || y > HEIGHT - 20) {
+            continue;
+        }
+        detections.push({
+            id,
+            x: x + (pseudoNoise(i, 31) - 0.5) * 0.8,
+            y: y + (pseudoNoise(i, 32) - 0.5) * 0.8,
+            score: 1e6 * Math.pow(10, -0.4 * star.mag),
+            truthKey: star.key,
+        });
+        id += 1;
+    }
+    for (let i = 0; i < 10; i += 1) {
+        detections.push({
+            id,
+            x: 60 + pseudoNoise(i, 33) * (WIDTH - 120),
+            y: 60 + pseudoNoise(i, 34) * (HEIGHT - 120),
+            score: 700 + pseudoNoise(i, 35) * 250,
+        });
+        id += 1;
+    }
+    detections.sort((a, b) => b.score - a.score);
+    detections.forEach((detection, index) => {
+        detection.rank = index + 1;
+    });
+
+    const result = AutoIdentifier.identifyStarsBlind(catalog, detections, {
+        imageWidth: WIDTH,
+        imageHeight: HEIGHT,
+        maxMagnitude: 5.5,
+        maxDetections: 46,
+        maxCatalogStars: 34,
+        preflattenModelCandidates: ["pinhole"],
+        preflattenF1Candidates: [f1],
+        preflattenSignCandidates: [[1, 1]],
+        blindQuadSignatureRadius: 0.035,
+        maxCatalogQuads: 8000,
+        maxCatalogLocalQuadNeighbors: 12,
+        maxDetectionQuads: 2500,
+        maxDetectionQuadStars: 34,
+        maxBlindNeighborQuads: 6,
+        maxBlindCandidateRotations: 2500,
+        minMatches: 12,
+    });
+    const correct = result.matches.filter(match => match.detection.truthKey === match.star.key);
+    assert.ok(
+        result.status.includes("blind quad"),
+        `expected quad blind status, got ${result.status}`,
+    );
+    assert.ok(
+        correct.length >= 14,
+        `expected at least 14 correct quad blind matches, got ${correct.length}/${result.matches.length}; ${result.status}`,
+    );
+    assert.ok(
+        result.medianDistance < 0.35,
+        `expected tight quad blind angular residual, got ${result.medianDistance}; ${result.status}`,
+    );
+});
+
 fullTest("bright-star detector finds known 010095 stars with calibrated optmod 2", async () => {
     const imageData = readPngImageData(REAL_CASE_IMAGE);
     assert.equal(imageData.width, REAL_CASE.width);
@@ -1854,7 +1940,7 @@ fullTest("real 010095 detections stay useful as the lens start moves away", asyn
     }
 });
 
-fullTest("blind spherical matcher identifies 010095 stars from image-load initial lens values", async () => {
+fullTest("blind quad matcher identifies 010095 stars from image-load initial lens values", async () => {
     const imageData = readPngImageData(REAL_CASE_IMAGE);
     const detectionResult = await StarDetector.detectBrightStars(imageData, {maxDetections: 50});
     const knownStars = projectedRealCaseStars(REAL_CASE.optpar, 4.0);
@@ -1897,7 +1983,7 @@ fullTest("blind spherical matcher identifies 010095 stars from image-load initia
     );
 });
 
-fullTest("blind spherical matcher bootstraps 010881 AMS0882 without known optpar seed", async () => {
+fullTest("blind quad matcher bootstraps 010881 AMS0882 without known optpar seed", async () => {
     const imageData = readPngImageData(REAL_CASE_010881_AMS0882_IMAGE);
     const detectionResult = await StarDetector.detectBrightStars(imageData, {
         maxDetections: 50,

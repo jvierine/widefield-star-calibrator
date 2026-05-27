@@ -105,6 +105,9 @@
         exportLanguage: document.getElementById("exportLanguage"),
         copyOptpar: document.getElementById("copyOptpar"),
         copyPythonMapper: document.getElementById("copyPythonMapper"),
+        luckyBestMatchesControl: document.getElementById("luckyBestMatchesControl"),
+        luckyBestMatches: document.getElementById("luckyBestMatches"),
+        luckyBestMatchesValue: document.getElementById("luckyBestMatchesValue"),
         localTestCaseTools: document.getElementById("localTestCaseTools"),
         submitTestCase: document.getElementById("submitTestCase"),
         saveFeedback: document.getElementById("saveFeedback"),
@@ -194,8 +197,16 @@
         showFitResiduals: false,
         residualPlotDrag: null,
         showAsterismLines: true,
+        manualQuadDebugPoints: [],
+        quadScanGoodEdges: [],
+        quadScanBadEdges: [],
+        quadVoteAcceptedAssignments: [],
+        quadVoteAllMatches: [],
         asterismEdges: [],
         triangleDebugSnapshot: null,
+        triangleDebugPlotDrag: null,
+        pendingQuadClusterDebug: null,
+        closeableDebugPanelActive: false,
         starPickingLegendVisible: true,
         starPickingLegendDrag: null,
         lastLuckyProgressUpdateMs: -Infinity,
@@ -3031,12 +3042,37 @@ end
                 [0.30, 0.60, 0.90];
             return `; a_r grid ${candidates.map(value => Number(value).toFixed(2)).join(", ")}`;
         };
+        const luckyBlindOptions = options.blindOptions || {};
+        const quadBlindOptions = {
+            ...luckyBlindOptions,
+            blindAsterismMode: "quad",
+            maxCatalogQuads: Number.isFinite(luckyBlindOptions.maxCatalogQuads) ?
+                luckyBlindOptions.maxCatalogQuads :
+                luckyBlindOptions.maxCatalogTriangles,
+            maxCatalogQuadStars: Number.isFinite(luckyBlindOptions.maxCatalogQuadStars) ?
+                luckyBlindOptions.maxCatalogQuadStars :
+                luckyBlindOptions.maxCatalogTriangleStars,
+            maxCatalogLocalQuadNeighbors: Number.isFinite(luckyBlindOptions.maxCatalogLocalQuadNeighbors) ?
+                luckyBlindOptions.maxCatalogLocalQuadNeighbors :
+                luckyBlindOptions.maxCatalogLocalNeighbors,
+            maxDetectionQuads: Number.isFinite(luckyBlindOptions.maxDetectionQuads) ?
+                luckyBlindOptions.maxDetectionQuads :
+                luckyBlindOptions.maxDetectionTriangles,
+            maxDetectionQuadStars: Number.isFinite(luckyBlindOptions.maxDetectionQuadStars) ?
+                luckyBlindOptions.maxDetectionQuadStars :
+                luckyBlindOptions.maxDetectionTriangleStars,
+            maxBlindNeighborQuads: Number.isFinite(luckyBlindOptions.maxBlindNeighborQuads) ?
+                luckyBlindOptions.maxBlindNeighborQuads :
+                luckyBlindOptions.maxBlindNeighborTriangles,
+            visualizeBlindQuadsOneByOne: true,
+            maxBlindQuadDebugQuads: 1,
+        };
 
         if (options.includeBlind !== false) {
-            const alphaText = radialAlphaProgressText(options.blindOptions || {});
+            const alphaText = radialAlphaProgressText(quadBlindOptions);
             setLoadingProgress(
                 Number.isFinite(options.progressBlind) ? options.progressBlind : 74,
-                `${label}: matching bright spherical asterisms with the ${catalogDisplayName(blindCatalogName)} catalog${alphaText}...`
+                `${label}: matching bright spherical quads with the ${catalogDisplayName(blindCatalogName)} catalog${alphaText}...`
             );
             await yieldToBrowser();
             const blindMatcher = typeof window.AidaAutoIdentifier.identifyStarsBlindAsync === "function" ?
@@ -3045,8 +3081,8 @@ end
             result = await blindMatcher(
                 visibleStarsForMatching(Math.max(
                     maxMag,
-                    Number.isFinite(options.blindOptions && options.blindOptions.ambiguityMaxMagnitude) ?
-                        options.blindOptions.ambiguityMaxMagnitude :
+                    Number.isFinite(quadBlindOptions.ambiguityMaxMagnitude) ?
+                        quadBlindOptions.ambiguityMaxMagnitude :
                     maxMag
                 ), {
                     ...(options.blindOptions || options),
@@ -3058,13 +3094,13 @@ end
                     maxDetections: 80,
                     maxCatalogStars: 80,
                     minMatches: minBlindMatches,
-                    ...(options.blindOptions || {}),
+                    ...quadBlindOptions,
                     triangleDebugStage: `${label} blind <= mag ${maxMag.toFixed(1)}`,
                     onTriangleDebug: triangleDebug,
                     ...cooperativeMatcherOptions(
                         Number.isFinite(options.progressBlind) ? options.progressBlind : 74,
                         7,
-                        "blind asterism search"
+                        "blind quad search"
                     ),
                 }
             );
@@ -3823,10 +3859,14 @@ end
             image: snapshot.image || {count: 0, points: []},
         } : null;
         updateTriangleDebugPlot();
+        render();
     }
 
     function updateTriangleDebugPlot() {
         if (!triangleDebugPlot) {
+            return;
+        }
+        if (state.closeableDebugPanelActive) {
             return;
         }
         triangleDebugPlot.replaceChildren();
@@ -3870,8 +3910,307 @@ end
                 Number.isFinite(snapshot.totalAsterismCandidateCount)) {
             pieces.push(`regional ${snapshot.regionalAsterismCandidateCount}/${snapshot.totalAsterismCandidateCount}`);
         }
+        if (Array.isArray(snapshot.quadEdges) && snapshot.quadEdges.length) {
+            pieces.push(`quad lines ${snapshot.quadEdges.length}`);
+        }
+        if (Number.isFinite(snapshot.currentQuadIndex) && Number.isFinite(snapshot.currentQuadTotal)) {
+            pieces.push(`current quad ${snapshot.currentQuadIndex}/${snapshot.currentQuadTotal}`);
+        }
         title.textContent = pieces.join("; ");
         triangleDebugPlot.appendChild(title);
+        if (snapshot.quadScatter) {
+            triangleDebugPlot.appendChild(quadScatterSvg(snapshot.quadScatter));
+        }
+    }
+
+    function closeTriangleDebugPanel() {
+        if (!triangleDebugPlot) {
+            return;
+        }
+        triangleDebugPlot.replaceChildren();
+        triangleDebugPlot.classList.remove("visible");
+        triangleDebugPlot.setAttribute("aria-hidden", "true");
+        state.closeableDebugPanelActive = false;
+    }
+
+    function showCloseableDebugPanel(titleText, bodyNodes = [], closeText = "Continue", onClose = null) {
+        if (!triangleDebugPlot) {
+            return Promise.resolve();
+        }
+        state.closeableDebugPanelActive = true;
+        triangleDebugPlot.replaceChildren();
+        triangleDebugPlot.classList.add("visible");
+        triangleDebugPlot.setAttribute("aria-hidden", "false");
+        const header = document.createElement("div");
+        header.className = "debug-stop-header";
+        const title = document.createElement("div");
+        title.className = "triangle-debug-title";
+        title.textContent = titleText;
+        const close = document.createElement("button");
+        close.type = "button";
+        close.className = "debug-stop-close";
+        close.textContent = closeText;
+        header.appendChild(title);
+        header.appendChild(close);
+        triangleDebugPlot.appendChild(header);
+        for (const node of bodyNodes) {
+            if (node) {
+                triangleDebugPlot.appendChild(node);
+            }
+        }
+        return new Promise(resolve => {
+            close.addEventListener("pointerdown", event => {
+                event.stopPropagation();
+            });
+            close.addEventListener("click", event => {
+                event.preventDefault();
+                event.stopPropagation();
+                closeTriangleDebugPanel();
+                if (typeof onClose === "function") {
+                    window.setTimeout(onClose, 0);
+                }
+                resolve();
+            }, {once: true});
+        });
+    }
+
+    function quadL2HistogramSvg(norms, threshold) {
+        const width = 330;
+        const height = 190;
+        const margin = {left: 38, right: 12, top: 18, bottom: 32};
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "quad-debug-scatter");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        const maxX = 3 * threshold;
+        const bins = new Array(24).fill(0);
+        let overflow = 0;
+        for (const norm of norms) {
+            if (!Number.isFinite(norm)) {
+                continue;
+            }
+            if (norm > maxX) {
+                overflow += 1;
+                continue;
+            }
+            const idx = Math.min(bins.length - 1, Math.max(0, Math.floor(norm / maxX * bins.length)));
+            bins[idx] += 1;
+        }
+        const maxBin = Math.max(1, ...bins);
+        const sx = x => margin.left + x / maxX * (width - margin.left - margin.right);
+        const sy = y => height - margin.bottom - y / maxBin * (height - margin.top - margin.bottom);
+        const axis = (x1, y1, x2, y2, cls = "axis") => {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("class", cls);
+            line.setAttribute("x1", x1.toFixed(2));
+            line.setAttribute("y1", y1.toFixed(2));
+            line.setAttribute("x2", x2.toFixed(2));
+            line.setAttribute("y2", y2.toFixed(2));
+            svg.appendChild(line);
+        };
+        axis(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom);
+        axis(margin.left, margin.top, margin.left, height - margin.bottom);
+        for (let i = 0; i < bins.length; i += 1) {
+            const x0 = sx(i / bins.length * maxX);
+            const x1 = sx((i + 1) / bins.length * maxX);
+            const y = sy(bins[i]);
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("class", i / bins.length * maxX <= threshold ? "hist-good-bin" : "hist-bad-bin");
+            rect.setAttribute("x", (x0 + 1).toFixed(2));
+            rect.setAttribute("y", y.toFixed(2));
+            rect.setAttribute("width", Math.max(1, x1 - x0 - 2).toFixed(2));
+            rect.setAttribute("height", Math.max(0, height - margin.bottom - y).toFixed(2));
+            svg.appendChild(rect);
+        }
+        axis(sx(threshold), margin.top, sx(threshold), height - margin.bottom, "threshold-line");
+        const labels = [
+            [`0`, margin.left, height - 10, "middle"],
+            [`${threshold.toFixed(3)}`, sx(threshold), height - 10, "middle"],
+            [`${maxX.toFixed(3)}`, width - margin.right, height - 10, "middle"],
+            [`L2 norm histogram; ${overflow} > 3x cutoff`, margin.left, 13, "start"],
+        ];
+        for (const [text, x, y, anchor] of labels) {
+            const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            label.setAttribute("class", "axis-label");
+            label.setAttribute("x", x.toFixed(2));
+            label.setAttribute("y", y.toFixed(2));
+            label.setAttribute("text-anchor", anchor);
+            label.textContent = text;
+            svg.appendChild(label);
+        }
+        return svg;
+    }
+
+    function debugScatterSvg(points, options = {}) {
+        const width = 330;
+        const height = 210;
+        const margin = {left: 42, right: 14, top: 26, bottom: 36};
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "quad-debug-scatter");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        const xMin = Number.isFinite(options.xMin) ? options.xMin : Math.min(...points.map(p => p.x));
+        const xMax = Number.isFinite(options.xMax) ? options.xMax : Math.max(...points.map(p => p.x));
+        const yMin = Number.isFinite(options.yMin) ? options.yMin : Math.min(...points.map(p => p.y));
+        const yMax = Number.isFinite(options.yMax) ? options.yMax : Math.max(...points.map(p => p.y));
+        const sx = x => margin.left + (x - xMin) / Math.max(1e-9, xMax - xMin) * (width - margin.left - margin.right);
+        const sy = y => height - margin.bottom - (y - yMin) / Math.max(1e-9, yMax - yMin) * (height - margin.top - margin.bottom);
+        const addLine = (x1, y1, x2, y2, cls = "axis") => {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("class", cls);
+            line.setAttribute("x1", x1.toFixed(2));
+            line.setAttribute("y1", y1.toFixed(2));
+            line.setAttribute("x2", x2.toFixed(2));
+            line.setAttribute("y2", y2.toFixed(2));
+            svg.appendChild(line);
+        };
+        addLine(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom);
+        addLine(margin.left, margin.top, margin.left, height - margin.bottom);
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        title.setAttribute("class", "panel-title");
+        title.setAttribute("x", margin.left.toFixed(2));
+        title.setAttribute("y", "15");
+        title.textContent = options.title || "";
+        svg.appendChild(title);
+        for (const point of points) {
+            if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+                continue;
+            }
+            const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            dot.setAttribute("class", point.winner ? "cluster-winner-point" : "cluster-other-point");
+            dot.setAttribute("cx", sx(point.x).toFixed(2));
+            dot.setAttribute("cy", sy(point.y).toFixed(2));
+            dot.setAttribute("r", point.winner ? "4.8" : "2.8");
+            svg.appendChild(dot);
+        }
+        const xLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        xLabel.setAttribute("class", "axis-label");
+        xLabel.setAttribute("x", (0.5 * (margin.left + width - margin.right)).toFixed(2));
+        xLabel.setAttribute("y", (height - 8).toFixed(2));
+        xLabel.textContent = options.xLabel || "x";
+        svg.appendChild(xLabel);
+        const yLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        yLabel.setAttribute("class", "axis-label");
+        yLabel.setAttribute("x", "12");
+        yLabel.setAttribute("y", (0.5 * height).toFixed(2));
+        yLabel.setAttribute("transform", `rotate(-90 12 ${0.5 * height})`);
+        yLabel.textContent = options.yLabel || "y";
+        svg.appendChild(yLabel);
+        return svg;
+    }
+
+    function quadScatterSvg(scatter) {
+        const wrap = document.createElement("div");
+        wrap.className = "quad-debug-scatter-wrap";
+        const panels = Array.isArray(scatter.panels) && scatter.panels.length ?
+            scatter.panels :
+            [{
+                title: "Quad signed delta",
+                xLabel: "\u0394C signed",
+                yLabel: "\u0394D signed",
+                points: Array.isArray(scatter.catalog) ? scatter.catalog : [],
+            }];
+        for (const panel of panels.slice(0, 3)) {
+            wrap.appendChild(quadScatterPanelSvg(panel, scatter));
+        }
+        return wrap;
+    }
+
+    function quadScatterPanelSvg(panel, scatter) {
+        const width = 320;
+        const height = 210;
+        const margin = {left: 44, right: 14, top: 26, bottom: 36};
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "quad-debug-scatter");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        const points = Array.isArray(panel.points) ? panel.points : [];
+        const selected = scatter.selected || null;
+        const limit = Number.isFinite(scatter.limit) ? scatter.limit : 0.12;
+        const x0 = Number.isFinite(panel.xMin) ? panel.xMin : -limit;
+        const x1 = Number.isFinite(panel.xMax) ? panel.xMax : limit;
+        const y0 = Number.isFinite(panel.yMin) ? panel.yMin : -limit;
+        const y1 = Number.isFinite(panel.yMax) ? panel.yMax : limit;
+        const sx = x => margin.left + (x - x0) / Math.max(1e-9, x1 - x0) * (width - margin.left - margin.right);
+        const sy = y => height - margin.bottom - (y - y0) / Math.max(1e-9, y1 - y0) * (height - margin.top - margin.bottom);
+        const addLine = (xA, yA, xB, yB, cls) => {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("class", cls);
+            line.setAttribute("x1", xA.toFixed(2));
+            line.setAttribute("y1", yA.toFixed(2));
+            line.setAttribute("x2", xB.toFixed(2));
+            line.setAttribute("y2", yB.toFixed(2));
+            svg.appendChild(line);
+        };
+        addLine(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom, "axis");
+        addLine(margin.left, margin.top, margin.left, height - margin.bottom, "axis");
+        addLine(sx(0), margin.top, sx(0), height - margin.bottom, "zero-axis");
+        addLine(margin.left, sy(0), width - margin.right, sy(0), "zero-axis");
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        title.setAttribute("class", "panel-title");
+        title.setAttribute("x", margin.left.toFixed(2));
+        title.setAttribute("y", "15");
+        title.textContent = panel.title || "Quad signed delta";
+        svg.appendChild(title);
+        const sampleEvery = Math.max(1, Math.ceil(points.length / 1800));
+        for (let i = 0; i < points.length; i += sampleEvery) {
+            const point = points[i];
+            if (!Number.isFinite(point.x) || !Number.isFinite(point.y) ||
+                    point.x < x0 || point.x > x1 || point.y < y0 || point.y > y1) {
+                continue;
+            }
+            const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            dot.setAttribute("class", point.near ? "near-catalog-quad" : "catalog-quad");
+            dot.setAttribute("cx", sx(point.x).toFixed(2));
+            dot.setAttribute("cy", sy(point.y).toFixed(2));
+            dot.setAttribute("r", point.near ? "4.8" : "3.0");
+            svg.appendChild(dot);
+        }
+        if (panel.truePoint && Number.isFinite(panel.truePoint.x) && Number.isFinite(panel.truePoint.y) &&
+                panel.truePoint.x >= x0 && panel.truePoint.x <= x1 &&
+                panel.truePoint.y >= y0 && panel.truePoint.y <= y1) {
+            const truth = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            truth.setAttribute("class", "true-catalog-quad");
+            truth.setAttribute("cx", sx(panel.truePoint.x).toFixed(2));
+            truth.setAttribute("cy", sy(panel.truePoint.y).toFixed(2));
+            truth.setAttribute("r", "6.2");
+            svg.appendChild(truth);
+        }
+        const xLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        xLabel.setAttribute("class", "axis-label");
+        xLabel.setAttribute("x", (0.5 * (margin.left + width - margin.right)).toFixed(2));
+        xLabel.setAttribute("y", (height - 8).toFixed(2));
+        xLabel.textContent = panel.xLabel || "signed x delta";
+        svg.appendChild(xLabel);
+        const yLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        yLabel.setAttribute("class", "axis-label");
+        yLabel.setAttribute("x", "12");
+        yLabel.setAttribute("y", (0.5 * height).toFixed(2));
+        yLabel.setAttribute("transform", `rotate(-90 12 ${0.5 * height})`);
+        yLabel.textContent = panel.yLabel || "signed y delta";
+        svg.appendChild(yLabel);
+        if (panel.numericTicks) {
+            const tickValues = [0, 0.5 * Math.max(x1, y1), Math.max(x1, y1)]
+                .filter((value, index, values) => index === 0 || Math.abs(value - values[index - 1]) > 1e-9);
+            const formatTick = value => value >= 0.1 ? value.toFixed(2) : value.toFixed(3);
+            for (const value of tickValues) {
+                if (value >= x0 && value <= x1) {
+                    const tick = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    tick.setAttribute("class", "axis-label numeric-tick");
+                    tick.setAttribute("x", sx(value).toFixed(2));
+                    tick.setAttribute("y", (height - margin.bottom + 13).toFixed(2));
+                    tick.textContent = formatTick(value);
+                    svg.appendChild(tick);
+                }
+                if (value >= y0 && value <= y1) {
+                    const tick = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    tick.setAttribute("class", "axis-label numeric-tick");
+                    tick.setAttribute("x", (margin.left - 8).toFixed(2));
+                    tick.setAttribute("y", (sy(value) + 3).toFixed(2));
+                    tick.setAttribute("text-anchor", "end");
+                    tick.textContent = formatTick(value);
+                    svg.appendChild(tick);
+                }
+            }
+        }
+        return svg;
     }
 
     function clearTransientDebugOverlays() {
@@ -3886,6 +4225,9 @@ end
         state.junkStarFinderPaintActive = false;
         state.lastNotStarTilePaintPoint = null;
         state.lastJunkStarFinderPoint = null;
+        state.manualQuadDebugPoints = [];
+        state.quadScanGoodEdges = [];
+        state.quadScanBadEdges = [];
         updateFitResidualButton();
         updateTriangleDebugPlot();
     }
@@ -4054,10 +4396,16 @@ end
     function drawAutoDetectionMarkers() {
         if (!state.image || !state.showAutoDetectionMarkers ||
                 !(state.displayMode === "pairing" || state.displayMode === "pureImage")) {
-            return;
+            if (!state.image || !(state.displayMode === "pairing" || state.displayMode === "pureImage")) {
+                return;
+            }
+        } else {
+            for (const detection of activeDetectedStars()) {
+                addOverlayCircle(imageMarkerCanvasPixel(detection.x, detection.y), "detected-marker");
+            }
         }
-        for (const detection of activeDetectedStars()) {
-            addOverlayCircle(imageMarkerCanvasPixel(detection.x, detection.y), "detected-marker");
+        for (const detection of state.manualQuadDebugPoints || []) {
+            addOverlayCircle(imageMarkerCanvasPixel(detection.x, detection.y), "quad-debug-detected-marker");
         }
     }
 
@@ -4109,6 +4457,18 @@ end
             state.triangleDebugSnapshot.supportTriangles.acceptedEdges : [];
         if (supportEdges.length) {
             addOverlaySvgLineLayer(supportEdges, "support-asterism-lines");
+        }
+        const quadEdges = state.triangleDebugSnapshot &&
+            Array.isArray(state.triangleDebugSnapshot.quadEdges) ?
+            state.triangleDebugSnapshot.quadEdges : [];
+        if (quadEdges.length) {
+            addOverlaySvgLineLayer(quadEdges, "searched-quad-lines");
+        }
+        if (state.quadScanBadEdges.length) {
+            addOverlaySvgLineLayer(state.quadScanBadEdges, "quad-scan-bad-lines");
+        }
+        if (state.quadScanGoodEdges.length) {
+            addOverlaySvgLineLayer(state.quadScanGoodEdges, "quad-scan-good-lines");
         }
         if (state.asterismEdges.length) {
             addOverlaySvgLineLayer(state.asterismEdges, "lucky-asterism-lines");
@@ -4247,7 +4607,8 @@ end
             `display mode: ${state.displayMode}\n` +
             `star names: ${state.showStarNames ? "on" : "off"}\n` +
             `KDE sub-pixel dots: ${state.showKdePositionDots ? "on" : "off"}\n` +
-            `asterism lines: ${state.showAsterismLines ? "on" : "off"} (${state.asterismEdges.length} edges)\n` +
+            `quad lines: ${state.showAsterismLines ? "on" : "off"} ` +
+            `(${state.asterismEdges.length + state.quadScanGoodEdges.length + state.quadScanBadEdges.length} edges)\n` +
             `fit residuals: ${state.showFitResiduals ? "on" : "off"}\n` +
             `star pairing armed: ${state.starMatchMode ? "on" : "off"}${state.pendingMatch ? " (select catalog star)" : ""}\n` +
             `matched star pairs: ${state.matches.length}\n` +
@@ -4843,6 +5204,82 @@ end
         applyDetectorThreshold(state.detectorCache);
     }
 
+    async function detectLuckyQuadBootstrapStars(maxDetections = 650) {
+        const base = {
+            scanStep: 1,
+            requireGlobalThreshold: false,
+            maxRadiusPx: 7,
+            maxElongation: 4.2,
+            suppressionRadiusPx: 12,
+            crowdingRadiusPx: 34,
+            maxCrowding: 8,
+            crowdingScorePower: 1.2,
+            spatialBalance: true,
+            balanceGridCols: 6,
+            balanceGridRows: 4,
+            balanceMaxPerCell: 28,
+            autoMorphology: true,
+            autoMorphologyMaxRadiusPx: 9,
+        };
+        const recipes = [
+            {
+                label: "strict bright-star bootstrap",
+                options: {
+                    ...base,
+                    thresholdSigma: 3.2,
+                    localThresholdSigma: 3.2,
+                },
+                minDetections: 36,
+            },
+            {
+                label: "very bright-star bootstrap",
+                options: {
+                    ...base,
+                    thresholdSigma: 4.4,
+                    localThresholdSigma: 4.4,
+                    requireGlobalThreshold: true,
+                    suppressionRadiusPx: 22,
+                    balanceMaxPerCell: 10,
+                },
+                minDetections: 24,
+            },
+            {
+                label: "fallback weak-star bootstrap",
+                options: {
+                    ...base,
+                    thresholdSigma: 1.55,
+                    localThresholdSigma: 1.65,
+                    suppressionRadiusPx: 9,
+                },
+                minDetections: 36,
+            },
+        ];
+        let best = null;
+        for (let i = 0; i < recipes.length; i += 1) {
+            const recipe = recipes[i];
+            setLoadingProgress(
+                6 + 18 * i / recipes.length,
+                `New lucky quad scan: detecting stars with ${recipe.label}...`
+            );
+            await yieldToBrowser();
+            await detectBrightImageStarsForAutoIdentify(maxDetections, recipe.options);
+            const count = activeDetectedStars().length;
+            const result = {recipe, count, status: state.detectorStatus};
+            if (!best || count > best.count) {
+                best = result;
+            }
+            if (count >= recipe.minDetections) {
+                state.detectorStatus = `${state.detectorStatus}; selected lucky bootstrap recipe: ${recipe.label}`;
+                return result;
+            }
+        }
+        if (best && best.recipe) {
+            await detectBrightImageStarsForAutoIdentify(maxDetections, best.recipe.options);
+            state.detectorStatus = `${state.detectorStatus}; selected lucky bootstrap recipe: ${best.recipe.label}`;
+        }
+        return best || {recipe: recipes[0], count: 0, status: ""};
+    }
+
     async function detectBrightImageStarsForAutoIdentify(maxDetections = 50, detectorOptions = {}) {
         state.detectedStars = [];
         state.autoMatches = [];
@@ -4998,15 +5435,12 @@ end
         zoomContext.restore();
     }
 
-    function drawZoomDot(x, y, fill = "rgba(0, 0, 0, 0.95)", radius = 2.6) {
+    function drawZoomDot(x, y, fill = "rgba(0, 0, 0, 0.95)", radius = 1.4) {
         zoomContext.save();
         zoomContext.fillStyle = fill;
-        zoomContext.strokeStyle = "rgba(255, 255, 255, 0.82)";
-        zoomContext.lineWidth = 0.8;
         zoomContext.beginPath();
         zoomContext.arc(x, y, radius, 0, 2 * Math.PI);
         zoomContext.fill();
-        zoomContext.stroke();
         zoomContext.restore();
     }
 
@@ -5058,7 +5492,7 @@ end
             if (match.image) {
                 const imagePoint = zoomPatchPoint(match.image.x, match.image.y, point, size, half, 10);
                 if (imagePoint) {
-                    drawZoomDot(imagePoint.x, imagePoint.y, "rgba(0, 0, 0, 0.98)", 3.0);
+                    drawZoomDot(imagePoint.x, imagePoint.y, "rgba(0, 0, 0, 0.98)", 1.5);
                 }
             }
             const catalogPoint = pairedCatalogRawPoint(match);
@@ -7337,7 +7771,1591 @@ end
         return {accepted, attempted, skipped: false, counts, lastRms};
     }
 
+    function optmod2PreflattenDetectionVector(detection, optpar, radialAlpha) {
+        if (!state.image || !detection) {
+            return null;
+        }
+        const f1 = Math.abs(Number(optpar && optpar[0]) || 1);
+        const f2 = Math.abs(Number(optpar && optpar[1]) || state.image.width / Math.max(1, state.image.height));
+        const du = Number(optpar && optpar[5]) || 0;
+        const dv = Number(optpar && optpar[6]) || 0;
+        const a = Number(radialAlpha);
+        if (!(f1 > 0 && f2 > 0 && a > 0)) {
+            return null;
+        }
+        const xn = ((detection.x + 1) / state.image.width - 0.5 - du) / f1;
+        const yn = ((detection.y + 1) / state.image.height - 0.5 - dv) / f2;
+        const rho = Math.hypot(xn, yn);
+        if (!Number.isFinite(rho) || rho >= 0.999999) {
+            return null;
+        }
+        if (rho <= 1e-12) {
+            return [0, 0, 1];
+        }
+        const theta = Math.asin(rho) / a;
+        const sint = Math.sin(theta);
+        const cost = Math.cos(theta);
+        const vector = [sint * xn / rho, sint * yn / rho, cost];
+        const n = Math.hypot(vector[0], vector[1], vector[2]);
+        return n > 0 && Number.isFinite(n) ? [vector[0] / n, vector[1] / n, vector[2] / n] : null;
+    }
+
+    function quadDetectionVectors(detections, options = {}) {
+        const optpar = currentOptpar();
+        return detections.map((detection, index) => {
+            let vector = null;
+            if (options.preflattenModel === "optmod2" && Number.isFinite(options.radialAlpha)) {
+                vector = optmod2PreflattenDetectionVector(detection, optpar, options.radialAlpha);
+            }
+            if (!vector) {
+                const xy = {
+                    x: (detection.x + 1) / state.image.width - 0.5,
+                    y: (detection.y + 1) / state.image.height - 0.5,
+                };
+                const v = [
+                    xy.x / Math.max(1e-6, Math.abs(optpar[0] || 1)),
+                    xy.y / Math.max(1e-6, Math.abs(optpar[1] || 1)),
+                    1,
+                ];
+                const n = Math.hypot(v[0], v[1], v[2]);
+                vector = [v[0] / n, v[1] / n, v[2] / n];
+            }
+            return {
+                ...detection,
+                id: detection.id || index + 1,
+                vector,
+                rank: Number.isFinite(detection.rank) ? detection.rank : index + 1,
+            };
+        }).filter(detection => Array.isArray(detection.vector));
+    }
+
+    function catalogStarsForQuadScan(maxMag = 6.0) {
+        return visibleStarsForMatching(maxMag, {
+            catalogName: fittingStarCatalogName(),
+            maxZenithDeg: 89,
+        })
+            .slice()
+            .sort((a, b) => a.mag - b.mag || String(a.name || a.key || "").localeCompare(String(b.name || b.key || "")))
+            .slice(0, 500)
+            .map((star, index) => {
+                const sinze = Math.sin(star.ze);
+                return {
+                    ...star,
+                    vector: [
+                        sinze * Math.sin(star.az),
+                        sinze * Math.cos(star.az),
+                        Math.cos(star.ze),
+                    ],
+                    rank: index + 1,
+                };
+            });
+    }
+
+    function addQuadEdges(target, quad, label) {
+        for (const [i, j] of [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]]) {
+            target.push({
+                a: {x: quad.points[i].x, y: quad.points[i].y},
+                b: {x: quad.points[j].x, y: quad.points[j].y},
+                label,
+            });
+        }
+    }
+
+    function bestCatalogQuadL2(imageQuad, catalogQuads) {
+        let bestNorm = Infinity;
+        let bestQuad = null;
+        for (const quad of catalogQuads) {
+            const dCx = quad.coords[0] - imageQuad.coords[0];
+            const dCy = quad.coords[1] - imageQuad.coords[1];
+            const dDx = quad.coords[2] - imageQuad.coords[2];
+            const dDy = quad.coords[3] - imageQuad.coords[3];
+            const norm = Math.hypot(dCx, dCy, dDx, dDy);
+            if (norm < bestNorm) {
+                bestNorm = norm;
+                bestQuad = quad;
+            }
+        }
+        return {norm: bestNorm, quad: bestQuad};
+    }
+
+    function meanMinimumQuadL2(imageQuads, catalogQuads, sampleLimit = 240) {
+        if (!Array.isArray(imageQuads) || !imageQuads.length || !Array.isArray(catalogQuads) || !catalogQuads.length) {
+            return Infinity;
+        }
+        const step = Math.max(1, Math.ceil(imageQuads.length / Math.max(1, sampleLimit)));
+        let sum = 0;
+        let count = 0;
+        for (let i = 0; i < imageQuads.length; i += step) {
+            const result = bestCatalogQuadL2(imageQuads[i], catalogQuads);
+            if (Number.isFinite(result.norm)) {
+                sum += result.norm;
+                count += 1;
+            }
+        }
+        return count > 0 ? sum / count : Infinity;
+    }
+
+    async function selectOptmod2QuadPreflatten(detections, catalogQuads) {
+        const optmod = Number(controls.optmod.value) || 2;
+        const current = currentOptpar();
+        const currentAlpha = Number(current[7]);
+        const candidates = optmod === 2 ?
+            [0.30, 0.50, 0.60, 0.80, 0.90, 1.00] :
+            [Number.isFinite(currentAlpha) ? currentAlpha : 1.0];
+        const uniqueCandidates = Array.from(new Set(candidates
+            .filter(value => Number.isFinite(value) && value > 0)
+            .map(value => Number(value.toFixed(6)))));
+        let best = null;
+        let maxQuadCount = 0;
+        const trials = [];
+        for (let i = 0; i < uniqueCandidates.length; i += 1) {
+            const radialAlpha = uniqueCandidates[i];
+            setLoadingProgress(
+                40 + 10 * i / Math.max(1, uniqueCandidates.length),
+                `New lucky quad scan: testing optmod 2 pre-dedistortion a_r=${radialAlpha.toFixed(2)}...`
+            );
+            await yieldToBrowser();
+            const imageQuads = localQuadRecordsFromGrid(detections, {
+                preflattenModel: optmod === 2 ? "optmod2" : "pinhole",
+                radialAlpha,
+            });
+            const meanMinL2 = meanMinimumQuadL2(imageQuads, catalogQuads);
+            const trial = {radialAlpha, imageQuads, meanMinL2, quadCount: imageQuads.length};
+            trials.push(trial);
+            maxQuadCount = Math.max(maxQuadCount, imageQuads.length);
+        }
+        const minUsefulQuads = Math.max(8, Math.floor(0.75 * maxQuadCount));
+        for (const trial of trials) {
+            if (trial.quadCount < minUsefulQuads) {
+                continue;
+            }
+            if (!best || trial.meanMinL2 < best.meanMinL2) {
+                best = trial;
+            }
+        }
+        if (!best) {
+            best = trials.slice().sort((a, b) => a.meanMinL2 - b.meanMinL2 || b.quadCount - a.quadCount)[0] ||
+                {radialAlpha: currentAlpha, imageQuads: localQuadRecordsFromGrid(detections), meanMinL2: Infinity, quadCount: 0};
+        }
+        if (optmod === 2 && Number.isFinite(best.radialAlpha)) {
+            const next = current.slice();
+            next[7] = best.radialAlpha;
+            applyFitVector(next);
+        }
+        return {
+            ...best,
+            trials,
+            maxQuadCount,
+        };
+    }
+
+    function catalogQuadL2Matches(imageQuad, catalogQuads, threshold) {
+        const matches = [];
+        let bestNorm = Infinity;
+        let bestQuad = null;
+        for (const quad of catalogQuads) {
+            const dCx = quad.coords[0] - imageQuad.coords[0];
+            const dCy = quad.coords[1] - imageQuad.coords[1];
+            const dDx = quad.coords[2] - imageQuad.coords[2];
+            const dDy = quad.coords[3] - imageQuad.coords[3];
+            const norm = Math.hypot(dCx, dCy, dDx, dDy);
+            if (norm < bestNorm) {
+                bestNorm = norm;
+                bestQuad = quad;
+            }
+            if (Number.isFinite(norm) && norm <= threshold) {
+                matches.push({
+                    imageQuad,
+                    catalogQuad: quad,
+                    norm,
+                });
+            }
+        }
+        matches.sort((a, b) => a.norm - b.norm);
+        return {
+            bestNorm,
+            bestQuad,
+            matches,
+        };
+    }
+
+    function dot3(a, b) {
+        return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    }
+
+    function cross3(a, b) {
+        return [
+            a[1] * b[2] - a[2] * b[1],
+            a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0],
+        ];
+    }
+
+    function sub3(a, b) {
+        return [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    }
+
+    function scale3(a, s) {
+        return [a[0] * s, a[1] * s, a[2] * s];
+    }
+
+    function normalize3(v) {
+        const n = Math.hypot(v[0], v[1], v[2]);
+        return n > 1e-12 && Number.isFinite(n) ? [v[0] / n, v[1] / n, v[2] / n] : null;
+    }
+
+    function triadBasisFromVectors(a, b) {
+        const e1 = normalize3(a);
+        if (!e1) {
+            return null;
+        }
+        const bPerp = sub3(b, scale3(e1, dot3(b, e1)));
+        const e2 = normalize3(bPerp);
+        if (!e2) {
+            return null;
+        }
+        const e3 = normalize3(cross3(e1, e2));
+        return e3 ? [e1, e2, e3] : null;
+    }
+
+    function rotationFromQuadPair(catalogQuad, imageQuad) {
+        if (!catalogQuad || !imageQuad || !catalogQuad.points || !imageQuad.points) {
+            return null;
+        }
+        const src = triadBasisFromVectors(catalogQuad.points[0].vector, catalogQuad.points[1].vector);
+        const dst = triadBasisFromVectors(imageQuad.points[0].vector, imageQuad.points[1].vector);
+        if (!src || !dst) {
+            return null;
+        }
+        const r = new Array(9).fill(0);
+        for (let row = 0; row < 3; row += 1) {
+            for (let col = 0; col < 3; col += 1) {
+                r[row * 3 + col] =
+                    dst[0][row] * src[0][col] +
+                    dst[1][row] * src[1][col] +
+                    dst[2][row] * src[2][col];
+            }
+        }
+        return r;
+    }
+
+    function skyVectorToAzElDeg(vector) {
+        if (!Array.isArray(vector) || vector.length < 3) {
+            return null;
+        }
+        const v = normalize3(vector);
+        if (!v) {
+            return null;
+        }
+        const az = ((Math.atan2(v[0], v[1]) / AidaTools.DEG) % 360 + 360) % 360;
+        const el = Math.asin(Math.max(-1, Math.min(1, v[2]))) / AidaTools.DEG;
+        return {az, el};
+    }
+
+    function circularDiffDeg(a, b) {
+        return Math.abs(((a - b + 540) % 360) - 180);
+    }
+
+    function angularDistanceAzElDeg(a, b) {
+        const azeA = {az: a.az * AidaTools.DEG, ze: (90 - a.el) * AidaTools.DEG};
+        const azeB = {az: b.az * AidaTools.DEG, ze: (90 - b.el) * AidaTools.DEG};
+        return angularSeparationRad(azeA, azeB) / AidaTools.DEG;
+    }
+
+    function quadVoteCandidate(imageQuad, catalogQuad, norm, index) {
+        const rot = rotationFromQuadPair(catalogQuad, imageQuad);
+        const angles = rot ? cameraAnglesFromRotation(rot) : null;
+        if (!rot || !angles) {
+            return null;
+        }
+        const boresight = skyVectorToAzElDeg([rot[6], rot[7], rot[8]]);
+        if (!boresight) {
+            return null;
+        }
+        return {
+            index,
+            imageQuad,
+            catalogQuad,
+            norm,
+            rot,
+            boresight,
+            alpha: angles.alpha,
+            beta: angles.beta,
+            gamma: ((angles.gamma % 360) + 360) % 360,
+            score: 1 / Math.max(1e-4, norm),
+        };
+    }
+
+    function clusterQuadVoteCandidates(candidates) {
+        const clusters = [];
+        const sorted = candidates.slice().sort((a, b) => a.norm - b.norm);
+        for (const candidate of sorted) {
+            let bestCluster = null;
+            for (const cluster of clusters) {
+                const ref = cluster.reference;
+                if (angularDistanceAzElDeg(candidate.boresight, ref.boresight) <= 3 &&
+                        circularDiffDeg(candidate.gamma, ref.gamma) <= 3) {
+                    bestCluster = cluster;
+                    break;
+                }
+            }
+            if (!bestCluster) {
+                bestCluster = {
+                    id: clusters.length + 1,
+                    reference: candidate,
+                    candidates: [],
+                    score: 0,
+                };
+                clusters.push(bestCluster);
+            }
+            bestCluster.candidates.push(candidate);
+            bestCluster.score += candidate.score;
+        }
+        clusters.sort((a, b) => b.candidates.length - a.candidates.length || b.score - a.score);
+        return clusters;
+    }
+
+    function quadAssignmentVotes(quadMatches) {
+        const byDetection = new Map();
+        for (const match of quadMatches) {
+            const imagePoints = match && match.imageQuad && match.imageQuad.points;
+            const catalogPoints = match && match.catalogQuad && match.catalogQuad.points;
+            if (!Array.isArray(imagePoints) || !Array.isArray(catalogPoints)) {
+                continue;
+            }
+            for (let i = 0; i < Math.min(4, imagePoints.length, catalogPoints.length); i += 1) {
+                const detection = imagePoints[i];
+                const star = catalogPoints[i];
+                if (!detection || !star) {
+                    continue;
+                }
+                const detectionKey = String(detection.id || `${Math.round(detection.x * 10)},${Math.round(detection.y * 10)}`);
+                const starKey = String(star.key || star.name || `${star.raHours || 0}:${star.decDeg || 0}`);
+                if (!byDetection.has(detectionKey)) {
+                    byDetection.set(detectionKey, {
+                        detection,
+                        stars: new Map(),
+                    });
+                }
+                const record = byDetection.get(detectionKey);
+                const vote = record.stars.get(starKey) || {
+                    star,
+                    count: 0,
+                };
+                vote.count += 1;
+                record.stars.set(starKey, vote);
+            }
+        }
+        const rows = [];
+        for (const [detectionKey, record] of byDetection.entries()) {
+            const votes = Array.from(record.stars.values())
+                .sort((a, b) => b.count - a.count || (a.star.mag || 99) - (b.star.mag || 99));
+            if (!votes.length) {
+                continue;
+            }
+            rows.push({
+                detectionKey,
+                detection: record.detection,
+                star: votes[0].star,
+                count: votes[0].count,
+                alternatives: votes.length,
+                accepted: votes[0].count >= 2,
+            });
+        }
+        rows.sort((a, b) => b.count - a.count || a.alternatives - b.alternatives);
+        return rows;
+    }
+
+    function quadAssignmentVoteEdges(quadMatches) {
+        const imageDetectionBrightness = detection => {
+            if (!detection) {
+                return 0;
+            }
+            const flux = Number(detection.flux);
+            if (Number.isFinite(flux) && flux > 0) {
+                return flux;
+            }
+            const peakContrast = Number(detection.peakContrast);
+            if (Number.isFinite(peakContrast) && peakContrast > 0) {
+                return peakContrast;
+            }
+            const peak = Number(detection.peakValue || detection.peak);
+            if (Number.isFinite(peak) && peak > 0) {
+                return peak;
+            }
+            const score = Number(detection.score);
+            return Number.isFinite(score) && score > 0 ? score : 0;
+        };
+        const byDetection = new Map();
+        for (const match of quadMatches) {
+            const imagePoints = match && match.imageQuad && match.imageQuad.points;
+            const catalogPoints = match && match.catalogQuad && match.catalogQuad.points;
+            if (!Array.isArray(imagePoints) || !Array.isArray(catalogPoints)) {
+                continue;
+            }
+            for (let i = 0; i < Math.min(4, imagePoints.length, catalogPoints.length); i += 1) {
+                const detection = imagePoints[i];
+                const star = catalogPoints[i];
+                if (!detection || !star) {
+                    continue;
+                }
+                const detectionKey = String(detection.id || `${Math.round(detection.x * 10)},${Math.round(detection.y * 10)}`);
+                const starKey = String(star.key || star.name || `${star.raHours || 0}:${star.decDeg || 0}`);
+                if (!byDetection.has(detectionKey)) {
+                    byDetection.set(detectionKey, {
+                        detectionKey,
+                        detection,
+                        stars: new Map(),
+                    });
+                }
+                const record = byDetection.get(detectionKey);
+                const edge = record.stars.get(starKey) || {
+                    detectionKey,
+                    starKey,
+                    detection,
+                    star,
+                    count: 0,
+                    normSum: 0,
+                    quads: [],
+                };
+                const norm = Number.isFinite(match.norm) ? match.norm : 1;
+                edge.count += 1;
+                edge.normSum += norm;
+                edge.quads.push(match);
+                record.stars.set(starKey, edge);
+            }
+        }
+        const edges = [];
+        for (const record of byDetection.values()) {
+            const votes = Array.from(record.stars.values()).map(edge => ({
+                ...edge,
+                avgNorm: edge.normSum / Math.max(1, edge.count),
+            })).sort((a, b) => b.count - a.count || a.avgNorm - b.avgNorm);
+            if (!votes.length) {
+                continue;
+            }
+            const best = votes[0];
+            const second = votes[1] || null;
+            edges.push({
+                ...best,
+                imageBrightness: imageDetectionBrightness(best.detection),
+                alternatives: votes.length,
+                secondCount: second ? second.count : 0,
+                secondAvgNorm: second ? second.avgNorm : Infinity,
+                voteMargin: best.count - (second ? second.count : 0),
+                voteFraction: best.count / votes.reduce((sum, edge) => sum + edge.count, 0),
+            });
+        }
+        return edges.sort((a, b) =>
+            b.count - a.count ||
+            (b.imageBrightness || 0) - (a.imageBrightness || 0) ||
+            a.avgNorm - b.avgNorm ||
+            b.voteMargin - a.voteMargin ||
+            b.voteFraction - a.voteFraction
+        );
+    }
+
+    function greedyOneToOneAssignments(edges, minCount = 2) {
+        const usedDetections = new Set();
+        const usedStars = new Set();
+        const selected = [];
+        for (const edge of edges) {
+            if (edge.count < minCount) {
+                continue;
+            }
+            if (minCount >= 2 && edge.count < 3 && edge.voteMargin < 2) {
+                continue;
+            }
+            if (usedDetections.has(edge.detectionKey) || usedStars.has(edge.starKey)) {
+                continue;
+            }
+            usedDetections.add(edge.detectionKey);
+            usedStars.add(edge.starKey);
+            selected.push(edge);
+        }
+        return selected;
+    }
+
+    function angularDistanceVecDeg(a, b) {
+        const va = normalize3(a);
+        const vb = normalize3(b);
+        const dot = dot3(va, vb);
+        return Math.acos(Math.max(-1, Math.min(1, dot))) / AidaTools.DEG;
+    }
+
+    function validateAssignmentsByPairwiseAngles(assignments, toleranceDeg = 5, options = {}) {
+        const enriched = assignments.map(edge => ({
+            ...edge,
+            pairwiseSupport: 0,
+            pairwiseComparisons: 0,
+            pairwiseMeanDeltaDeg: Infinity,
+            maxPairwiseDeltaDeg: 0,
+            pairwiseDeltaSumDeg: 0,
+        }));
+        if (enriched.length <= 2) {
+            return {
+                validated: enriched,
+                rejected: [],
+                toleranceDeg,
+                minimumSupport: 0,
+            };
+        }
+        for (let i = 0; i < enriched.length; i += 1) {
+            for (let j = i + 1; j < enriched.length; j += 1) {
+                const a = enriched[i];
+                const b = enriched[j];
+                if (!a.detection.vector || !b.detection.vector || !a.star.vector || !b.star.vector) {
+                    continue;
+                }
+                const imageAngle = angularDistanceVecDeg(a.detection.vector, b.detection.vector);
+                const catalogAngle = angularDistanceVecDeg(a.star.vector, b.star.vector);
+                const delta = Math.abs(imageAngle - catalogAngle);
+                a.pairwiseComparisons += 1;
+                b.pairwiseComparisons += 1;
+                a.pairwiseDeltaSumDeg += delta;
+                b.pairwiseDeltaSumDeg += delta;
+                a.maxPairwiseDeltaDeg = Math.max(a.maxPairwiseDeltaDeg, delta);
+                b.maxPairwiseDeltaDeg = Math.max(b.maxPairwiseDeltaDeg, delta);
+                if (delta <= toleranceDeg) {
+                    a.pairwiseSupport += 1;
+                    b.pairwiseSupport += 1;
+                }
+            }
+        }
+        for (const edge of enriched) {
+            edge.pairwiseMeanDeltaDeg = edge.pairwiseComparisons > 0 ?
+                edge.pairwiseDeltaSumDeg / edge.pairwiseComparisons :
+                Infinity;
+        }
+        const defaultMinimumSupport = Math.max(1, Math.min(4, Math.ceil(0.22 * (enriched.length - 1))));
+        const minimumSupport = Number.isFinite(options.minimumSupport) ?
+            Math.max(1, Math.floor(options.minimumSupport)) :
+            defaultMinimumSupport;
+        const validated = enriched.filter(edge => edge.pairwiseSupport >= minimumSupport);
+        const rejected = enriched.filter(edge => edge.pairwiseSupport < minimumSupport);
+        return {
+            validated,
+            rejected,
+            toleranceDeg,
+            minimumSupport,
+        };
+    }
+
+    function rankQuadAssignments(assignments) {
+        return assignments.slice().sort((a, b) =>
+            (b.pairwiseSupport || 0) - (a.pairwiseSupport || 0) ||
+            (b.count || 0) - (a.count || 0) ||
+            (b.imageBrightness || 0) - (a.imageBrightness || 0) ||
+            (a.pairwiseMeanDeltaDeg || Infinity) - (b.pairwiseMeanDeltaDeg || Infinity) ||
+            (a.avgNorm || Infinity) - (b.avgNorm || Infinity) ||
+            (b.voteMargin || 0) - (a.voteMargin || 0) ||
+            (b.voteFraction || 0) - (a.voteFraction || 0)
+        );
+    }
+
+    function quadAssignmentSummaryTable(assignments, title) {
+        const wrap = document.createElement("div");
+        wrap.className = "quad-assignment-summary";
+        const heading = document.createElement("div");
+        heading.className = "quad-assignment-summary-title";
+        heading.textContent = title;
+        wrap.appendChild(heading);
+        if (!assignments.length) {
+            const empty = document.createElement("div");
+            empty.className = "quad-assignment-empty";
+            empty.textContent = "No assignments survived this stage.";
+            wrap.appendChild(empty);
+            return wrap;
+        }
+        const table = document.createElement("table");
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        for (const label of ["image x,y", "catalogue star", "assignments", "pair support", "mean Δ°", "image flux", "mean L2"]) {
+            const th = document.createElement("th");
+            th.textContent = label;
+            headerRow.appendChild(th);
+        }
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        const tbody = document.createElement("tbody");
+        for (const edge of assignments.slice(0, 16)) {
+            const tr = document.createElement("tr");
+            const starName = edge.star && edge.star.name ? compactStarDisplayName(edge.star.name) : edge.starKey;
+            const cells = [
+                `${edge.detection.x.toFixed(1)}, ${edge.detection.y.toFixed(1)}`,
+                starName,
+                String(edge.count),
+                String(edge.pairwiseSupport || 0),
+                Number.isFinite(edge.pairwiseMeanDeltaDeg) ? edge.pairwiseMeanDeltaDeg.toFixed(2) : "n/a",
+                Number(edge.imageBrightness || 0).toFixed(0),
+                edge.avgNorm.toFixed(4),
+            ];
+            for (const cell of cells) {
+                const td = document.createElement("td");
+                td.textContent = cell;
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        wrap.appendChild(table);
+        return wrap;
+    }
+
+    function updateQuadVoteDisplayedMatches(assignments, quadMatches) {
+        state.matches = matchesFromQuadAssignments(assignments);
+        updateAutoMatches();
+        state.quadScanBadEdges = [];
+        state.quadScanGoodEdges = acceptedQuadEdgesFromMatches(quadMatches, assignments);
+        state.showAutoDetectionMarkers = false;
+        state.manualQuadDebugPoints = [];
+        render();
+    }
+
+    function luckyBestMatchLimit(defaultValue = 3) {
+        const value = controls.luckyBestMatches ? Number(controls.luckyBestMatches.value) : defaultValue;
+        return Math.max(1, Math.floor(Number.isFinite(value) ? value : defaultValue));
+    }
+
+    function updateLuckyBestMatchesControl(maxMatches = 0, value = null) {
+        if (!controls.luckyBestMatchesControl || !controls.luckyBestMatches || !controls.luckyBestMatchesValue) {
+            return;
+        }
+        if (maxMatches <= 0) {
+            const preset = Math.max(1, Math.min(24, luckyBestMatchLimit(3)));
+            controls.luckyBestMatchesControl.hidden = false;
+            controls.luckyBestMatches.max = "24";
+            controls.luckyBestMatches.value = String(preset);
+            controls.luckyBestMatchesValue.textContent = String(preset);
+            return;
+        }
+        const selectedValue = Math.max(1, Math.min(maxMatches, value == null ? luckyBestMatchLimit() : Number(value)));
+        controls.luckyBestMatchesControl.hidden = false;
+        controls.luckyBestMatches.max = String(maxMatches);
+        controls.luckyBestMatches.value = String(selectedValue);
+        controls.luckyBestMatchesValue.textContent = String(selectedValue);
+    }
+
+    function applyLuckyBestMatchesSlider() {
+        if (!state.quadVoteAcceptedAssignments.length || !state.quadVoteAllMatches.length) {
+            updateLuckyBestMatchesControl(0);
+            return;
+        }
+        const limit = Math.max(1, Math.min(state.quadVoteAcceptedAssignments.length, luckyBestMatchLimit()));
+        updateLuckyBestMatchesControl(state.quadVoteAcceptedAssignments.length, limit);
+        const selected = state.quadVoteAcceptedAssignments.slice(0, limit);
+        updateQuadVoteDisplayedMatches(selected, state.quadVoteAllMatches);
+        state.fitMessage =
+            `showing best ${selected.length}/${state.quadVoteAcceptedAssignments.length} accepted quad-vote matches; ` +
+            `${state.quadScanGoodEdges.length / 6} compatible quads shown`;
+    }
+
+    function quadAssignmentLimitControl(allAssignments, quadMatches, initialLimit) {
+        const wrap = document.createElement("div");
+        wrap.className = "quad-assignment-limit";
+        if (!allAssignments.length) {
+            wrap.textContent = "No accepted matches to show.";
+            return wrap;
+        }
+        const label = document.createElement("label");
+        label.className = "quad-assignment-limit-label";
+        const countText = document.createElement("span");
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = "1";
+        slider.max = String(Math.max(1, allAssignments.length));
+        slider.step = "1";
+        slider.value = String(Math.max(1, Math.min(allAssignments.length, initialLimit)));
+        const setText = () => {
+            countText.textContent = `Show best ${slider.value} accepted match${Number(slider.value) === 1 ? "" : "es"}`;
+        };
+        setText();
+        label.appendChild(countText);
+        label.appendChild(slider);
+        wrap.appendChild(label);
+        slider.addEventListener("input", () => {
+            setText();
+            const selected = allAssignments.slice(0, Number(slider.value));
+            updateQuadVoteDisplayedMatches(selected, quadMatches);
+            state.fitMessage =
+                `showing best ${selected.length}/${allAssignments.length} accepted quad-vote matches; ` +
+                `${state.quadScanGoodEdges.length / 6} compatible quads shown`;
+        });
+        return wrap;
+    }
+
+    function quadAssignmentPairKey(detection, star) {
+        const detectionKey = String(detection.id || `${Math.round(detection.x * 10)},${Math.round(detection.y * 10)}`);
+        const starKey = String(star.key || star.name || `${star.raHours || 0}:${star.decDeg || 0}`);
+        return `${detectionKey}|${starKey}`;
+    }
+
+    function acceptedQuadEdgesFromMatches(quadMatches, acceptedAssignments) {
+        const acceptedPairs = new Set(acceptedAssignments.map(edge => `${edge.detectionKey}|${edge.starKey}`));
+        const acceptedEdges = [];
+        const seenImageQuads = new Set();
+        for (const match of quadMatches) {
+            const imagePoints = match && match.imageQuad && match.imageQuad.points;
+            const catalogPoints = match && match.catalogQuad && match.catalogQuad.points;
+            if (!Array.isArray(imagePoints) || !Array.isArray(catalogPoints)) {
+                continue;
+            }
+            let compatiblePairs = 0;
+            for (let i = 0; i < Math.min(4, imagePoints.length, catalogPoints.length); i += 1) {
+                if (acceptedPairs.has(quadAssignmentPairKey(imagePoints[i], catalogPoints[i]))) {
+                    compatiblePairs += 1;
+                }
+            }
+            if (compatiblePairs < 2) {
+                continue;
+            }
+            const imageQuadKey = String(match.index != null ? match.index :
+                imagePoints.map(point => point.id || `${Math.round(point.x)},${Math.round(point.y)}`).sort().join("-"));
+            if (seenImageQuads.has(imageQuadKey)) {
+                continue;
+            }
+            seenImageQuads.add(imageQuadKey);
+            addQuadEdges(acceptedEdges, match.imageQuad, `accepted quad: ${compatiblePairs}/4 voted star assignments`);
+        }
+        return acceptedEdges;
+    }
+
+    function matchesFromQuadAssignments(assignments, methodLabel = "quad vote lucky search") {
+        return assignments.map((edge, index) => ({
+            id: index + 1,
+            image: {
+                x: edge.detection.x,
+                y: edge.detection.y,
+                method: methodLabel,
+            },
+            detectionId: edge.detection.id,
+            detectionGeneration: edge.detection.generation || state.detectionGeneration,
+            catalog: {
+                key: edge.star.key,
+                raHours: edge.star.raHours,
+                decDeg: edge.star.decDeg,
+                mag: edge.star.mag,
+                name: edge.star.name,
+                az: edge.star.az,
+                ze: edge.star.ze,
+            },
+        }));
+    }
+
+    function assignmentVoteHistogramSvg(rows) {
+        const width = 330;
+        const height = 190;
+        const margin = {left: 38, right: 12, top: 20, bottom: 34};
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "quad-debug-scatter");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        const maxVote = Math.max(1, ...rows.map(row => row.count).filter(Number.isFinite));
+        const bins = new Array(maxVote + 1).fill(0);
+        for (const row of rows) {
+            bins[Math.max(1, Math.min(maxVote, row.count))] += 1;
+        }
+        const maxBin = Math.max(1, ...bins);
+        const sx = value => margin.left + (value - 1) / Math.max(1, maxVote - 1) * (width - margin.left - margin.right);
+        const sy = value => height - margin.bottom - value / maxBin * (height - margin.top - margin.bottom);
+        const addLine = (x1, y1, x2, y2, cls = "axis") => {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("class", cls);
+            line.setAttribute("x1", x1.toFixed(2));
+            line.setAttribute("y1", y1.toFixed(2));
+            line.setAttribute("x2", x2.toFixed(2));
+            line.setAttribute("y2", y2.toFixed(2));
+            svg.appendChild(line);
+        };
+        addLine(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom);
+        addLine(margin.left, margin.top, margin.left, height - margin.bottom);
+        const barWidth = Math.max(6, (width - margin.left - margin.right) / Math.max(1, maxVote) * 0.75);
+        for (let vote = 1; vote <= maxVote; vote += 1) {
+            const x = sx(vote) - 0.5 * barWidth;
+            const y = sy(bins[vote]);
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("class", vote >= 2 ? "hist-good-bin" : "hist-bad-bin");
+            rect.setAttribute("x", x.toFixed(2));
+            rect.setAttribute("y", y.toFixed(2));
+            rect.setAttribute("width", barWidth.toFixed(2));
+            rect.setAttribute("height", Math.max(0, height - margin.bottom - y).toFixed(2));
+            svg.appendChild(rect);
+            const tick = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            tick.setAttribute("class", "axis-label");
+            tick.setAttribute("x", sx(vote).toFixed(2));
+            tick.setAttribute("y", (height - 10).toFixed(2));
+            tick.textContent = String(vote);
+            svg.appendChild(tick);
+        }
+        addLine(sx(2), margin.top, sx(2), height - margin.bottom, "threshold-line");
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        title.setAttribute("class", "axis-label");
+        title.setAttribute("x", margin.left.toFixed(2));
+        title.setAttribute("y", "14");
+        title.setAttribute("text-anchor", "start");
+        title.textContent = "Best repeated catalogue assignment per image star";
+        svg.appendChild(title);
+        const xLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        xLabel.setAttribute("class", "axis-label");
+        xLabel.setAttribute("x", (0.5 * (margin.left + width - margin.right)).toFixed(2));
+        xLabel.setAttribute("y", (height - 1).toFixed(2));
+        xLabel.textContent = "quad votes for same catalogue star";
+        svg.appendChild(xLabel);
+        return svg;
+    }
+
+    function numericVoteHistogramSvg(values, winnerValues, options = {}) {
+        const width = 330;
+        const height = 175;
+        const margin = {left: 38, right: 12, top: 20, bottom: 32};
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "quad-debug-scatter");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        const xMin = Number.isFinite(options.xMin) ? options.xMin : Math.min(...values);
+        const xMax = Number.isFinite(options.xMax) ? options.xMax : Math.max(...values);
+        const binCount = Math.max(4, Math.floor(options.bins || 24));
+        const bins = new Array(binCount).fill(0);
+        const winnerBins = new Array(binCount).fill(0);
+        const addValue = (binsArray, value) => {
+            if (!Number.isFinite(value) || value < xMin || value > xMax) {
+                return;
+            }
+            const idx = Math.min(binCount - 1, Math.max(0, Math.floor((value - xMin) / Math.max(1e-9, xMax - xMin) * binCount)));
+            binsArray[idx] += 1;
+        };
+        for (const value of values) {
+            addValue(bins, value);
+        }
+        for (const value of winnerValues || []) {
+            addValue(winnerBins, value);
+        }
+        const maxBin = Math.max(1, ...bins, ...winnerBins);
+        const sx = value => margin.left + (value - xMin) / Math.max(1e-9, xMax - xMin) * (width - margin.left - margin.right);
+        const sy = value => height - margin.bottom - value / maxBin * (height - margin.top - margin.bottom);
+        const addLine = (x1, y1, x2, y2, cls = "axis") => {
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("class", cls);
+            line.setAttribute("x1", x1.toFixed(2));
+            line.setAttribute("y1", y1.toFixed(2));
+            line.setAttribute("x2", x2.toFixed(2));
+            line.setAttribute("y2", y2.toFixed(2));
+            svg.appendChild(line);
+        };
+        addLine(margin.left, height - margin.bottom, width - margin.right, height - margin.bottom);
+        addLine(margin.left, margin.top, margin.left, height - margin.bottom);
+        for (let i = 0; i < binCount; i += 1) {
+            const binX0 = xMin + i / binCount * (xMax - xMin);
+            const binX1 = xMin + (i + 1) / binCount * (xMax - xMin);
+            const x0 = sx(binX0);
+            const x1 = sx(binX1);
+            const y = sy(bins[i]);
+            const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            rect.setAttribute("class", "hist-bad-bin");
+            rect.setAttribute("x", (x0 + 1).toFixed(2));
+            rect.setAttribute("y", y.toFixed(2));
+            rect.setAttribute("width", Math.max(1, x1 - x0 - 2).toFixed(2));
+            rect.setAttribute("height", Math.max(0, height - margin.bottom - y).toFixed(2));
+            svg.appendChild(rect);
+            if (winnerBins[i] > 0) {
+                const wy = sy(winnerBins[i]);
+                const winner = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                winner.setAttribute("class", "hist-good-bin");
+                winner.setAttribute("x", (x0 + 3).toFixed(2));
+                winner.setAttribute("y", wy.toFixed(2));
+                winner.setAttribute("width", Math.max(1, x1 - x0 - 6).toFixed(2));
+                winner.setAttribute("height", Math.max(0, height - margin.bottom - wy).toFixed(2));
+                svg.appendChild(winner);
+            }
+        }
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        title.setAttribute("class", "axis-label");
+        title.setAttribute("x", margin.left.toFixed(2));
+        title.setAttribute("y", "14");
+        title.setAttribute("text-anchor", "start");
+        title.textContent = options.title || "histogram";
+        svg.appendChild(title);
+        const ticks = [xMin, 0.5 * (xMin + xMax), xMax];
+        for (const tickValue of ticks) {
+            const tick = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            tick.setAttribute("class", "axis-label");
+            tick.setAttribute("x", sx(tickValue).toFixed(2));
+            tick.setAttribute("y", (height - 10).toFixed(2));
+            tick.textContent = Math.abs(tickValue) >= 10 ? tickValue.toFixed(0) : tickValue.toFixed(1);
+            svg.appendChild(tick);
+        }
+        const xLabel = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        xLabel.setAttribute("class", "axis-label");
+        xLabel.setAttribute("x", (0.5 * (margin.left + width - margin.right)).toFixed(2));
+        xLabel.setAttribute("y", (height - 1).toFixed(2));
+        xLabel.textContent = options.xLabel || "";
+        svg.appendChild(xLabel);
+        return svg;
+    }
+
+    async function continueQuadScanClusteringDebug(payload, options = {}) {
+        if (!payload || !Array.isArray(payload.quadMatches)) {
+            return;
+        }
+        const showDebug = options.showDebug === true;
+        state.pendingQuadClusterDebug = null;
+        try {
+            setLoadingProgress(66, "New lucky quad scan: voting catalogue assignments...");
+            await yieldToBrowser();
+            const candidates = payload.quadMatches
+                .map((match, index) => quadVoteCandidate(match.imageQuad, match.catalogQuad, match.norm, index))
+                .filter(Boolean);
+            const clusters = clusterQuadVoteCandidates(candidates);
+            const winner = clusters[0] || {candidates: []};
+            const winnerCandidates = winner.candidates || [];
+            const voteRows = quadAssignmentVotes(payload.quadMatches);
+            const voteEdges = quadAssignmentVoteEdges(payload.quadMatches);
+            const repeatedEdges = voteEdges.filter(edge => edge.count >= 2);
+            const greedyAssignments = greedyOneToOneAssignments(voteEdges, 1);
+            const pairwiseDiagnostics = validateAssignmentsByPairwiseAngles(greedyAssignments, 4);
+            let validatedAssignments = rankQuadAssignments(pairwiseDiagnostics.validated);
+            if (validatedAssignments.length < Math.min(4, greedyAssignments.length)) {
+                const relaxed = validateAssignmentsByPairwiseAngles(greedyAssignments, 6, {minimumSupport: 1});
+                validatedAssignments = rankQuadAssignments(relaxed.validated);
+                pairwiseDiagnostics.relaxed = relaxed;
+            }
+            state.quadVoteAcceptedAssignments = validatedAssignments;
+            state.quadVoteAllMatches = payload.quadMatches;
+            const displayLimit = Math.max(1, Math.min(validatedAssignments.length, luckyBestMatchLimit(3)));
+            updateLuckyBestMatchesControl(validatedAssignments.length, displayLimit);
+            const displayedAssignments = validatedAssignments.slice(0, displayLimit);
+            state.showAutoDetectionMarkers = false;
+            state.manualQuadDebugPoints = [];
+            state.quadScanBadEdges = [];
+            state.quadScanGoodEdges = acceptedQuadEdgesFromMatches(payload.quadMatches, displayedAssignments);
+            render();
+            const selectedMatches = matchesFromQuadAssignments(displayedAssignments);
+            if (selectedMatches.length > 0) {
+                const undoSnapshot = autoPairingUndoSnapshot("quad vote lucky star selection");
+                rememberUndoState(undoSnapshot);
+                state.matches = selectedMatches;
+                updateAutoMatches();
+                ensureMaxMagnitudeForMatches(state.matches);
+                render();
+            }
+            hideLoadingProgress();
+            const clusterStats = document.createElement("div");
+            clusterStats.className = "triangle-debug-title";
+            clusterStats.textContent =
+                `${voteRows.length} image stars received at least one catalogue assignment from L2-good quads; ` +
+                `${repeatedEdges.length} image-star/catalogue-star edges have N >= 2 votes; ` +
+                `${greedyAssignments.length} survive the one-to-one greedy pass; ` +
+                `${validatedAssignments.length} pass pairwise angular self-consistency and are accepted. ` +
+                (payload.preflattenSelection && Number.isFinite(payload.preflattenSelection.meanMinL2) ?
+                    `The quad signatures use pre-dedistortion a_r=${Number(payload.preflattenSelection.radialAlpha).toFixed(2)}, ` +
+                    `chosen by lowest mean nearest-catalogue quad L2=${payload.preflattenSelection.meanMinL2.toFixed(4)}. ` : "") +
+                `The goodness measure is pairwise angular support first, then winner count, image-star brightness, and mean L2. ` +
+                `Pairwise angular separation requires abs(image-catalogue separation error) <= ${pairwiseDiagnostics.toleranceDeg} deg ` +
+                `with support >= ${pairwiseDiagnostics.minimumSupport}` +
+                (pairwiseDiagnostics.relaxed ? "; relaxed fallback was used" : "") + `. ` +
+                `Ambiguous image stars are demoted when the best catalogue assignment is not clearly ahead of the runner-up. ` +
+                `The slider controls how many best accepted stars are selected. Press F or G to fit after inspecting the selection. ` +
+                `Boresight/gamma histograms are diagnostic only; the hard orientation metric is disabled. ` +
+                `${clusters.length} diagnostic orientation clusters found; largest has ${winnerCandidates.length} quads.`;
+            if (showDebug) {
+                showCloseableDebugPanel(
+                    "Debug stop 2: catalogue-assignment voting",
+                    [
+                        clusterStats,
+                        numericVoteHistogramSvg(
+                            candidates.map(candidate => candidate.boresight.az),
+                            winnerCandidates.map(candidate => candidate.boresight.az),
+                            {title: "Boresight azimuth votes", xLabel: "az deg", xMin: 0, xMax: 360, bins: 36}
+                        ),
+                        numericVoteHistogramSvg(
+                            candidates.map(candidate => candidate.boresight.el),
+                            winnerCandidates.map(candidate => candidate.boresight.el),
+                            {title: "Boresight elevation votes", xLabel: "el deg", xMin: -10, xMax: 90, bins: 25}
+                        ),
+                        numericVoteHistogramSvg(
+                            candidates.map(candidate => candidate.gamma),
+                            winnerCandidates.map(candidate => candidate.gamma),
+                            {title: "Roll / gamma votes", xLabel: "gamma deg", xMin: 0, xMax: 360, bins: 36}
+                        ),
+                        assignmentVoteHistogramSvg(voteRows),
+                        quadAssignmentSummaryTable(displayedAssignments, `Best ${displayedAssignments.length} accepted assignments selected for possible lens fit`),
+                        quadAssignmentSummaryTable(validatedAssignments.slice(displayLimit), "Accepted assignments hidden below the current display cutoff"),
+                    ],
+                    "Close"
+                );
+            }
+            state.lastLuckyFitSummary = {
+                search: "quad scan debug",
+                detections: payload.detections,
+                imageQuads: payload.imageQuads,
+                catalogStars: payload.catalogStars,
+                catalogQuads: payload.catalogQuads,
+                catalogueQuadAssignments: payload.catalogueQuadAssignments,
+                l2Threshold: payload.threshold,
+                preflattenSelection: payload.preflattenSelection || null,
+                greenQuads: payload.good,
+                orangeQuads: payload.bad,
+                orientationVoteCandidates: candidates.length,
+                orientationClusters: clusters.length,
+                winningOrientationClusterQuads: winnerCandidates.length,
+                assignedImageStars: voteRows.length,
+                repeatedAssignmentEdges: repeatedEdges.length,
+                greedyUniqueAssignments: greedyAssignments.length,
+                pairwiseValidatedMatches: validatedAssignments.length,
+                pairwiseDiagnosticValidatedMatches: pairwiseDiagnostics.validated.length,
+                pairwiseDiagnosticRejectedMatches: pairwiseDiagnostics.rejected.length,
+                pairwiseToleranceDeg: pairwiseDiagnostics.toleranceDeg,
+                pairwiseMinimumSupport: pairwiseDiagnostics.minimumSupport,
+                pairwiseRelaxedFallback: Boolean(pairwiseDiagnostics.relaxed),
+                acceptedOverlayQuads: state.quadScanGoodEdges.length / 6,
+                displayedAcceptedMatches: displayedAssignments.length,
+                defaultDisplayedAcceptedMatches: displayLimit,
+                selectedPairs: selectedMatches.length,
+                fitAttempted: false,
+            };
+            state.automaticMatchingStatus =
+                `new lucky quad scan: ${payload.detections} detections, ${payload.imageQuads} unique image quads, ` +
+                `${payload.catalogQuads} catalogue quads, ${payload.good} below L2 ${payload.threshold}, ` +
+                `${payload.bad} above, ${payload.catalogueQuadAssignments || payload.quadMatches.length} best-per-quad assignments, ` +
+                `${validatedAssignments.length} accepted matches; selected best ${displayedAssignments.length}`;
+            state.fitMessage =
+                `new lucky quad scan selected best ${selectedMatches.length}/${validatedAssignments.length} ` +
+                `quad-vote stars; ${state.quadScanGoodEdges.length / 6} compatible quads shown. ` +
+                `Inspect/change the slider, then press F or G to fit.`;
+            render();
+        } catch (error) {
+            hideLoadingProgress();
+            state.fitMessage = `quad assignment-voting debug failed: ${error.message || error}`;
+            render();
+        }
+    }
+
+    function localQuadRecordsFromGrid(detections, options = {}) {
+        const vectorDetections = quadDetectionVectors(detections, options);
+        const step = Math.max(16, 0.05 * state.image.width);
+        const seen = new Set();
+        const quads = [];
+        const imageDiag = Math.hypot(state.image.width, state.image.height);
+        const maxWideRadius = 0.55 * imageDiag;
+        const addQuad = points => {
+            if (!points || points.length < 4) {
+                return false;
+            }
+            const key = points.map(detection => detection.id).sort().join("-");
+            if (seen.has(key)) {
+                return false;
+            }
+            const quad = window.AidaAutoIdentifier.sphericalQuadRecords(points, {
+                maxQuads: 1,
+                maxQuadPoints: 4,
+                minSidePx: 1,
+                maxSidePx: Infinity,
+                minHeightPx: 1,
+            })[0];
+            if (!quad) {
+                return false;
+            }
+            seen.add(key);
+            quads.push(quad);
+            return true;
+        };
+        const farthestFromSet = (pool, chosen) => {
+            let best = null;
+            let bestDistance = -Infinity;
+            for (const candidate of pool) {
+                if (chosen.includes(candidate)) {
+                    continue;
+                }
+                const minDistance = Math.min(...chosen.map(point => Math.hypot(candidate.x - point.x, candidate.y - point.y)));
+                if (minDistance > bestDistance) {
+                    bestDistance = minDistance;
+                    best = candidate;
+                }
+            }
+            return best;
+        };
+        for (let y = 0.5 * step; y < state.image.height; y += step) {
+            for (let x = 0.5 * step; x < state.image.width; x += step) {
+                const ordered = vectorDetections
+                    .slice()
+                    .map(detection => ({
+                        detection,
+                        distance: Math.hypot(detection.x - x, detection.y - y),
+                    }))
+                    .sort((a, b) => a.distance - b.distance || a.detection.rank - b.detection.rank);
+                if (ordered.length < 4) {
+                    continue;
+                }
+                const compact = ordered.slice(0, 4).map(item => item.detection);
+                addQuad(compact);
+
+                const mediumPool = ordered
+                    .slice(0, Math.min(14, ordered.length))
+                    .map(item => item.detection);
+                if (mediumPool.length >= 4) {
+                    const medium = [mediumPool[0], mediumPool[1]];
+                    while (medium.length < 4) {
+                        const next = farthestFromSet(mediumPool, medium);
+                        if (!next) {
+                            break;
+                        }
+                        medium.push(next);
+                    }
+                    addQuad(medium);
+                }
+
+                const widePool = ordered
+                    .filter(item => item.distance <= maxWideRadius)
+                    .slice(0, Math.min(34, ordered.length))
+                    .map(item => item.detection);
+                if (widePool.length >= 4) {
+                    const wide = [widePool[0]];
+                    while (wide.length < 4) {
+                        const next = farthestFromSet(widePool, wide);
+                        if (!next) {
+                            break;
+                        }
+                        wide.push(next);
+                    }
+                    addQuad(wide);
+
+                    const brightWide = widePool
+                        .slice()
+                        .sort((a, b) => a.rank - b.rank)
+                        .slice(0, Math.min(12, widePool.length));
+                    const bright = [brightWide[0]];
+                    while (bright.length < 4) {
+                        const next = farthestFromSet(brightWide, bright);
+                        if (!next) {
+                            break;
+                        }
+                        bright.push(next);
+                    }
+                    addQuad(bright);
+                }
+            }
+        }
+        return quads;
+    }
+
+    async function runQuadScanLuckyDebug() {
+        state.luckyFitBusy = true;
+        state.lastLuckyProgressUpdateMs = -Infinity;
+        setUserLensEditingLocked(true);
+        controls.luckyFit.disabled = true;
+        controls.fitLens.disabled = true;
+        controls.fitLensLm.disabled = true;
+        if (controls.closeAssociateFit) {
+            controls.closeAssociateFit.disabled = true;
+        }
+        try {
+            state.asterismEdges = [];
+            state.quadScanGoodEdges = [];
+            state.quadScanBadEdges = [];
+            state.manualQuadDebugPoints = [];
+            state.showAutoDetectionMarkers = true;
+            state.showAsterismLines = true;
+            setTriangleDebugSnapshot(null);
+            setLuckyMaxMagnitude(Math.max(6.0, Number(controls.maxMag.value) || 0));
+            const bootstrapDetection = await detectLuckyQuadBootstrapStars(650);
+            const detections = activeDetectedStars();
+            render();
+            await yieldToBrowser();
+            if (detections.length < 4) {
+                state.fitMessage = `new lucky quad scan: only ${detections.length} detections; need at least four`;
+                return;
+            }
+            setLoadingProgress(34, "New lucky quad scan: building catalogue quads...");
+            await yieldToBrowser();
+            const catalogStars = catalogStarsForQuadScan(6.0);
+            const catalogQuads = window.AidaAutoIdentifier.sphericalQuadRecords(catalogStars, {
+                maxQuads: 80000,
+                maxQuadPoints: catalogStars.length,
+                localNeighborPoolSize: 24,
+                localQuadMaxSideDeg: 75,
+            });
+            const preflattenSelection = await selectOptmod2QuadPreflatten(detections, catalogQuads);
+            const imageQuads = preflattenSelection.imageQuads;
+            const threshold = 0.04;
+            let good = 0;
+            let bad = 0;
+            let quadMatches = [];
+            const norms = [];
+            let matchRecords = [];
+            for (let i = 0; i < imageQuads.length; i += 1) {
+                if (i % 16 === 0) {
+                    setLoadingProgress(
+                        58 + 34 * i / Math.max(1, imageQuads.length),
+                        `New lucky quad scan: matching local quad ${i + 1}/${imageQuads.length}...`
+                    );
+                    await yieldToBrowser();
+                }
+                const match = catalogQuadL2Matches(imageQuads[i], catalogQuads, threshold);
+                const norm = match.bestNorm;
+                norms.push(norm);
+                matchRecords.push({
+                    imageQuad: imageQuads[i],
+                    index: i,
+                    bestNorm: norm,
+                    bestQuad: match.bestQuad,
+                    matches: match.matches,
+                });
+            }
+            state.quadScanGoodEdges = [];
+            state.quadScanBadEdges = [];
+            for (const record of matchRecords) {
+                const label = `quad scan L2 ${Number.isFinite(record.bestNorm) ? record.bestNorm.toFixed(4) : "n/a"}`;
+                if (Number.isFinite(record.bestNorm) && record.bestNorm <= threshold) {
+                    addQuadEdges(state.quadScanGoodEdges, record.imageQuad, label);
+                    quadMatches.push({
+                        imageQuad: record.imageQuad,
+                        catalogQuad: record.bestQuad,
+                        norm: record.bestNorm,
+                        index: record.index,
+                    });
+                    good += 1;
+                } else {
+                    addQuadEdges(state.quadScanBadEdges, record.imageQuad, label);
+                    bad += 1;
+                }
+            }
+            render();
+            hideLoadingProgress();
+            const stats = document.createElement("div");
+            stats.className = "triangle-debug-title";
+            stats.textContent =
+                `${detections.length} detections (${bootstrapDetection.recipe.label}); ${imageQuads.length} unique local image quads; ` +
+                `${catalogQuads.length} catalogue quads; ${good} green, ${bad} orange; ` +
+                `${quadMatches.length} best-per-image-quad catalogue assignments within fixed cutoff ${threshold}; ` +
+                `pre-dedistortion a_r ${Number(preflattenSelection.radialAlpha).toFixed(2)} ` +
+                `(mean min L2 ${Number(preflattenSelection.meanMinL2).toFixed(4)})`;
+            const clusterPayload = {
+                quadMatches,
+                detections: detections.length,
+                imageQuads: imageQuads.length,
+                catalogStars: catalogStars.length,
+                catalogQuads: catalogQuads.length,
+                catalogueQuadAssignments: quadMatches.length,
+                threshold,
+                good,
+                bad,
+                preflattenSelection: {
+                    radialAlpha: preflattenSelection.radialAlpha,
+                    meanMinL2: preflattenSelection.meanMinL2,
+                    quadCount: preflattenSelection.quadCount,
+                    trials: preflattenSelection.trials.map(trial => ({
+                        radialAlpha: trial.radialAlpha,
+                        meanMinL2: trial.meanMinL2,
+                        quadCount: trial.quadCount,
+                    })),
+                },
+            };
+            state.pendingQuadClusterDebug = null;
+            state.lastLuckyFitSummary = {
+                search: "quad scan debug",
+                detections: detections.length,
+                imageQuads: imageQuads.length,
+                catalogStars: catalogStars.length,
+                catalogQuads: catalogQuads.length,
+                l2Threshold: threshold,
+                catalogueQuadAssignments: quadMatches.length,
+                preflattenRadialAlpha: preflattenSelection.radialAlpha,
+                preflattenMeanMinL2: preflattenSelection.meanMinL2,
+                greenQuads: good,
+                orangeQuads: bad,
+            };
+            state.automaticMatchingStatus =
+                `new lucky quad scan: ${detections.length} detections, ${imageQuads.length} unique image quads, ` +
+                `${catalogQuads.length} catalogue quads, ${good} below L2 ${threshold}, ${bad} above, ` +
+                `${quadMatches.length} best-per-quad assignments kept, a_r ${Number(preflattenSelection.radialAlpha).toFixed(2)}`;
+            state.fitMessage =
+                `new lucky quad scan found ${good} green / ${bad} orange quads; ` +
+                `${quadMatches.length} best-per-quad assignments kept; selected pre-dedistortion a_r ` +
+                `${Number(preflattenSelection.radialAlpha).toFixed(2)}; voting for compatible stars...`;
+            render();
+            await continueQuadScanClusteringDebug(clusterPayload, {showDebug: false});
+        } catch (error) {
+            state.fitMessage = `new lucky quad scan failed: ${error.message || error}`;
+            render();
+        } finally {
+            hideLoadingProgress();
+            setUserLensEditingLocked(false);
+            controls.luckyFit.disabled = false;
+            controls.fitLens.disabled = false;
+            controls.fitLensLm.disabled = false;
+            if (controls.closeAssociateFit) {
+                controls.closeAssociateFit.disabled = false;
+            }
+            state.luckyFitBusy = false;
+        }
+    }
+
     async function feelingLuckyFit() {
+        if (!state.image || !state.imagePixels) {
+            state.fitMessage = "I'm feeling lucky: load an image with readable pixels first";
+            render();
+            return;
+        }
+        if (!autoIdentifierAvailable()) {
+            state.fitMessage = "I'm feeling lucky: matcher module is unavailable";
+            render();
+            return;
+        }
+        if (state.autoIdentifyBusy || state.luckyFitBusy) {
+            return;
+        }
+        await runQuadScanLuckyDebug();
+        return;
+        state.luckyFitBusy = true;
+        state.lastLuckyProgressUpdateMs = -Infinity;
+        setUserLensEditingLocked(true);
+        controls.luckyFit.disabled = true;
+        controls.fitLens.disabled = true;
+        controls.fitLensLm.disabled = true;
+        if (controls.closeAssociateFit) {
+            controls.closeAssociateFit.disabled = true;
+        }
+        const optmod = Number(controls.optmod.value) || 2;
+        const undoSnapshot = autoPairingUndoSnapshot("new quad lucky search");
+        const startingMatchCount = state.matches.length;
+        state.asterismEdges = [];
+        state.showAsterismLines = true;
+        setTriangleDebugSnapshot(null);
+        const removedBadAreaMatches = removeAutomaticMatchesInBadStarFinderRegions();
+        const diag = Math.hypot(state.image.width, state.image.height);
+        const preflattenModelCandidates = optmod === 2 ? ["fisheye", "pinhole"] : ["pinhole", "fisheye"];
+        const radialAlphaCandidates = optmod === 2 ?
+            [0.30, 0.50, 0.60, 0.80, 0.90, 1.00] :
+            [0.15, 0.30, 0.45, 0.60, 0.75, 0.90, 0.98];
+        const blindOptions = {
+            maxDetections: 260,
+            maxBlindVerifyDetections: 220,
+            maxCatalogStars: 500,
+            maxCatalogQuadStars: 500,
+            maxCatalogQuads: 80000,
+            maxDetectionQuadStars: 180,
+            maxDetectionQuads: 22000,
+            maxCatalogLocalQuadNeighbors: 24,
+            maxDetectionLocalQuadNeighbors: 18,
+            maxBlindNeighborQuads: 10,
+            blindQuadSignatureRadius: 0.04,
+            preflattenModelCandidates,
+            preflattenF1Candidates: [0.55, 0.65, 0.75, 0.85, 0.95, 1.10],
+            preflattenRadialAlphaCandidates: radialAlphaCandidates,
+            preflattenDu: 0,
+            preflattenDv: 0,
+            signCandidates: undefined,
+            preflattenSignCandidates: [[1, 1], [-1, -1], [1, -1], [-1, 1]],
+            rejectAmbiguousBlindMatches: true,
+            blindAmbiguityRadiusDeg: 0.9,
+            blindAmbiguityDistanceSlackDeg: 0.3,
+            blindPixelMatchRadiusPx: Math.max(42, Math.min(72, 0.018 * diag)),
+            blindPixelAmbiguityRadiusPx: 16,
+            blindPixelAmbiguityDistanceSlackPx: 8,
+            ambiguityMaxMagnitude: 6.5,
+            blindEarlyAcceptMatches: 12,
+            blindEarlyAcceptMedianDeg: 0.75,
+            maxBlindCandidateRotations: 24000,
+        };
+        const detectorOptions = {
+            scanStep: 1,
+            thresholdSigma: 1.6,
+            localThresholdSigma: 1.7,
+            requireGlobalThreshold: false,
+            maxRadiusPx: 6,
+            maxElongation: 4.2,
+            suppressionRadiusPx: 9,
+            crowdingRadiusPx: 34,
+            maxCrowding: 8,
+            crowdingScorePower: 1.2,
+        };
+        let totalAdded = 0;
+        let totalPruned = 0;
+        let acceptedFits = 0;
+        let seeded = false;
+        let stagesRun = 0;
+        try {
+            setLuckyMaxMagnitude(6.5);
+            const bootstrap = await runAutoIdentifyPass({
+                label: "I'm feeling lucky: quad bootstrap",
+                maxDetections: 260,
+                displayDetections: 520,
+                maxMagnitude: 6.5,
+                detectorOptions,
+                includeBlind: true,
+                includeAsterisms: false,
+                includeProjected: false,
+                minBlindMatches: 6,
+                blindOptions,
+                maxAdditions: 64,
+                matchingCatalogName: "yale",
+                blindCatalogName: "yale",
+                methodLabel: "new lucky quad bootstrap",
+                progressDetect: 8,
+                progressBlind: 30,
+                progressAdd: 58,
+            });
+            stagesRun += 1;
+            totalAdded += bootstrap.added;
+            if (bootstrap.result && bootstrap.result.matches && bootstrap.result.matches.length >= 4) {
+                seeded = seedCurrentModelFromBlindIdentification(bootstrap.result);
+                if (seeded) {
+                    recomputeAndRender();
+                    await yieldToBrowser();
+                }
+            }
+            if (bootstrap.added === 0 || fittingMatches().length < Math.ceil(requiredOptparLength(optmod) / 2)) {
+                throw new Error("quad bootstrap did not produce enough star associations to fit");
+            }
+            const firstFit = await runLuckySelectedModelFits("I'm feeling lucky: quad bootstrap fit", {
+                counts: luckyFitSweepCounts(Math.min(24, sortedLuckyFitMatches().length), optmod),
+            });
+            acceptedFits += firstFit.accepted;
+
+            const projectedStages = [
+                {
+                    label: "I'm feeling lucky: model-guided expansion",
+                    maxMagnitude: 6.5,
+                    maxDetections: 520,
+                    displayDetections: 650,
+                    detectorOptions: {
+                        ...detectorOptions,
+                        thresholdSigma: 1.55,
+                        localThresholdSigma: 1.6,
+                        maxRadiusPx: 7,
+                    },
+                    projectedOptions: {
+                        maxDetections: 520,
+                        maxCatalogStars: 650,
+                        maxDistancePx: Math.max(12, Math.min(28, 0.007 * diag)),
+                        translationSearchRadiusPx: Math.max(22, Math.min(60, 0.016 * diag)),
+                        minMatches: 8,
+                        rejectAmbiguousMatches: true,
+                        ambiguityRadiusPx: 13,
+                        ambiguityDistanceSlackPx: 9,
+                    },
+                    maxAddDistancePx: Math.max(9, Math.min(20, 0.005 * diag)),
+                    maxMedianDistance: Math.max(5, Math.min(12, 0.003 * diag)),
+                    maxAdditions: 180,
+                },
+                {
+                    label: "I'm feeling lucky: tight final expansion",
+                    maxMagnitude: 7.0,
+                    maxDetections: 650,
+                    displayDetections: 650,
+                    detectorOptions: {
+                        ...detectorOptions,
+                        thresholdSigma: 1.45,
+                        localThresholdSigma: 1.55,
+                        maxRadiusPx: 7,
+                    },
+                    projectedOptions: {
+                        maxDetections: 650,
+                        maxCatalogStars: 700,
+                        maxDistancePx: Math.max(8, Math.min(18, 0.0045 * diag)),
+                        translationSearchRadiusPx: Math.max(14, Math.min(38, 0.010 * diag)),
+                        minMatches: 10,
+                        rejectAmbiguousMatches: true,
+                        ambiguityRadiusPx: 11,
+                        ambiguityDistanceSlackPx: 7,
+                    },
+                    maxAddDistancePx: Math.max(7, Math.min(14, 0.0035 * diag)),
+                    maxMedianDistance: Math.max(4, Math.min(9, 0.0022 * diag)),
+                    maxAdditions: 240,
+                },
+            ];
+            for (const stage of projectedStages) {
+                const beforeRms = currentFitRmsPx();
+                const pass = await runAutoIdentifyPass({
+                    ...stage,
+                    includeBlind: false,
+                    includeAsterisms: false,
+                    includeProjected: true,
+                    minProjectedMatches: 6,
+                    reuseExistingMatchesForTransform: true,
+                    matchingCatalogName: "yale",
+                    projectedCatalogName: "yale",
+                    methodLabel: "new lucky model-guided star finder",
+                    progressDetect: 62,
+                    progressProjected: 74,
+                    progressAdd: 82,
+                });
+                stagesRun += 1;
+                totalAdded += pass.added;
+                if (pass.added > 0) {
+                    ensureMaxMagnitudeForMatches(state.matches);
+                    const fit = await runLuckySelectedModelFits(`${stage.label} fit`, {
+                        counts: luckyFitSweepCounts(Math.min(48, sortedLuckyFitMatches().length), optmod),
+                    });
+                    acceptedFits += fit.accepted;
+                    const prune = pruneLuckyAutoOutliers();
+                    totalPruned += prune.removed;
+                    if (prune.removed > 0) {
+                        const refit = await runLuckySelectedModelFits(`${stage.label} refit after pruning`, {
+                            counts: luckyFitSweepCounts(Math.min(48, sortedLuckyFitMatches().length), optmod),
+                        });
+                        acceptedFits += refit.accepted;
+                    }
+                    const afterRms = currentFitRmsPx();
+                    if (Number.isFinite(beforeRms) && Number.isFinite(afterRms) && afterRms > beforeRms + 0.8) {
+                        break;
+                    }
+                }
+            }
+            const fitCount = fittingMatches().length;
+            const rms = currentFitRmsPx();
+            if (totalAdded > 0 || totalPruned > 0 || removedBadAreaMatches > 0 || acceptedFits > 0) {
+                rememberUndoState(undoSnapshot);
+            }
+            const modelName = optmod === BROWN_CONRADY_OPTMOD ? "Brown-Conrady" : `optmod ${optmod}`;
+            const summary = Number.isFinite(rms)
+                ? `final RMS ${rms.toFixed(2)} px using ${fitCount}/${state.matches.length} pairs`
+                : `only ${fitCount}/${state.matches.length} usable pairs`;
+            state.automaticMatchingStatus =
+                `new lucky quad search: ${stagesRun} phases, added ${totalAdded}, ` +
+                `${seeded ? "seeded from quad bootstrap" : "not seeded"}, ` +
+                `removed ${removedBadAreaMatches} bad-area automatic matches, ` +
+                `pruned ${totalPruned}, accepted ${acceptedFits} fits`;
+            state.fitMessage =
+                `I'm feeling lucky: ${modelName}, ${summary}; ` +
+                `${totalAdded} new pairings (${startingMatchCount} -> ${state.matches.length}), ` +
+                `${totalPruned} pruned, ${acceptedFits} accepted fit step${acceptedFits === 1 ? "" : "s"}; undo is available`;
+            state.lastLuckyFitSummary = {
+                model: modelName,
+                search: "new quad lucky search",
+                stagesRun,
+                addedPairings: totalAdded,
+                startingPairings: startingMatchCount,
+                finalPairings: state.matches.length,
+                removedBadAreaMatches,
+                prunedOutliers: totalPruned,
+                acceptedFits,
+                seededFromBlindAsterisms: seeded,
+                finalRmsPx: Number.isFinite(rms) ? rms : null,
+                fittingPairs: fitCount,
+                lastIdentification: state.lastIdentificationSummary,
+            };
+            state.asterismEdges = [];
+            state.triangleDebugSnapshot = null;
+            state.showAsterismLines = false;
+            state.showAutoDetectionMarkers = false;
+            playInteractionSound(acceptedFits > 0 ? "fit" : "click");
+            recomputeAndRender();
+        } catch (error) {
+            state.fitMessage = `I'm feeling lucky failed: ${error.message || error}`;
+            render();
+        } finally {
+            hideLoadingProgress();
+            setUserLensEditingLocked(false);
+            controls.luckyFit.disabled = false;
+            controls.fitLens.disabled = false;
+            controls.fitLensLm.disabled = false;
+            if (controls.closeAssociateFit) {
+                controls.closeAssociateFit.disabled = false;
+            }
+            state.luckyFitBusy = false;
+        }
+    }
+
+    async function feelingLuckyFitLegacy() {
         if (!state.image || !state.imagePixels) {
             state.fitMessage = "I'm feeling lucky: load an image with readable pixels first";
             render();
@@ -8343,8 +10361,8 @@ end
     function toggleAsterismLines() {
         state.showAsterismLines = !state.showAsterismLines;
         state.fitMessage = state.showAsterismLines ?
-            `asterism lines visible (${state.asterismEdges.length} edges)` :
-            "asterism lines hidden";
+            `quad lines visible (${state.asterismEdges.length + state.quadScanGoodEdges.length + state.quadScanBadEdges.length} edges)` :
+            "quad lines hidden";
         render();
     }
 
@@ -8358,15 +10376,33 @@ end
     function resetInteractiveState() {
         state.matches = [];
         state.asterismEdges = [];
+        state.quadScanGoodEdges = [];
+        state.quadScanBadEdges = [];
+        state.manualQuadDebugPoints = [];
+        state.quadVoteAcceptedAssignments = [];
+        state.quadVoteAllMatches = [];
         state.triangleDebugSnapshot = null;
+        state.triangleDebugPlotDrag = null;
+        state.pendingQuadClusterDebug = null;
+        state.closeableDebugPanelActive = false;
         state.pendingMatch = null;
+        state.centroidPreview = null;
+        state.centroidDensity = null;
         state.showPickedMatchMarkers = true;
+        state.showAutoDetectionMarkers = false;
+        state.showKdePositionDots = false;
+        state.showFitResiduals = false;
+        state.showAsterismLines = true;
+        state.showStarNames = true;
         state.lastFitVector = null;
         state.lastAcceptedFitVector = null;
         state.automaticMatchingStatus = "automatic matching: not run";
         state.lastIdentificationSummary = null;
         state.lastLuckyFitSummary = null;
         state.fitMessage = "lens fit: not run";
+        updateTriangleDebugPlot();
+        updateFitResidualButton();
+        updateLuckyBestMatchesControl(0);
     }
 
     function resetForNewImage() {
@@ -8375,6 +10411,15 @@ end
         clearDensityEstimate();
         hideZoomCanvas();
         hideLoadingProgress();
+        if (state.texture) {
+            gl.deleteTexture(state.texture);
+        }
+        state.texture = null;
+        state.image = null;
+        state.imageName = "";
+        state.imagePixels = null;
+        state.displayPixels = null;
+        state.highPassCacheKey = "";
         state.baseOptpar = null;
         state.activeOptmod = Number(controls.optmod.value) || 2;
         state.loadedTestCaseId = "";
@@ -8414,7 +10459,14 @@ end
         state.deletedDetectionIds = new Set();
         state.autoMatches = [];
         state.asterismEdges = [];
+        state.quadScanGoodEdges = [];
+        state.quadScanBadEdges = [];
+        state.manualQuadDebugPoints = [];
+        state.quadVoteAcceptedAssignments = [];
+        state.quadVoteAllMatches = [];
         state.triangleDebugSnapshot = null;
+        state.pendingQuadClusterDebug = null;
+        state.closeableDebugPanelActive = false;
         state.detectorCache = null;
         state.detectorStatus = "detector: no image";
         state.detectionGeneration += 1;
@@ -8425,7 +10477,26 @@ end
         state.showKdePositionDots = false;
         state.showFitResiduals = false;
         state.showAsterismLines = true;
+        state.showAutoDetectionMarkers = false;
         state.lastLensEquation = "";
+        if (cardinalLayer) {
+            cardinalLayer.replaceChildren();
+        }
+        if (triangleDebugPlot) {
+            triangleDebugPlot.replaceChildren();
+            triangleDebugPlot.classList.remove("visible");
+            triangleDebugPlot.setAttribute("aria-hidden", "true");
+            triangleDebugPlot.style.left = "";
+            triangleDebugPlot.style.top = "";
+            triangleDebugPlot.style.right = "";
+        }
+        if (residualHistogram) {
+            residualHistogram.classList.remove("visible");
+            residualHistogram.setAttribute("aria-hidden", "true");
+            residualHistogram.style.left = "";
+            residualHistogram.style.top = "";
+            residualHistogram.style.right = "";
+        }
         controls.optmod.value = "2";
         controls.luckyFit.disabled = false;
         controls.fitLens.disabled = false;
@@ -8439,6 +10510,7 @@ end
         controls.highPassImage.checked = true;
         controls.highPassWidth.value = "100";
         controls.maxMag.value = "4";
+        updateLuckyBestMatchesControl(0);
         controls.flipX.classList.remove("toggle-on");
         controls.flipY.classList.remove("toggle-on");
         controls.flipImageX.classList.remove("toggle-on");
@@ -8449,6 +10521,7 @@ end
         controls.toggleStarNames.textContent = "Hide star names (N)";
         controls.toggleStarNames.classList.toggle("toggle-on", true);
         updateFitResidualButton();
+        render();
     }
 
     function metadataLooksLikeIphone(exifMetadata) {
@@ -9559,7 +11632,7 @@ end
         if (el !== controls.file &&
                 el !== controls.highPassImage && el !== controls.highPassWidth &&
                 el !== controls.maxMag && el !== controls.optmod && el !== controls.starCatalog &&
-            el !== controls.exportLanguage) {
+                el !== controls.exportLanguage && el !== controls.luckyBestMatches) {
             el.addEventListener("input", () => {
                 if (userLensEditingLocked()) {
                     return;
@@ -9590,6 +11663,11 @@ end
         playInteractionSound("click");
         recomputeAndRender();
     });
+    if (controls.luckyBestMatches) {
+        controls.luckyBestMatches.addEventListener("input", () => {
+            applyLuckyBestMatchesSlider();
+        });
+    }
     controls.optmod.addEventListener("input", () => {
         if (userLensEditingLocked()) {
             return;
@@ -9709,6 +11787,66 @@ end
         });
         residualHistogram.addEventListener("pointercancel", () => {
             state.residualPlotDrag = null;
+        });
+    }
+
+    function moveTriangleDebugPlot(clientX, clientY) {
+        if (!state.triangleDebugPlotDrag || !triangleDebugPlot) {
+            return;
+        }
+        const parentRect = triangleDebugPlot.parentElement.getBoundingClientRect();
+        const panelRect = triangleDebugPlot.getBoundingClientRect();
+        const margin = 8;
+        const left = Math.min(
+            Math.max(clientX - parentRect.left - state.triangleDebugPlotDrag.dx, margin),
+            Math.max(margin, parentRect.width - panelRect.width - margin)
+        );
+        const top = Math.min(
+            Math.max(clientY - parentRect.top - state.triangleDebugPlotDrag.dy, margin),
+            Math.max(margin, parentRect.height - panelRect.height - margin)
+        );
+        triangleDebugPlot.style.left = `${left}px`;
+        triangleDebugPlot.style.top = `${top}px`;
+        triangleDebugPlot.style.right = "auto";
+    }
+
+    if (triangleDebugPlot) {
+        triangleDebugPlot.addEventListener("pointerdown", event => {
+            if (event.button !== 0) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const rect = triangleDebugPlot.getBoundingClientRect();
+            state.triangleDebugPlotDrag = {
+                dx: event.clientX - rect.left,
+                dy: event.clientY - rect.top,
+            };
+            triangleDebugPlot.setPointerCapture(event.pointerId);
+            moveTriangleDebugPlot(event.clientX, event.clientY);
+        });
+        triangleDebugPlot.addEventListener("pointermove", event => {
+            if (!state.triangleDebugPlotDrag) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            moveTriangleDebugPlot(event.clientX, event.clientY);
+        });
+        triangleDebugPlot.addEventListener("pointerup", event => {
+            if (!state.triangleDebugPlotDrag) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            state.triangleDebugPlotDrag = null;
+            if (triangleDebugPlot.hasPointerCapture(event.pointerId)) {
+                triangleDebugPlot.releasePointerCapture(event.pointerId);
+            }
+            focusImageWindowSoon();
+        });
+        triangleDebugPlot.addEventListener("pointercancel", () => {
+            state.triangleDebugPlotDrag = null;
         });
     }
 
@@ -10026,7 +12164,7 @@ end
         recomputeAndRender();
     }, {passive: false});
 
-    document.addEventListener("keydown", event => {
+    document.addEventListener("keydown", async event => {
         const tag = event.target && event.target.tagName ? event.target.tagName.toLowerCase() : "";
         if (tag === "input" || tag === "select" || tag === "textarea") {
             return;

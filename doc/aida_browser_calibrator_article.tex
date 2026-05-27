@@ -81,7 +81,7 @@ If the same modified click is performed over an existing pair, the pair can be
 removed without entering a separate editing mode.
 
 The ``I'm feeling lucky'' path automates the same idea. It detects bright image
-features, attempts a blind spherical asterism match, seeds the selected optical
+features, attempts a blind quad asterism match, seeds the selected optical
 model, expands the number of candidate matches, fits the lens parameters, and
 rejects obvious outliers. The user can paint bad star-finder regions with
 \texttt{M}+click. These marked regions remove yellow automatic detections from
@@ -504,62 +504,62 @@ coefficients are not used to generate the blind asterisms; they are fitted only
 after star pairings have been established. For optmod 2, the trial grid also
 includes the radial parameter \(a_r\).
 
-Fourth, the code builds image triangles and catalog triangles, compares their
-\((a/c,b/c)\) signatures, and scores the rotation hypotheses implied by nearby
-signature pairs. The score is based on how many catalog stars are explained by
-the same rotation, the angular residuals, ambiguity checks, and conflicts. A
-candidate that explains only its seed triangle is not trusted. It must extend
-to other stars, and later projected stages are guarded by pixel-space RMS so
-that bad additions can be rejected.
+Fourth, the code builds image quads and catalog quads. As in astrometry.net,
+the widest pair in each four-star group defines a normalized coordinate system
+and the two remaining stars define a four-dimensional code
+\((C_x,C_y,D_x,D_y)\). Nearby quad-code pairs propose rotations. The score is
+based on how many catalog stars are explained by the same rotation, the angular
+residuals, ambiguity checks, and conflicts. Later projected stages are guarded
+by pixel-space RMS so that bad additions can be rejected.
 
 The important practical consequence is that the blind matcher is only as good
 as the early detection list. If the first detections contain enough real stars
-with approximately correct centroids, the triangle matcher is quite robust. If
+with approximately correct centroids, the quad matcher is quite robust. If
 the same list is dominated by false positives, locally repeated texture, or
 stars that are a poor geometric subset, the matcher can find a self-consistent
 but wrong sky orientation. In that failure mode, increasing the catalog depth
 may make the ambiguity worse rather than better.
 
-\subsection{Triangle Signature}
+\subsection{Quad Signature}
 
-For each set of candidate points, the matcher builds triangular asterisms. For
-a triangle with side lengths \(a\le b\le c\), the current signature is a
-two-dimensional, scale-free descriptor
+For each set of candidate points, the blind matcher builds four-star
+asterisms. The most widely separated pair is labeled \(A,B\) and defines a
+local coordinate system. The remaining stars are labeled \(C,D\), sorted by
+their normalized coordinate along the \(A\rightarrow B\) axis. The current
+signature is the scale-free descriptor
 \begin{equation}
   \mathbf{q} =
   \begin{bmatrix}
-    a/c\\
-    b/c
+    C_x\\ C_y\\ D_x\\ D_y
   \end{bmatrix}.
 \end{equation}
-Degenerate triangles are rejected before indexing. The three vertices must be
+Degenerate quads are rejected before indexing. The four vertices must be
 distinct detections or catalog stars, so the same star candidate cannot appear
-twice in one triangle. For image-detection triangles, the shortest pixel side
-must also be at least
+twice in one quad. For image-detection quads, the shortest pixel side must also
+be at least
 \begin{equation}
   N_{\mathrm{MIN\_ANGLE\_PIX}} = 50 \ \mathrm{px}.
 \end{equation}
 Conversely, the longest pixel side must not exceed one quarter of the image
 width,
 \begin{equation}
-  c \le \frac{W}{4}.
+  d_{\max} \le \frac{W}{4}.
 \end{equation}
-This prevents very large triangles from dominating the search. Such triangles
-are a poor choice for wide lenses because small radial-model errors near the
-edge of the field produce large changes in their side ratios. After these
-pixel-scale checks, the matcher still requires a minimum shortest-to-longest
-side ratio and a minimum area relative to \(c^2\). These tests remove tiny,
-duplicate, over-wide, and nearly collinear triples, which are poor rotation
-constraints and are common in noisy detections.
+This prevents very large quads from dominating the search. Such quads are a
+poor choice for wide lenses because small radial-model errors near the edge of
+the field produce large changes in their normalized coordinates. After these
+pixel-scale checks, the matcher still requires enough area to avoid nearly
+collinear quadruples, which are poor rotation constraints and common in noisy
+detections.
 
-Catalog triangle signatures are inserted into a two-dimensional KD-tree. For
-each image-detection triangle, the matcher searches the KD-tree for nearby
-catalog signatures. A nearby signature does not prove an identification; it
-only proposes a candidate correspondence between three image detections and
-three catalog stars. Each proposed correspondence gives a rotation hypothesis.
-For the spherical matcher, the rotation is estimated from two vector pairs and
-the third vertex is used as a consistency check. The rotation is then scored
-against all available stars, not just the three that generated the hypothesis.
+Catalog quad signatures are inserted into a four-dimensional KD-tree. For each
+image-detection quad, the matcher searches the KD-tree for nearby catalog
+signatures. A nearby signature does not prove an identification; it only
+proposes a candidate correspondence between four image detections and four
+catalog stars. Each proposed correspondence gives a rotation hypothesis. The
+rotation is estimated from the \(A,B\) vector pair, checked against \(C,D\),
+and then scored against all available stars, not just the four that generated
+the hypothesis.
 
 \begin{figure}[h]
 \centering
@@ -638,18 +638,15 @@ same geometric track. The main steps are:
         crowding. Bad star-finder regions painted by the user are masked.
   \item \textbf{Blind spherical bootstrap.} Candidate image detections are
         pre-flattened with a small grid of lens hypotheses and converted to
-        unit vectors. Triangular asterisms from the image are matched against
-        local catalog triangles. Some blind-search modes can request regional
+        unit vectors. Four-star quad asterisms from the image are matched against
+        local catalog quads. Some blind-search modes can request regional
         detection coverage so that one cluttered part of the frame does not
         dominate the selected detections, but the current Brown--Conrady lucky
         recipe primarily relies on whole-image detections and global scoring.
-  \item \textbf{Support-triangle verification.} A seed asterism is not accepted
-        by itself. The candidate rotation must extend to neighboring stars:
-        each seed star is tested in additional triangles with nearby provisional
-        matches. These support triangles use the same minimum side length,
-        maximum side length, and minimum height limits as the main asterisms.
-        Accepted support triangles can be drawn in the GUI as diagnostic
-        asterisms while the search is running.
+  \item \textbf{Whole-field verification.} A matching quad is only a proposal.
+        The candidate rotation is accepted only if it explains additional
+        detections across the image with small angular residuals and without
+        excessive catalog or detection conflicts.
   \item \textbf{Stop on an empty first stage.} If the first blind asterism
         stage finds no matched stars, the lucky workflow stops. It does not
         proceed to fainter stars, because the later stages would otherwise have
@@ -726,10 +723,10 @@ detections are filtered through an oracle map built from the saved calibrated
 lens model before the asterism search is run. Under those conditions the
 asterism matcher is extremely robust over a surprisingly broad range of
 pre-undistortion parameters. This implies that the main missing component for
-ordinary phone-camera images is not primarily a better triangle matcher, but a
+ordinary phone-camera images is not primarily a better asterism matcher, but a
 very reliable star detector: it must suppress false star-like detections while
 still retaining as many true stellar peaks as possible. False detections can
-dominate the triangle search space and lead the blind matcher down incorrect
+dominate the asterism search space and lead the blind matcher down incorrect
 hypotheses, while missed true stars remove the geometric redundancy needed to
 reject those hypotheses.
 The \texttt{IMG\_4274} asterism-settings report strengthens this conclusion.
@@ -777,12 +774,9 @@ wide fields:
         nearer the central sky.
 \end{enumerate}
 
-Possible improvements include a richer invariant descriptor, quads rather than
-triangles, explicit indexing by angular scale, better use of magnitude ordering,
-adaptive pre-flattening grids for fisheye lenses, and a staged local-to-global
-verification procedure closer to astrometry.net. Another practical direction is
-to keep the triangle proposal mechanism but score candidates with a stronger
-model-aware verification pass before accepting a seed.
+Possible improvements include explicit indexing by angular scale, better use of
+magnitude ordering, adaptive pre-flattening grids for fisheye lenses, and a
+staged local-to-global verification procedure closer to astrometry.net.
 
 \section{Fitting}
 

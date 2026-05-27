@@ -58,7 +58,7 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
 - Fits optical models manually in the browser by picking image stars and
   pairing them with catalog stars.
 - Fits optical models automatically with the `L` / `I'm feeling lucky`
-  workflow, which detects stars, matches triangle asterisms, fits the selected
+  workflow, which detects stars, matches quad asterisms, fits the selected
   lens model, expands to fainter stars, and prunes obvious bad automatic
   matches.
 - Loads PNG, JPEG, HEIC, and HEIF images.
