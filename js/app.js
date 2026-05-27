@@ -2083,10 +2083,12 @@ end
     }
 
     function displayedCatalogLabel(star) {
-        if (star && star.mag < 4.0 && star.name && star.name.trim()) {
-            return compactStarDisplayName(star.name);
+        if (!star || star.mag > 4.0) {
+            return "";
         }
-        return `mag ${Number(star && star.mag || 0).toFixed(1)}`;
+        return star.name && star.name.trim() ?
+            compactStarDisplayName(star.name) :
+            `mag ${Number(star.mag || 0).toFixed(1)}`;
     }
 
     function angularDistanceDegBetweenRaDec(raHoursA, decDegA, raHoursB, decDegB) {
@@ -3475,7 +3477,9 @@ end
         for (const star of visibleCatalogStars()) {
             const [x, y] = canvasPixelFromImagePixel(star.x, star.y);
             const label = displayedCatalogLabel(star);
-            addOverlayLabel(label, [x + offset, y - offset], "star-name-label");
+            if (label) {
+                addOverlayLabel(label, [x + offset, y - offset], "star-name-label");
+            }
         }
     }
 
@@ -3499,7 +3503,9 @@ end
             addOverlayCircle([x, y], `catalog-pairing-marker ${starMagnitudeClass(star.mag)}`);
             if (state.showStarNames) {
                 const label = displayedCatalogLabel(star);
-                addOverlayLabel(label, [x + offset, y - offset], "catalog-pairing-label");
+                if (label) {
+                    addOverlayLabel(label, [x + offset, y - offset], "catalog-pairing-label");
+                }
             }
         }
     }
@@ -3515,7 +3521,7 @@ end
             if (state.showPickedMatchMarkers) {
                 const imagePoint = imageMarkerCanvasPixel(match.image.x, match.image.y);
                 const visible = addOverlayCircle(imagePoint, markerClass);
-                if (visible && state.showStarNames) {
+                if (visible && state.showStarNames && matchLabel) {
                     addOverlayLabel(matchLabel, [imagePoint[0] + labelOffset, imagePoint[1] - labelOffset],
                         "match-label");
                 }
@@ -3532,7 +3538,7 @@ end
                 false
             );
             if (catalogPoint && addOverlayCircle(catalogPoint, markerClass)) {
-                if (state.showStarNames) {
+                if (state.showStarNames && matchLabel) {
                     addOverlayLabel(matchLabel, [catalogPoint[0] + labelOffset, catalogPoint[1] - labelOffset],
                         "match-label");
                 }
