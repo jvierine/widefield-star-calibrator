@@ -23,7 +23,8 @@
     "report:case": "node tools/generate_test_report.js",
     "lucky:report": "node tools/run_lucky_report.js",
     "serve": "node tools/serve_calibrator.js",
-    "review:overlays": "node tools/review_star_overlays.js"
+    "review:overlays": "node tools/review_star_overlays.js",
+    "catalog:yale-asterisms": "node tools/build_yale_asterism_index.js"
   },
   "dependencies": {
     "exifr": "^7.1.3",

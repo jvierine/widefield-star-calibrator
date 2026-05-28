@@ -422,7 +422,33 @@
             }
         }
 
-        await maybeYield(options, 70, "Measuring star-like peak shape...", true);
+        const requireGlobalThreshold = options.requireGlobalThreshold === true;
+        const validCellPeaks = [];
+        for (const peak of cellPeaks) {
+            if (!Number.isFinite(peak.value) || peak.value < scanThreshold) {
+                continue;
+            }
+            if (requireGlobalThreshold && peak.value < globalThreshold) {
+                continue;
+            }
+            validCellPeaks.push(peak);
+        }
+        validCellPeaks.sort((a, b) =>
+            (b.score || 0) - (a.score || 0) ||
+            (b.scanMatchedSnr || 0) - (a.scanMatchedSnr || 0) ||
+            b.value - a.value
+        );
+        const maxShapeCandidates = Number.isFinite(options.maxShapeCandidates) ?
+            Math.max(maxDetections, Math.floor(options.maxShapeCandidates)) :
+            Math.max(900, Math.min(2200, maxDetections * 12));
+        const shapePeaks = validCellPeaks.slice(0, maxShapeCandidates);
+
+        await maybeYield(
+            options,
+            70,
+            `Measuring star-like peak shape for ${shapePeaks.length}/${validCellPeaks.length} strongest peaks...`,
+            true
+        );
         const candidates = [];
         const annulusInner = Number.isFinite(options.annulusInnerPx) ? options.annulusInnerPx : 6;
         const annulusOuter = Number.isFinite(options.annulusOuterPx) ? options.annulusOuterPx : 12;
@@ -432,7 +458,6 @@
         const maxRadius = Number.isFinite(options.maxRadiusPx) ? options.maxRadiusPx : 3.0;
         const maxElongation = Number.isFinite(options.maxElongation) ? options.maxElongation : 2.7;
         const maxSaturated = Number.isFinite(options.maxSaturatedPixels) ? options.maxSaturatedPixels : 12;
-        const requireGlobalThreshold = options.requireGlobalThreshold === true;
         const rejectCounts = {
             belowScanThreshold: 0,
             belowGlobalThreshold: 0,
@@ -440,28 +465,21 @@
             invalidCentroid: 0,
             nonStarShape: 0,
             crowdedRegion: 0,
+            skippedShapeCandidates: Math.max(0, validCellPeaks.length - shapePeaks.length),
         };
 
         lastYield = typeof performance === "object" && performance.now ? performance.now() : Date.now();
-        for (let peakIndex = 0; peakIndex < cellPeaks.length; peakIndex += 1) {
-            const peak = cellPeaks[peakIndex];
+        for (let peakIndex = 0; peakIndex < shapePeaks.length; peakIndex += 1) {
+            const peak = shapePeaks[peakIndex];
             const now = typeof performance === "object" && performance.now ? performance.now() : Date.now();
             if (now - lastYield > 35) {
                 await maybeYield(
                     options,
-                    70 + 18 * peakIndex / Math.max(1, cellPeaks.length),
-                    `Measuring star-like peak shape: ${Math.round(100 * peakIndex / Math.max(1, cellPeaks.length))}%`,
+                    70 + 18 * peakIndex / Math.max(1, shapePeaks.length),
+                    `Measuring star-like peak shape: ${Math.round(100 * peakIndex / Math.max(1, shapePeaks.length))}%`,
                     true
                 );
                 lastYield = now;
-            }
-            if (!Number.isFinite(peak.value) || peak.value < scanThreshold) {
-                rejectCounts.belowScanThreshold += 1;
-                continue;
-            }
-            if (requireGlobalThreshold && peak.value < globalThreshold) {
-                rejectCounts.belowGlobalThreshold += 1;
-                continue;
             }
             const annulus = localAnnulusStats(pixelData, peak.x, peak.y, annulusInner, annulusOuter, maskPredicate);
             const meshBackground = backgroundMap ? backgroundMap.backgroundAt(peak.x, peak.y) : annulus.background;
@@ -607,9 +625,11 @@
             }
         }
         filteredCandidates.sort((a, b) => b.score - a.score);
-        const suppressionRadius = Number.isFinite(options.suppressionRadiusPx) ?
+        const minimumSuppressionRadius = Number.isFinite(options.minimumSuppressionRadiusPx) ?
+            Math.max(0, options.minimumSuppressionRadiusPx) : 30;
+        const suppressionRadius = Math.max(minimumSuppressionRadius, Number.isFinite(options.suppressionRadiusPx) ?
             options.suppressionRadiusPx :
-            Math.max(18, Math.min(60, 0.010 * Math.hypot(width, height)));
+            Math.max(18, Math.min(60, 0.010 * Math.hypot(width, height))));
         const detections = selectSuppressedCandidates(filteredCandidates, maxDetections, suppressionRadius);
         return {
             detections,
@@ -624,7 +644,8 @@
             status: `bright-star detector: bg ${bg.toFixed(1)}, sigma ${sigma.toFixed(1)}, ` +
                 `thresholds scan/global ${scanThreshold.toFixed(1)}/${globalThreshold.toFixed(1)}, ` +
                 `${backgroundMap ? `mesh ${backgroundMap.meshSize} px, ` : ""}` +
-                `${scannedLocalPeaks} local peaks, ${filteredCandidates.length}/${candidates.length} star-like candidates after clutter, ` +
+                `${scannedLocalPeaks} local peaks, shaped ${shapePeaks.length}/${validCellPeaks.length}, ` +
+                `${filteredCandidates.length}/${candidates.length} star-like candidates after clutter, ` +
                 `selected top ${detections.length}/${maxDetections}, suppression radius ${suppressionRadius.toFixed(0)} px`,
         };
     }

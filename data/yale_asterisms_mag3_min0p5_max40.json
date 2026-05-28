@@ -1,0 +1,33 @@
+{
+  "generatedUtc": "2026-05-28T06:15:16.925Z",
+  "source": "js/star_catalog.js Yale Bright Star Catalogue extract",
+  "sourceStarCount": 3132,
+  "selectedStarCount": 173,
+  "maxMag": 3,
+  "minSepDeg": 0.5,
+  "maxSepDeg": 40,
+  "minSideRatio": 0.08,
+  "signature": [
+    "a/c",
+    "b/c"
+  ],
+  "notes": "Triangle sides are angular separations sorted as a <= b <= c. Star indices refer to rows in window.AIDA_STAR_CATALOG.",
+  "recordCount": 11464,
+  "binary": "yale_asterisms_mag3_min0p5_max40.bin.gz",
+  "format": {
+    "compression": "gzip",
+    "byteOrder": "little-endian",
+    "magic": "WISAST1\\0",
+    "headerBytes": 32,
+    "recordStrideBytes": 20,
+    "record": [
+      "float32 ac = a/c",
+      "float32 bc = b/c",
+      "uint16 yaleStarIndex0",
+      "uint16 yaleStarIndex1",
+      "uint16 yaleStarIndex2",
+      "uint16 reserved",
+      "float32 longestSideDeg"
+    ]
+  }
+}

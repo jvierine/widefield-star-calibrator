@@ -23,3 +23,33 @@ Regenerate with:
 node tools/build_tycho2_catalog.js
 ```
 
+`yale_asterisms_mag4_min1p5_max40.bin.gz` is generated from
+`js/star_catalog.js`. It stores precomputed Yale triangular asterisms using
+stars brighter than or equal to visual magnitude 4.0, pairwise separations
+between 1.5 and 40 degrees, and side ratios sorted as `a <= b <= c`.
+
+The binary payload is platform independent:
+
+- gzip-compressed byte stream
+- bytes `0..7`: ASCII magic `WISAST1\0`
+- bytes `8..11`: unsigned 32-bit little-endian asterism count
+- bytes `12..15`: unsigned 32-bit little-endian source Yale star count
+- bytes `16..19`: unsigned 32-bit little-endian record stride in bytes,
+  currently `20`
+- bytes `20..31`: IEEE-754 binary32 little-endian metadata
+  `[maxMag, minSepDeg, maxSepDeg]`
+- records: `[float32 a/c, float32 b/c, uint16 yale_i0, uint16 yale_i1,
+  uint16 yale_i2, uint16 reserved, float32 longest_side_deg]`
+
+The browser loader exposes `get_asterisms(ac, bc, delta_ac, delta_bc)`, which
+returns record indices in the rectangular signature window. Regenerate with:
+
+```sh
+npm run catalog:yale-asterisms
+```
+
+Use environment variables to make deeper or tighter variants:
+
+```sh
+YALE_ASTERISM_MAX_MAG=6 YALE_ASTERISM_MIN_SEP_DEG=1.5 YALE_ASTERISM_MAX_SEP_DEG=30 npm run catalog:yale-asterisms
+```

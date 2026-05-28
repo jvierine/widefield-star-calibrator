@@ -636,10 +636,16 @@
         const dCA = angularDistance(c.vector, a.vector);
         const longest = Math.max(dAB, dBC, dCA);
         const shortest = Math.min(dAB, dBC, dCA);
+        const hasMinAngularSideDeg = Number.isFinite(options.minAngularSideDeg);
+        const minAngularSideDeg = hasMinAngularSideDeg ? options.minAngularSideDeg : 2.0;
+        const maxAngularSideDeg = Number.isFinite(options.maxAngularSideDeg) ?
+            options.maxAngularSideDeg : 65.0;
         if (!Number.isFinite(longest) || longest <= 1e-6 || shortest / longest < 0.16) {
             return null;
         }
-        if (longest < 2.0 * Math.PI / 180 || longest > 65.0 * Math.PI / 180) {
+        if (hasMinAngularSideDeg && shortest < minAngularSideDeg * Math.PI / 180 ||
+                !hasMinAngularSideDeg && longest < minAngularSideDeg * Math.PI / 180 ||
+                longest > maxAngularSideDeg * Math.PI / 180) {
             return null;
         }
         let apex;
@@ -705,6 +711,8 @@
                 minSidePx: neighborPoolSize.minSidePx,
                 maxSidePx: neighborPoolSize.maxSidePx,
                 minHeightPx: neighborPoolSize.minHeightPx,
+                minAngularSideDeg: neighborPoolSize.minAngularSideDeg,
+                maxAngularSideDeg: neighborPoolSize.maxAngularSideDeg,
             });
             if (record) {
                 records.push(record);
@@ -749,6 +757,8 @@
                 minSidePx: options.minSidePx,
                 maxSidePx: options.maxSidePx,
                 minHeightPx: options.minHeightPx,
+                minAngularSideDeg: options.minAngularSideDeg,
+                maxAngularSideDeg: options.maxAngularSideDeg,
             });
         }
         const records = [];
@@ -759,6 +769,8 @@
                         minSidePx: options.minSidePx,
                         maxSidePx: options.maxSidePx,
                         minHeightPx: options.minHeightPx,
+                        minAngularSideDeg: options.minAngularSideDeg,
+                        maxAngularSideDeg: options.maxAngularSideDeg,
                     });
                     if (record) {
                         records.push(record);
@@ -1078,6 +1090,68 @@
             return Infinity;
         }
         return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    function circularMeanAngle(angles) {
+        let x = 0;
+        let y = 0;
+        for (const angle of angles) {
+            x += Math.cos(angle);
+            y += Math.sin(angle);
+        }
+        return Math.atan2(y, x);
+    }
+
+    function wrappedAngleDistance(a, b) {
+        let d = a - b;
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d < -Math.PI) d += 2 * Math.PI;
+        return Math.abs(d);
+    }
+
+    function estimateLocalSkyImageTransform(imagePoints, skyPoints) {
+        if (!Array.isArray(imagePoints) || !Array.isArray(skyPoints) ||
+                imagePoints.length !== skyPoints.length || imagePoints.length < 2) {
+            return {valid: false, rotation: NaN, scale: NaN, edgeCount: 0};
+        }
+        const rotations = [];
+        const scales = [];
+        for (let i = 0; i < imagePoints.length - 1; i += 1) {
+            for (let j = i + 1; j < imagePoints.length; j += 1) {
+                const imageA = imagePoints[i];
+                const imageB = imagePoints[j];
+                const skyA = skyPoints[i];
+                const skyB = skyPoints[j];
+                if (!imageA || !imageB || !skyA || !skyB) {
+                    continue;
+                }
+                const pixelDistance = Math.hypot(imageB.x - imageA.x, imageB.y - imageA.y);
+                const skyDistance = Math.hypot(skyB.x - skyA.x, skyB.y - skyA.y);
+                if (!Number.isFinite(pixelDistance) || !Number.isFinite(skyDistance) ||
+                        pixelDistance <= 1e-9 || skyDistance <= 1e-12) {
+                    continue;
+                }
+                const imageAngle = Math.atan2(imageB.y - imageA.y, imageB.x - imageA.x);
+                const skyAngle = Math.atan2(skyB.y - skyA.y, skyB.x - skyA.x);
+                rotations.push(imageAngle - skyAngle);
+                scales.push(skyDistance / pixelDistance);
+            }
+        }
+        if (!scales.length) {
+            return {valid: false, rotation: NaN, scale: NaN, edgeCount: 0};
+        }
+        const scale = median(scales);
+        const minScale = Math.min(...scales);
+        const maxScale = Math.max(...scales);
+        return {
+            valid: true,
+            rotation: circularMeanAngle(rotations),
+            scale,
+            edgeCount: scales.length,
+            scaleRatio: maxScale / Math.max(1e-12, minScale),
+            rotations,
+            scales,
+        };
     }
 
     function provisionalBlindMatches(catalog, detections, rot, options = {}) {
@@ -2760,6 +2834,8 @@
                 options.maxCatalogLocalNeighbors : 20,
             localTriangleMaxSideDeg: Number.isFinite(options.maxCatalogLocalTriangleSideDeg) ?
                 options.maxCatalogLocalTriangleSideDeg : 70,
+            minAngularSideDeg: options.minAngularSideDeg,
+            maxAngularSideDeg: options.maxAngularSideDeg,
         });
         const catalogTriangleTree = new KdTree2(catalogTriangles.map((triangle, index) => ({
             x: triangle.x,
@@ -2815,6 +2891,8 @@
                                     maxTriangles: Number.isFinite(options.maxDetectionTriangles) ? options.maxDetectionTriangles : 1400,
                                     maxTrianglePoints: Number.isFinite(options.maxDetectionTriangleStars) ? options.maxDetectionTriangleStars : 40,
                                     ...detectionTriangleGeometryOptions(options),
+                                    minAngularSideDeg: options.minAngularSideDeg,
+                                    maxAngularSideDeg: options.maxAngularSideDeg,
                                 });
                                 const catalogSnapshot = triangleRatioSnapshot(catalogTriangles);
                                 const detectionSnapshot = triangleRatioSnapshot(detectionTriangles);
@@ -3157,6 +3235,8 @@
                 options.maxCatalogLocalNeighbors : 20,
             localTriangleMaxSideDeg: Number.isFinite(options.maxCatalogLocalTriangleSideDeg) ?
                 options.maxCatalogLocalTriangleSideDeg : 70,
+            minAngularSideDeg: options.minAngularSideDeg,
+            maxAngularSideDeg: options.maxAngularSideDeg,
         });
         const catalogTriangleTree = new KdTree2(catalogTriangles.map((triangle, index) => ({
             x: triangle.x,
@@ -3226,6 +3306,8 @@
                                     maxTriangles: Number.isFinite(options.maxDetectionTriangles) ? options.maxDetectionTriangles : 1400,
                                     maxTrianglePoints: Number.isFinite(options.maxDetectionTriangleStars) ? options.maxDetectionTriangleStars : 40,
                                     ...detectionTriangleGeometryOptions(options),
+                                    minAngularSideDeg: options.minAngularSideDeg,
+                                    maxAngularSideDeg: options.maxAngularSideDeg,
                                 });
                                 const catalogSnapshot = triangleRatioSnapshot(catalogTriangles);
                                 const detectionSnapshot = triangleRatioSnapshot(detectionTriangles);
@@ -3527,6 +3609,8 @@
         KdTree2,
         greedyMatch,
         robustFilterMatches,
+        estimateLocalSkyImageTransform,
+        wrappedAngleDistance,
         triangleCosinesQuasiMonotonic,
         blindAsterismNeighborSupport,
         N_MIN_ANGLE_PIX,

@@ -205,12 +205,90 @@ the interface, with radial and tangential coefficients:
    k_1, k_2, k_3, p_1, p_2].
 \end{equation}
 
+\subsection{Simple Early-Stage Hypothesis Model}
+
+During blind identification it is useful to separate two questions that are
+often mixed together:
+\begin{enumerate}
+  \item Is this set of image stars plausibly associated with this set of
+        catalog stars?
+  \item Which detailed lens model is needed to fit the image accurately?
+\end{enumerate}
+The first question should be answered with the simplest model that can explain
+the geometry. For this purpose, a deliberately simple hypothesis model can be
+introduced as \texttt{optmod -1}. This is not intended to be a final calibration
+model. It is a temporary pinhole model for early-stage asterism testing.
+
+The \texttt{optmod -1} model has only one fixed focal-length scale and three
+camera attitude angles. The principal point is fixed at the image center,
+\(d_u=d_v=0\), and no radial or tangential distortion is used. Let \(F\) be the
+focal length in pixels and let \(W,H\) be the image width and height. In the
+normalized browser coordinates used by the other models,
+\[
+  f_1 = \frac{F}{W}, \qquad
+  f_2 = \frac{F}{H}
+      = f_1\frac{W}{H}.
+\]
+Thus the aspect ratio of the focal terms is fixed by the image dimensions. If
+the desired fixed scale is expressed as a horizontal field of view \(\Phi\),
+then
+\[
+  F = \frac{W/2}{\tan(\Phi/2)}, \qquad
+  f_1 = \frac{1}{2\tan(\Phi/2)}, \qquad
+  f_2 = \frac{W/H}{2\tan(\Phi/2)}.
+\]
+The only fitted or searched parameters in the simplest form are therefore
+\[
+  \mathbf{p}_{-1} = [\alpha,\beta,\gamma],
+\]
+or, if the blind search is allowed to test a small grid of focal scales,
+\[
+  \mathbf{p}_{-1} = [\Phi,\alpha,\beta,\gamma].
+\]
+
+With \(\mathbf{s}=(s_1,s_2,s_3)=\mathbf{e}R\), the projection is the ordinary
+pinhole projection
+\begin{align}
+  u &= \frac{1}{2} + f_1 \frac{s_1}{s_3},\\
+  v &= \frac{1}{2} + f_2 \frac{s_2}{s_3},\\
+  x &= uW - 1,\qquad y = vH - 1.
+\end{align}
+The inverse mapping from image pixels to approximate camera rays is
+\begin{align}
+  X &= \frac{u-1/2}{f_1}, \qquad
+  Y = \frac{v-1/2}{f_2},\\
+  \mathbf{d} &=
+  \frac{1}{\sqrt{X^2+Y^2+1}}
+  \begin{bmatrix} X \\ Y \\ 1 \end{bmatrix}.
+\end{align}
+These rays can be used directly in the TRIAD or Wahba/Kabsch rotation
+estimators discussed in the lucky-search section.
+
+The motivation for \texttt{optmod -1} is methodological. It gives the blind
+search a low-dimensional null model: can a pinhole camera with the correct
+image aspect ratio and only a three-angle attitude explain the proposed star
+identifications? If the answer is yes, the solution should not immediately pay
+the complexity cost of a fisheye or Brown-Conrady model. If systematic
+residuals remain after the simple model, then more flexible models can be
+tested. This naturally leads to Bayesian or information-criterion model
+selection, where a model with more parameters is accepted only if the reduction
+in residuals is large enough to justify the additional degrees of freedom.
+For example, one can compare models with a score of the form
+\[
+  {\rm BIC} = N\log\!\left(\frac{{\rm RSS}}{N}\right) + k\log N,
+\]
+where \(N\) is the number of paired stars, \(k\) is the number of fitted model
+parameters, and RSS is the summed squared image-plane residual. In this view,
+\texttt{optmod -1} is the baseline hypothesis used to decide whether more
+complicated lens physics is actually required.
+
 \begin{table}[h]
 \centering
 \begin{tabular}{lll}
 \toprule
 Model & Use case & Notes \\
 \midrule
+Optmod -1 & blind hypothesis tests & fixed-aspect pinhole, attitude only \\
 Optmod 2 & all-sky and fisheye cameras & \(\sin(a_r\theta)\) radial law \\
 Optmod 12 & flexible wide-field lenses & tangent/sine branch by sign \\
 Brown-Conrady & phone and ordinary lenses & radial plus tangential distortion \\
@@ -287,6 +365,74 @@ extracts a local image patch. A smoothed density estimate is computed on an
 interpolated grid, and the local peak is used as the subpixel image coordinate.
 This gives the user a controlled way to create high-confidence calibration
 pairs even when automatic detection is confused.
+
+\subsection{Measuring a Star Peak}
+
+A star peak measurement is not just the coordinate of the brightest pixel. The
+detector first estimates a global background \(B\) and robust noise scale
+\(\sigma\) from sparsely sampled image pixels. Candidate local maxima are then
+tested against both a global threshold and a local background annulus. For a
+candidate peak at pixel \((x_0,y_0)\), the annulus provides a local background
+\(B_{\mathrm{loc}}\) and local noise estimate \(\sigma_{\mathrm{loc}}\). The
+local peak contrast and signal-to-noise ratio are
+\begin{equation}
+  C = I(x_0,y_0)-B_{\mathrm{loc}},
+  \qquad
+  \mathrm{SNR}_{\mathrm{loc}} = \frac{C}{\sigma_{\mathrm{loc}}}.
+\end{equation}
+The same patch is also passed through a compact matched filter. This favors
+small, centrally concentrated peaks over extended aurora, clouds, buildings,
+and compression artifacts.
+
+Once a candidate survives the contrast tests, WISC estimates a subpixel center
+with a local weighted centroid. With non-negative weights
+\begin{equation}
+  w_i =
+  \max\left(0, I_i-B_{\mathrm{loc}}\right)
+  \exp\left[-\frac{(x_i-x_0)^2+(y_i-y_0)^2}{2\sigma_w^2}\right],
+\end{equation}
+the centroid is
+\begin{equation}
+  \hat{x} = \frac{\sum_i w_i x_i}{\sum_i w_i},
+  \qquad
+  \hat{y} = \frac{\sum_i w_i y_i}{\sum_i w_i}.
+\end{equation}
+The detector then measures aperture flux, second moments, elongation, core flux
+fraction, outer-aperture flux fraction, saturation count, peak dominance, and
+centroid offset. A good star has a bright central peak, compact moments, low
+elongation, enough flux in the core, and limited flux in the outer part of the
+aperture. These terms are combined into the ranking score used by the automatic
+matcher.
+
+For browser responsiveness, the expensive shape measurement is only applied to
+the strongest scan-stage peaks. The scan itself is cheap and may find many
+local maxima in clouds, aurora, snow, or buildings; the detector sorts these
+preliminary peaks and measures detailed star-like shape only for a capped list
+of the best candidates. Automatic detections are also non-maximum suppressed
+with a minimum separation of 50 pixels. This prevents crowded texture near the
+horizon or buildings from filling the candidate list with many nearly
+duplicate detections.
+
+Manual star picking uses an even finer version of the same idea. The selected
+patch is interpolated onto a dense grid, the local background is subtracted,
+and the result is smoothed with a Gaussian kernel. The maximum of this smoothed
+density image gives a stable subpixel star center. Figure~\ref{fig:img0180-peak}
+shows the measurement for a real accepted sky star in the \texttt{IMG\_0180}
+test image.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{doc/figures/img0180_star_peak_measurement.png}
+\caption{Star peak measurement on the \texttt{IMG\_0180.HEIC} calibration
+case. The detector selects a local maximum, estimates the local background from
+an annulus, measures flux and shape in a compact aperture, and computes a
+subpixel centroid. The same peak is shown as a raw local patch, as an upsampled
+smoothed density estimate, and as a radial profile. The accepted peak has high
+local and matched-filter signal-to-noise, nearly circular moments, and little
+outer-aperture contamination, which are the properties desired for robust
+asterism matching.}
+\label{fig:img0180-peak}
+\end{figure}
 
 \section{Asterism Matching}
 
@@ -400,6 +546,327 @@ For the spherical matcher, the rotation is estimated from two vector pairs and
 the third vertex is used as a consistency check. The rotation is then scored
 against all available stars, not just the three that generated the hypothesis.
 
+\subsection{Precomputed Yale Asterism Index}
+
+A useful next step is to move the catalog side of the triangle search out of
+the per-image lucky fit and into a precomputed Yale Bright Star Catalogue
+asterism index. For every catalog triangle with angular side lengths
+\(a\le b\le c\), the stored descriptor is
+\begin{equation}
+  q_1 = a/c,\qquad q_2 = b/c .
+\end{equation}
+The browser can then query the index with the measured image-triangle
+descriptor \((\hat q_1,\hat q_2)\). The requested lookup
+\texttt{get\_asterisms(ac, bc, delta\_ac, delta\_bc)} returns all catalog
+triangles satisfying
+\begin{equation}
+  |q_1-\hat q_1| \le \Delta_{ac}, \qquad
+  |q_2-\hat q_2| \le \Delta_{bc}.
+\end{equation}
+This rectangular search is a fast conservative approximation to an
+\(L_2\)-norm search in triangle-signature space. If desired, the returned
+rectangle can be post-filtered by
+\begin{equation}
+  d_\triangle =
+  \sqrt{(q_1-\hat q_1)^2 + (q_2-\hat q_2)^2}
+  \le \Delta_2 .
+\end{equation}
+The rectangle is usually preferable for the first pass because it avoids
+missing candidates when the two coordinates have different uncertainties.
+
+The precomputed binary index used by the browser stores IEEE-754
+single-precision floating point values and unsigned integer star indices in an
+explicit little-endian byte order. This makes the file independent of CPU
+architecture and JavaScript engine. The default browser file keeps Yale stars
+with \(m_V\le4\) and all catalog triangles whose three pairwise separations are
+between \(1.5^\circ\) and \(40^\circ\). Deeper variants can be generated
+offline, but the storage cost rises quickly.
+
+The current on-disk table is ordered by the first descriptor coordinate,
+\(q_1=a/c\). Lookup is therefore implemented as a one-dimensional binary
+search followed by a second-coordinate filter. For a query
+\((\hat q_1,\hat q_2)\), the browser first finds the contiguous record range
+\begin{equation}
+  \hat q_1-\Delta_{ac} \le q_1 \le \hat q_1+\Delta_{ac}
+\end{equation}
+with lower- and upper-bound binary searches. It then scans only this slice and
+keeps records satisfying
+\begin{equation}
+  \hat q_2-\Delta_{bc} \le q_2 \le \hat q_2+\Delta_{bc}.
+\end{equation}
+This is not a full two-dimensional KD-tree stored on disk, but for the
+\(m_V\le4\) Yale table it is already an efficient rectangular range search:
+the expensive all-sky triangle construction is precomputed, and runtime lookup
+touches only the small \(a/c\) interval needed by the measured image triangle.
+If deeper catalog indexes make this slice too large, the same binary format can
+be extended with \(a/c\) bins whose contents are also sorted by \(b/c\), or with
+an explicit two-dimensional KD-tree node table.
+
+On the development machine, the current JavaScript implementation was
+benchmarked with 20\,000 random queries drawn from the precomputed
+\(m_V\le4\), \(1.5^\circ\)--\(40^\circ\) Yale table. The table contains
+204\,387 catalog triangles. The timings in Table~\ref{tab:yale-index-speed}
+measure only the descriptor lookup, not image-star detection, graph-extension
+bookkeeping, lens fitting, or rendering.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{rrrr}
+\toprule
+\(\Delta_{ac}=\Delta_{bc}\) & mean hits/query & ms/query & ms for \(\binom{30}{3}\) queries \\
+\midrule
+0.005 & 105 & 0.021 & 84 \\
+0.010 & 388 & 0.042 & 170 \\
+0.015 & 832 & 0.062 & 252 \\
+0.020 & 1\,424 & 0.085 & 347 \\
+0.030 & 3\,022 & 0.148 & 603 \\
+0.040 & 5\,128 & 0.227 & 923 \\
+0.050 & 7\,699 & 0.306 & 1\,243 \\
+\bottomrule
+\end{tabular}
+\caption{Measured lookup speed for the precomputed Yale triangle-signature
+table. Thirty detected image stars produce \(\binom{30}{3}=4060\) possible
+image triangles. The query points were sampled from non-degenerate catalog
+triangles with \(a/c\ge0.20\) and \(b/c\ge0.35\). Searching all 4060 image
+triangles is expected to take roughly 0.08--1.24 s for the lookup alone,
+depending on the descriptor tolerance.}
+\label{tab:yale-index-speed}
+\end{table}
+
+These numbers suggest that exhaustive lookup over all triangles from 30 image
+stars is practical for the bright Yale index. The more serious cost is not the
+binary search itself, but the number of returned candidate catalog triangles:
+looser tolerances produce thousands of plausible catalog asterisms per image
+triangle. The graph-extension algorithm should therefore keep the descriptor
+tolerance just wide enough to avoid losing the true match, and then immediately
+use shared-star consistency, angular-order consistency, horizon checks, and
+eventually lens-fit residuals to reduce the candidate sets.
+
+For non-degenerate asterisms, a good first operating point is
+\(\Delta_{ac}=\Delta_{bc}\approx0.015\)--\(0.02\). This usually keeps the
+candidate list to roughly \(8\times10^2\)--\(1.4\times10^3\) catalog triangles
+per image triangle in the \(m_V\le4\) Yale table. Smaller values such as
+0.005--0.01 are attractive after a reasonable pre-distortion exists, but may be
+too brittle for the first blind pass. Larger values such as 0.03--0.05 are
+safer under severe fisheye distortion, but they return thousands of candidates
+per image triangle and should only be used with aggressive graph pruning.
+
+The hit counts in Table~\ref{tab:yale-index-speed} are first-triangle upper
+bounds, not the expected cost of a completed identification. Once an asterism
+is extended, overlapping triangles must agree on their shared image stars. If a
+seed triangle \((A,B,C)\) is extended by another triangle \((A,B,D)\), then
+the catalog candidates for \(A\) and \(B\) must be identical in both catalog
+triangles. This replaces each image star's plausible catalog set by an
+intersection. Additional extensions add more intersections, and the graph
+usually shrinks rapidly if the image detections are real stars and the
+pre-distortion is adequate. Thus the raw count of hundreds or thousands of
+catalog triangles for one query is tolerable, provided that the matcher
+immediately applies shared-star consistency, distinct-star constraints,
+angular-order consistency, horizon filtering when available, and finally
+lens-fit residual checks.
+
+The index is intended to support a graph-extension matcher rather than a
+single-triangle nearest-neighbor decision. A triangle built near the image
+center is usually the best starting point because radial distortion is weakest
+there. Once an image triangle has a set of plausible catalog triangles, the
+matcher attaches one or two additional image stars to an existing edge. Each
+new triangle gives another catalog-hit set. Shared image stars must map to the
+same catalog stars in all compatible hits. Thus every extension intersects the
+candidate catalog-star sets for the image vertices and removes impossible
+assignments.
+
+\begin{lstlisting}[language={},caption={Sketch of a triangle-graph extension matcher.}]
+detect image stars
+sort seed stars by distance from image center, then by brightness
+
+for each seed triangle (i, j, k):
+    q = triangle_signature(i, j, k)
+    hits = get_asterisms(q.ac, q.bc, delta_ac, delta_bc)
+    hypotheses = initialize_catalog_assignments((i, j, k), hits)
+
+    while hypotheses is not empty:
+        h = pop_most_constrained_hypothesis(hypotheses)
+        if every image star in h has one catalog candidate:
+            return h
+
+        choose an image edge (u, v) already in h
+        choose one or two nearby unused detections w
+        q2 = triangle_signature(u, v, w)
+        hits2 = get_asterisms(q2.ac, q2.bc, delta_ac, delta_bc)
+
+        for each catalog triangle t in hits2:
+            if t is consistent with h on shared vertices u and v:
+                h2 = h with candidate sets intersected by t
+                if no candidate set is empty:
+                    push h2
+
+    if no unique solution was found:
+        remove catalog candidates below the horizon
+        keep the remaining partial solution for later scoring
+\end{lstlisting}
+
+The state of a partial solution can be represented as a map from image-star
+indices to candidate catalog-star sets,
+\begin{equation}
+  \mathcal{P}(i) = \{c_j: \text{catalog star } c_j
+  \text{ could explain image star } i\}.
+\end{equation}
+Every accepted extension replaces \(\mathcal{P}(i)\) with an intersection.
+The goal is to drive these sets to singletons. If the graph cannot be extended
+far enough to make the assignment unique, local sky information still helps:
+for a known time and station, any catalog star below a small elevation cutoff
+can be removed from all candidate sets. This horizon filter should be applied
+after the descriptor search rather than before when testing all-sky robustness,
+because it lets us distinguish descriptor ambiguity from local-sky ambiguity.
+
+\subsection{Local Angular-Order Consistency}
+
+Triangle side ratios alone do not use the cyclic order of stars around a
+shared vertex. This order is a useful additional invariant. Consider an image
+star \(A\) with two adjacent image stars \(B\) and \(C\). In the image plane,
+the signed orientation of the two edges is
+\begin{equation}
+  s_{\mathrm{img}}(A;B,C) =
+  \operatorname{sign}\left[
+    (x_B-x_A)(y_C-y_A) - (y_B-y_A)(x_C-x_A)
+  \right].
+\end{equation}
+The same test can be performed on a candidate catalog assignment by projecting
+the candidate sky directions for \(B\) and \(C\) onto the local tangent plane
+around the candidate sky direction for \(A\). Let
+\(\hat{\mathbf{u}}_A\), \(\hat{\mathbf{u}}_B\), and \(\hat{\mathbf{u}}_C\)
+be the unit vectors of the three catalog stars. Define local east and north
+basis vectors \(\mathbf{e}_A\) and \(\mathbf{n}_A\) in the tangent plane of
+\(\hat{\mathbf{u}}_A\), and let
+\begin{equation}
+  \mathbf{p}_B =
+  \begin{bmatrix}
+    \mathbf{e}_A\cdot\hat{\mathbf{u}}_B\\
+    \mathbf{n}_A\cdot\hat{\mathbf{u}}_B
+  \end{bmatrix},
+  \qquad
+  \mathbf{p}_C =
+  \begin{bmatrix}
+    \mathbf{e}_A\cdot\hat{\mathbf{u}}_C\\
+    \mathbf{n}_A\cdot\hat{\mathbf{u}}_C
+  \end{bmatrix}.
+\end{equation}
+The catalog orientation is then
+\begin{equation}
+  s_{\mathrm{cat}}(A;B,C) =
+  \operatorname{sign}\left[
+    p_{B,x}p_{C,y} - p_{B,y}p_{C,x}
+  \right].
+\end{equation}
+For a continuous lens mapping that does not fold the sky, the angular ordering
+of neighboring stars around \(A\) is preserved. Depending on image-coordinate
+conventions and explicit image flips, the entire image may have either the
+same handedness as the tangent-plane catalog or the opposite handedness. The
+important point is that this handedness is global for a trial hypothesis: once
+the sign is chosen, all adjacent-star ordering tests should agree.
+
+This gives a final consistency check for graph-extension hypotheses. For each
+image star with at least two attached neighbors, scan ordered neighbor pairs.
+A candidate catalog star for \(A\) is retained only if there exist candidate
+catalog stars for the neighboring image stars that reproduce the same cyclic
+order, up to the current global handedness sign. This does not require an
+accurate lens fit; it only requires that the local neighborhood has not been
+folded. It is therefore a good check to apply after side-ratio lookup and
+candidate-set intersection, but before expensive lens fitting.
+
+\begin{lstlisting}[language={},caption={Angular-order pruning for a partial asterism graph.}]
+for handedness in [+1, -1]:
+    changed = true
+    while changed:
+        changed = false
+        for each image star A with candidate set P[A]:
+            neighbors = graph neighbors of A with non-empty candidate sets
+            if len(neighbors) < 2:
+                continue
+
+            for each catalog candidate a in P[A]:
+                ok_for_a = true
+
+                for each unordered neighbor pair (B, C):
+                    s_img = signed_orientation_image(A, B, C)
+                    if abs(s_img) is too small:
+                        continue
+
+                    pair_can_match = false
+                    for each b in P[B]:
+                        for each c in P[C]:
+                            if a, b, c are not distinct:
+                                continue
+                            s_cat = signed_orientation_catalog(a, b, c)
+                            if handedness * s_img == s_cat:
+                                pair_can_match = true
+                                break
+
+                    if not pair_can_match:
+                        ok_for_a = false
+                        break
+
+                if not ok_for_a:
+                    remove a from P[A]
+                    changed = true
+
+    score this handedness by remaining candidates and graph consistency
+keep the best handedness, or keep both if neither is clearly better
+\end{lstlisting}
+
+In practice this check should be tolerant of nearly collinear neighbor pairs.
+If the signed area in either the image plane or the catalog tangent plane is
+close to zero, the ordering test should be skipped for that pair. The useful
+cases are stars with a clear clockwise or counterclockwise relationship around
+the same central vertex. Such local order constraints are especially valuable
+when many catalog triangles have nearly identical \((a/c,b/c)\) signatures:
+they rule out candidates that have the right distances but the wrong local
+arrangement.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{rrrrrrr}
+\toprule
+\(m_V\) limit & stars & \(\theta_{\min}\) & \multicolumn{4}{c}{catalog triangles} \\
+\cmidrule(lr){4-7}
+ & & deg & \(\theta_{\max}=10^\circ\) & \(20^\circ\) & \(40^\circ\) & \(80^\circ\) \\
+\midrule
+3 & 173  & 1.5 & 87      & 1\,041    & 11\,518     & 108\,340 \\
+3 & 173  & 3.0 & 68      & 979       & 11\,320     & 107\,808 \\
+4 & 492  & 1.5 & 1\,105  & 15\,666   & 206\,679    & 2\,338\,867 \\
+4 & 492  & 3.0 & 798     & 14\,262   & 201\,447    & 2\,322\,737 \\
+5 & 1\,377 & 1.5 & 19\,872 & 299\,580  & 4\,188\,413 & 49\,846\,167 \\
+5 & 1\,377 & 3.0 & 13\,621 & 273\,213  & 4\,086\,973 & 49\,515\,031 \\
+6 & 2\,734 & 1.5 & 144\,209 & 2\,274\,057 & 32\,647\,275 & 399\,476\,000 \\
+6 & 2\,734 & 3.0 & 98\,308  & 2\,067\,961 & 31\,848\,244 & 396\,798\,122 \\
+\bottomrule
+\end{tabular}
+\caption{Number of all-sky Yale Bright Star Catalogue triangular asterisms for
+several visual-magnitude and angular-separation cuts. A triangle is counted
+when all three pairwise angular separations are between \(\theta_{\min}\) and
+\(\theta_{\max}\). These counts are for the complete sky catalog; a local-sky
+browser search uses only stars above the local horizon and is therefore much
+smaller.}
+\label{tab:yale-triangle-counts}
+\end{table}
+
+Table~\ref{tab:yale-triangle-counts} shows the scale of the catalog index. The
+ungated number of triangles is \(\binom{N}{3}\), so the worst-case storage and
+build cost scale as \(O(N^3)\). At \(m_V\le 6\), the Yale subset used here has
+\(N=2734\), giving \(\binom{2734}{3}=3.40\times10^9\) possible triples before
+any separation cuts. Angular gates reduce the constant dramatically for small
+\(\theta_{\max}\), but they do not change the cubic worst-case scaling.
+
+Astrometry.net-style quads are more expensive combinatorially: the ungated
+count is \(\binom{N}{4}=O(N^4)\), or \(2.32\times10^{12}\) possible quads for
+the same \(m_V\le6\) Yale subset. Practical quad indexes avoid this full
+enumeration by building quads only over local neighborhoods and scale ranges.
+If each star keeps \(k\) usable neighbors, a local triangle index scales roughly
+as \(O(Nk^2)\), while a local quad index scales roughly as \(O(Nk^3)\). Quads
+therefore cost more to build and search, but the four-star descriptor is much
+more selective than the two-ratio triangle signature.
+
 \begin{figure}[h]
 \centering
 \begin{tikzpicture}[scale=1.0]
@@ -434,6 +901,148 @@ near neighbor proposes a possible three-star correspondence.}
 \label{fig:triangle-signature}
 \end{figure}
 
+\subsection{Triangle and Quad Descriptor Errors}
+
+The triangle signature is only useful if its measurement uncertainty is small
+compared with the distance to unrelated catalog triangles in signature space.
+Let the measured image-side lengths be \(a\le b\le c\), and let the descriptor
+be
+\begin{equation}
+  \mathbf{q}_{\triangle} =
+  \begin{bmatrix}
+    a/c\\
+    b/c
+  \end{bmatrix}.
+\end{equation}
+If the centroid error of each detected star is approximately
+\(\sigma_{\mathrm{px}}\), then the uncertainty of one measured side length is
+of order
+\begin{equation}
+  \sigma_s \approx \sqrt{2}\,\sigma_{\mathrm{px}},
+\end{equation}
+because both endpoints contribute. For a ratio \(r=s/c\), where
+\(s\in\{a,b\}\), first-order propagation gives
+\begin{equation}
+  \sigma_r^2
+  \approx
+  \left(\frac{\sigma_s}{c}\right)^2
+  +
+  \left(\frac{s\,\sigma_c}{c^2}\right)^2
+  =
+  \left(1+r^2\right)
+  \left(\frac{\sqrt{2}\,\sigma_{\mathrm{px}}}{c}\right)^2 ,
+\end{equation}
+up to covariance terms from sides that share a vertex. Thus the expected
+two-dimensional triangle-signature error is approximately
+\begin{equation}
+  E[d_{\triangle}]
+  \sim
+  \frac{\sqrt{2}\,\sigma_{\mathrm{px}}}{c}
+  \sqrt{2+\left(a/c\right)^2+\left(b/c\right)^2}.
+\end{equation}
+The important scaling is \(d_{\triangle}\propto\sigma_{\mathrm{px}}/c\):
+larger triangles tolerate centroid errors better than tiny triangles. However,
+for fisheye and all-sky lenses, very large triangles are more sensitive to
+imperfect pre-distortion and residual lens-model error. This is the practical
+reason for using both a minimum side length and a maximum side length.
+Degenerate triangles are also fragile because a small centroid shift can
+produce a large change in the sorted side ratios or in the implied rotation.
+
+For a rough tolerance estimate, convert the centroid error to an angular error
+using the image scale
+\begin{equation}
+  \sigma_\theta \approx \sigma_{\mathrm{px}}
+  \frac{\Theta_{\mathrm{FOV}}}{N_{\mathrm{px}}},
+\end{equation}
+where \(\Theta_{\mathrm{FOV}}\) is the relevant field of view in degrees and
+\(N_{\mathrm{px}}\) is the corresponding image width or fisheye diameter in
+pixels. With \(\sigma_{\mathrm{px}}=1\)--\(2\) px, fields of view from
+\(30^\circ\) to \(180^\circ\), and image sizes of roughly \(2000\)--\(4000\)
+px, typical angular centroid uncertainty is
+\begin{equation}
+  \sigma_\theta \approx 0.01^\circ\text{--}0.18^\circ .
+\end{equation}
+For a triangle whose longest side is \(c_\theta\) degrees, the side-ratio
+uncertainty is approximately
+\begin{equation}
+  \sigma_{a/c} \approx
+  \frac{\sqrt{2}\,\sigma_\theta}{c_\theta}
+  \sqrt{1+(a/c)^2},
+  \qquad
+  \sigma_{b/c} \approx
+  \frac{\sqrt{2}\,\sigma_\theta}{c_\theta}
+  \sqrt{1+(b/c)^2}.
+\end{equation}
+This suggests small tolerances,
+\(\Delta_{ac},\Delta_{bc}\approx 0.005\)--\(0.015\), for ordinary phone images
+with modest fields of view and good centroids. For all-sky or fisheye images,
+where the first pre-distortion guess can leave residual shape errors, a safer
+initial range is \(0.02\)--\(0.05\). Early blind searches may temporarily use
+\(0.05\)--\(0.08\), but those loose windows must be followed by graph
+extension, horizon filtering, and lens-fit residual scoring. A good practical
+strategy is therefore to start with central image triangles and
+\(\Delta_{ac}=\Delta_{bc}\approx 0.03\), widen only if too few candidates are
+found, and tighten after a provisional lens model exists.
+
+The triangle descriptor is only two-dimensional, so collisions are common when
+the catalog goes deep. A nearest-neighbor-only lookup is therefore unsafe. In
+the first blind stage the matcher should retain all catalog triangle hits
+within the descriptor threshold, or use a generous cap. For a \(m_V\le6\)
+catalog, a practical cap is at least \(100\)--\(300\) candidate catalog
+triangles per image triangle before geometric scoring; during diagnostic
+experiments it is safer to keep \(200\)--\(500\). The later rotation and
+many-star scoring stages are what decide which of these geometrically similar
+triangles is physically plausible.
+
+For comparison, an astrometry.net-style quad uses two stars \(A\) and \(B\) to
+define a local coordinate basis, while the remaining stars \(C\) and \(D\) are
+represented by their normalized coordinates in that basis. The descriptor is
+the four-vector
+\begin{equation}
+  \mathbf{q}_{\mathrm{quad}} =
+  \begin{bmatrix}
+    C_x & C_y & D_x & D_y
+  \end{bmatrix}^{T}.
+\end{equation}
+The match distance used in the browser diagnostics is the Euclidean distance
+between catalog and image quad descriptors,
+\begin{equation}
+  d_q =
+  \left\lVert
+    \mathbf{q}_{\mathrm{quad,catalog}} -
+    \mathbf{q}_{\mathrm{quad,image}}
+  \right\rVert_2 .
+\end{equation}
+
+The descriptor error is controlled by image centroid error, basis size, and
+basis conditioning. If the centroid uncertainty is approximately
+\(\sigma_{\mathrm{px}}\) pixels and the anchor separation is
+\(B_{\mathrm{px}}\) pixels, then each normalized quad coordinate has an error
+of order
+\begin{equation}
+  \sigma_q \approx \kappa \frac{\sigma_{\mathrm{px}}}{B_{\mathrm{px}}},
+\end{equation}
+where \(\kappa\) is a conditioning factor that grows for short or nearly
+degenerate anchor geometries. Since the quad descriptor has four coordinates,
+a useful first-order scale for the expected L2 error is
+\begin{equation}
+  E[d_q] \sim 2\kappa \frac{\sigma_{\mathrm{px}}}{B_{\mathrm{px}}},
+\end{equation}
+with additional systematic error from imperfect pre-distortion, rolling-shutter
+or exposure smear, saturation, and non-stellar false detections. This is why
+large, well-conditioned quads are more tolerant of pixel-level centroid error
+than tiny quads, while very large quads can become sensitive to residual lens
+distortion.
+
+Because a quad descriptor has four coordinates instead of two, it is usually
+more selective than a triangle descriptor and fewer hits need to be retained.
+With \(m_V\le6\), a conservative quad search should still keep all catalog hits
+below the current distance threshold, or at least the best \(20\)--\(50\) hits
+per image quad before voting and lens fitting. Once a consistent camera
+orientation and lens model have been found, the retained hit count can be
+reduced to the best \(5\)--\(10\) candidates because the predicted catalog
+locations provide much stronger constraints.
+
 \subsection{Rejected Gradient Diagnostic}
 
 An earlier prototype also estimated local direction-cosine gradients for each
@@ -464,12 +1073,59 @@ parameterization and seeds the selected lens model. Subsequent Levenberg-Marquar
 Nelder-Mead sweeps operate in pixel space and no longer rely on the triangle
 signature approximation.
 
-\subsection{Lucky Search Stages}
+\subsection{Production Lucky Search}
 
 The ``I'm feeling lucky'' workflow is a staged bootstrap and refinement
 procedure. It is designed to avoid committing to weak, ambiguous detections
 until there is some evidence that the image and catalog are already on the
-same geometric track. The main steps are:
+same geometric track. In the browser this button is not a single optimizer.
+It is a sequence of increasingly constrained operations:
+\[
+  \hbox{detect peaks}
+  \rightarrow
+  \hbox{blind asterism seed}
+  \rightarrow
+  \hbox{pixel-space lens fit}
+  \rightarrow
+  \hbox{guarded match expansion}.
+\]
+The important design principle is that a noisy star detection is cheap to
+discard before fitting but expensive after it has been allowed to influence the
+lens model. This subsection describes the original production lucky search: the
+one used by the green ``I'm feeling lucky'' button and by the command-line
+calibrator. The later Lucky2 graph search is a diagnostic experiment and is
+described separately below.
+
+\subsubsection{Control Flow}
+
+The original lucky search is a conservative state machine. It first tries to
+obtain a small but geometrically convincing set of bright star correspondences.
+Only after this seed exists does it fit the selected lens model and add weaker
+stars. In pseudocode, the browser does the following:
+\begin{lstlisting}[language=Python]
+save undo snapshot
+mask user-painted bad star-finder regions
+
+for stage in lucky_stages:
+    detections = find_star_like_peaks(stage.detector_settings)
+    detections = reject_masked_and_crowded_detections(detections)
+
+    if no fitted lens model exists:
+        hypotheses = blind_triangle_search(detections, stage.catalog_limit,
+                                           stage.preflatten_grid)
+        seed_pairs = score_and_verify_hypotheses(hypotheses, detections)
+        if seed_pairs is empty:
+            stop unless this is an allowed deeper bootstrap stage
+        fit_lens_model(seed_pairs)
+    else:
+        new_pairs = projected_catalog_matching(detections, fitted_model)
+        new_pairs = keep_pairs_supported_by_local_triangles(new_pairs)
+        accept only if the fit residual does not get substantially worse
+
+    update progress, diagnostics, and fit metrics
+\end{lstlisting}
+
+The main steps are:
 \begin{enumerate}
   \item \textbf{Detect compact bright peaks.} The detector ranks candidate
         peaks by contrast, flux, compactness, central concentration, peak
@@ -510,6 +1166,216 @@ same geometric track. The main steps are:
         much, that stage is reverted. Automatic outliers can also be pruned and
         the fit repeated.
 \end{enumerate}
+
+\subsubsection{Blind Triangle Bootstrap}
+
+The blind bootstrap is the part that makes the original lucky search useful.
+At this point the camera rotation and lens parameters are not yet known, so
+the program cannot simply project catalog stars into the image. Instead it
+uses the fact that relative distances inside a small triangle are mostly
+preserved by a reasonable pre-flattening of the image. For a detected image
+triangle, let its side lengths after pre-flattening be sorted as
+\[
+  a \le b \le c .
+\]
+The triangle signature is
+\[
+  \left(\frac{a}{c}, \frac{b}{c}\right).
+\]
+Catalog triangles are built from stars above the local horizon and are searched
+for similar signatures. The lookup does not require an exact lens model. It
+only requires that the trial pre-flattening has made the image triangle close
+enough to its corresponding sky triangle for the signature to land near the
+catalog signature.
+
+Each image triangle produces several possible catalog assignments. A candidate
+assignment gives three image-derived rays and three catalog sky rays, so it can
+be scored as a proposed camera rotation. The original lucky search does not
+trust this three-star match by itself. The hypothesis is useful only if it
+predicts additional stars: nearby detections must land close to plausible
+catalog stars, and additional support triangles must share the same catalog
+identity on their common edge. This is why the first blind stage behaves more
+like a hypothesis generator than a final matcher.
+
+\subsubsection{Estimating The Candidate Rotation}
+
+In this context ``rotation'' means the three-dimensional camera attitude
+implied by a proposed catalog-to-image triangle assignment. It is not a visual
+screen rotation. After a trial pre-flattening, an image detection at pixel
+\((x,y)\) is converted into an approximate unit ray
+\[
+  \mathbf{d}_i =
+  \frac{1}{\sqrt{X_i^2+Y_i^2+Z_i^2}}
+  \begin{bmatrix} X_i \\ Y_i \\ Z_i \end{bmatrix},
+\]
+where the exact relation between \((x,y)\) and \((X,Y,Z)\) depends on the
+temporary pre-flattening model. The corresponding catalog star is represented
+by a local horizon-frame unit vector
+\[
+  \mathbf{c}_i =
+  \begin{bmatrix}
+    \cos e_i \sin a_i \\
+    \cos e_i \cos a_i \\
+    \sin e_i
+  \end{bmatrix},
+\]
+where \(a_i\) is azimuth, \(e_i\) is elevation, and the axes are east, north,
+and up. A candidate triangle assignment should therefore satisfy
+\[
+  \mathbf{d}_i \simeq R \mathbf{c}_i,
+  \qquad i=1,2,3,
+\]
+for some rotation matrix \(R\in SO(3)\). This rotation is the approximate
+pointing and roll of the camera under that hypothesis.
+
+The browser's spherical matcher uses a TRIAD-style estimate from two vector
+pairs, then checks the third vertex. Given two catalog vectors
+\(\mathbf{c}_1,\mathbf{c}_2\), define an orthonormal catalog basis
+\[
+  \mathbf{u}_1 = \mathbf{c}_1,\qquad
+  \mathbf{u}_2 =
+  \frac{\mathbf{c}_2-(\mathbf{c}_2\cdot\mathbf{u}_1)\mathbf{u}_1}
+       {\left\|\mathbf{c}_2-(\mathbf{c}_2\cdot\mathbf{u}_1)\mathbf{u}_1\right\|},
+  \qquad
+  \mathbf{u}_3 = \mathbf{u}_1 \times \mathbf{u}_2 .
+\]
+The same construction from the two image rays gives
+\(\mathbf{v}_1,\mathbf{v}_2,\mathbf{v}_3\). With
+\[
+  U = \begin{bmatrix}\mathbf{u}_1&\mathbf{u}_2&\mathbf{u}_3\end{bmatrix},
+  \qquad
+  V = \begin{bmatrix}\mathbf{v}_1&\mathbf{v}_2&\mathbf{v}_3\end{bmatrix},
+\]
+the candidate rotation is
+\[
+  R = VU^T .
+\]
+The third triangle vertex is then a check rather than an input to this
+two-vector estimate:
+\[
+  \epsilon_3 =
+  \cos^{-1}\!\left[
+    \left(R\mathbf{c}_3\right)\cdot \mathbf{d}_3
+  \right].
+\]
+Small \(\epsilon_3\) means that the triangle is internally consistent under
+the trial pre-flattening. Large \(\epsilon_3\) means that either the catalog
+assignment is wrong, the image detection is not a star, or the trial
+pre-flattening is too poor.
+
+There are other standard ways to estimate the same attitude. With three or
+more correspondences, one can solve Wahba's problem by minimizing
+\[
+  J(R) =
+  \sum_i w_i
+  \left\|
+    \mathbf{d}_i - R\mathbf{c}_i
+  \right\|^2 ,
+  \qquad R\in SO(3),
+\]
+using the Kabsch/SVD method or Davenport's quaternion method. These are more
+statistically balanced once many good pairs are available. The TRIAD method is
+useful in the blind stage because it is very fast, deterministic, and works
+from only two vector pairs while leaving the third vertex available as a
+geometric check.
+
+\subsubsection{Support-Triangle Numbers}
+
+The support-triangle check asks whether the same candidate rotation explains
+more than the three seed stars. Suppose the seed triangle is \((A,B,C)\) and a
+neighboring support triangle is \((A,B,D)\). Both triangles must assign the
+same catalog identities to the shared image stars \(A\) and \(B\), and the
+new star \(D\) must be predicted by approximately the same rotation. A useful
+angular support residual is
+\[
+  \epsilon_D =
+  \cos^{-1}\!\left[
+    \left(R\mathbf{c}_D\right)\cdot \mathbf{d}_D
+  \right].
+\]
+
+The expected size of this residual is set by centroid error, field of view,
+and the quality of the pre-flattening. A rough one-pixel angular scale is
+\[
+  s_{\rm pix} \approx \frac{\Phi}{W},
+\]
+where \(\Phi\) is the field of view in degrees and \(W\) is the image width in
+pixels. For a 30--180 degree wide field and a 1500--3000 pixel image, this is
+typically
+\[
+  s_{\rm pix} \approx 0.01^\circ\hbox{--}0.12^\circ/{\rm pixel}.
+\]
+Centroid errors of 1--3 pixels therefore contribute roughly
+\(0.03^\circ\)--\(0.4^\circ\). In the blind stage the dominant error is often
+not centroiding but imperfect pre-flattening, especially near the edge of a
+fisheye image. For that reason, support checks usually need degree-level
+tolerances during blind matching. A practical range is about
+\[
+  \epsilon_D \lesssim 1^\circ\hbox{--}3^\circ
+\]
+for reasonably pre-flattened images, with looser diagnostic settings sometimes
+needed while testing difficult fisheye cases. After a lens model has been fit,
+the pixel-space residual guard is much stricter and should dominate the final
+accept/reject decision.
+
+The pre-flattening grid is deliberately model dependent. For the allsky7-style
+\texttt{optmod 2} path, the radial search is restricted to values that worked
+well for fisheye auroral cameras. For pinhole and Brown-Conrady images, the
+bootstrap uses a flat or pinhole-like pre-flattening instead of an \(a_r\)
+search. These trial parameters are not the final calibration; they only make
+the triangle side ratios useful enough to find a seed.
+
+\subsubsection{Fitting And Expansion}
+
+Once a seed set of star pairs exists, the search switches from triangle
+signatures to the actual camera model. The fitted model minimizes the image
+plane residual
+\[
+  {\rm RMS}_{\rm pix}
+  =
+  \sqrt{
+    \frac{1}{N}
+    \sum_{i=1}^N
+    \left[
+      \left(x_i - \hat{x}_i(\mathbf{p})\right)^2
+      +
+      \left(y_i - \hat{y}_i(\mathbf{p})\right)^2
+    \right]
+  },
+\]
+where \((x_i,y_i)\) is the measured image-star position,
+\((\hat{x}_i,\hat{y}_i)\) is the projected catalog-star position, and
+\(\mathbf{p}\) is the optical parameter vector. Nelder-Mead is used to get the
+solution into the correct basin, and Levenberg-Marquardt is then used for a
+faster local refinement.
+
+After a stable fit exists, the lucky search can safely add weaker stars. This
+second phase is different from the blind search: catalog stars are now
+projected through the fitted model, and image detections are accepted only if
+they are close to projected catalog stars and locally consistent with already
+trusted pairs. The fit is repeated after adding stars. If the RMS residual
+increases too much, that expansion is rejected or pruned. This residual guard
+is important because a single bad automatic pairing can pull the lens model
+away from the true solution.
+
+The first blind stage can be understood as a hypothesis generator. An image
+triangle proposes a small set of possible catalog triangles. Each proposed
+catalog assignment implies an approximate rotation between the image-derived
+sky vectors and the local catalog sky. A useful hypothesis must then explain
+more than its three seed stars. The matcher projects the implied geometry onto
+nearby detections and asks whether neighboring triangles share the same catalog
+stars on their common edge. If a seed triangle \((A,B,C)\) is extended by a
+support triangle \((A,B,D)\), then both hypotheses must assign the same two
+catalog stars to \(A\) and \(B\). This shared-edge identity check is the
+minimum consistency requirement for growing an asterism graph.
+
+The blind stage also keeps the lens model simple. For fisheye-like models,
+pre-flattening is only an approximate transformation used to make image
+triangle side ratios resemble angular sky triangle side ratios. The final
+lens parameters are not taken from this pre-flattening pass. They are obtained
+later by nonlinear pixel-space fitting to accepted star pairs. This separation
+is intentional: the blind matcher needs a rough geometry robust enough to find
+stars, while the fitter later uses the full image-domain residual.
 
 There is a deliberate difference between the allsky7-style path and the more
 general phone-image path. For \texttt{optmod 2}, which is the simple but
@@ -575,6 +1441,119 @@ The pinhole scale search is one-dimensional: \(f_2\) is initialized from
 where \(W\) and \(H\) are the image width and height. Thus the ratio
 \(f_1/f_2\) is not treated as a substantially uncertain parameter during blind
 asterism construction; it is assumed to be close to the image aspect ratio.
+
+\subsection{Lucky Mode 2: Asterism-Graph Search}
+
+Lucky mode 2 is an experimental alternative to the older staged blind matcher.
+It keeps the same automatic star detector but changes the identification
+strategy. Instead of fitting immediately after a few plausible triangles are
+found, it tries to build a graph of mutually supporting triangular asterisms
+and displays the remaining catalog candidates for each detected image star.
+The purpose is diagnostic: it should show whether the search is losing the
+true star candidates during the blind asterism phase, before lens fitting has
+any chance to help.
+
+Lucky mode 2 currently uses the precomputed Yale table with
+\[
+  m_V \le 4,\qquad
+  1.5^\circ \le \theta_{ij} \le 40^\circ ,
+\]
+where \(\theta_{ij}\) is every pairwise catalog-star separation in a triangle.
+The table is queried with the two triangle ratios \((a/c,b/c)\). The default
+tolerance is
+\[
+  \Delta_{ac}=\Delta_{bc}=0.02 .
+\]
+For every image triangle, the catalog hits returned by the table are sorted by
+their actual signature distance
+\begin{equation}
+  d_{\mathrm{sig}} =
+  \sqrt{(a/c-\widehat{a/c})^2 + (b/c-\widehat{b/c})^2}.
+\end{equation}
+This ordering matters. A previous implementation kept only a fixed number of
+hits in table order, which is primarily sorted by \(a/c\). Oracle tests with
+the saved calibration cases showed that this could discard the true catalog
+triangle before any consistency test was applied. Ranking by
+\(d_{\mathrm{sig}}\) and keeping a larger hypothesis cap retains nearly all
+truth-matched triangles in the saved-case diagnostic.
+
+The Lucky mode 2 loop is:
+\begin{enumerate}
+  \item Detect star-like image peaks using the same detector used by the normal
+        lucky search. Candidate detections are separated by at least 50 pixels
+        to avoid over-representing textured ground, clouds, or buildings.
+  \item Sort detections by distance from the image center. This encourages the
+        first asterism graph to grow from the central part of the image, where
+        radial distortion is usually weakest.
+  \item Grow the active detection set in batches. For each new active star,
+        test all triangles that can be formed with two earlier active stars.
+  \item Query the Yale triangle table for \((a/c,b/c)\) matches and generate
+        all plausible catalog assignments for the triangle, up to the current
+        hypothesis cap.
+  \item For each seed triangle, look for neighboring support triangles that
+        share two image stars. A seed hypothesis is kept only if at least one
+        support triangle assigns the same catalog stars to the shared edge.
+  \item Apply loose local-geometry consistency between the seed and support
+        triangle. The present diagnostic gate allows a rotation difference up
+        to \(90^\circ\), but requires the sky-angle-per-pixel scale to agree
+        within a ratio of \(1.2\). The loose rotation gate is deliberate:
+        fisheye distortion can change local image orientation substantially
+        before a good pre-distortion is known, while local scale is more useful
+        for rejecting unrelated hypotheses.
+  \item Accumulate candidate catalog stars and vote counts for each image
+        detection. Votes are diagnostic, not a pruning rule. The GUI marks
+        detections with candidate counts and displays the highest-voted catalog
+        star name and vote count.
+\end{enumerate}
+
+In pseudocode, the current Lucky mode 2 graph construction is:
+\begin{lstlisting}[language={},caption={Current Lucky mode 2 asterism-graph search.}]
+detections = automatic_star_detector(image)
+detections = sort_by_distance_from_image_center(detections)
+catalog_index = load_precomputed_yale_triangle_table(mag <= 4)
+
+for active_limit in growing_batches(detections):
+    for each new triangle (i, j, k) in active detections:
+        q = triangle_signature(i, j, k)
+        hits = get_asterisms(q.ac, q.bc, 0.02, 0.02)
+        hits = sort_by_signature_distance(hits, q)
+        seed_hypotheses = catalog_assignments(i, j, k, hits)
+
+        supported = []
+        for each nearby support triangle sharing an edge:
+            q2 = triangle_signature(edge plus neighbor)
+            hits2 = get_asterisms(q2.ac, q2.bc, 0.02, 0.02)
+            support_hypotheses = catalog_assignments(edge plus neighbor, hits2)
+
+            keep seed hypotheses that:
+                agree on shared catalog stars
+                have similar local scale
+                have broadly compatible local rotation
+
+        if supported is non-empty:
+            add supported catalog stars to candidate sets
+            add supported catalog assignments to vote counters
+\end{lstlisting}
+
+The GUI coloring is intentionally simple. A detection with many possible
+catalog candidates remains ambiguous. A detection whose top catalog candidate
+has several independent votes becomes more credible and is shown in green.
+If an oracle test case is loaded, the diagnostic can also indicate when the
+known true catalog candidate has been lost. This makes Lucky mode 2 useful for
+development: it separates three failure modes that otherwise look identical in
+a final failed fit:
+\begin{enumerate}
+  \item the star detector missed the true image star;
+  \item the triangle table lookup did not return the true catalog triangle;
+  \item the consistency gates removed the true hypothesis.
+\end{enumerate}
+
+At the time of writing, Lucky mode 2 is a diagnostic and graph-building path,
+not the final automatic fitter. It stops after candidate construction and
+visualization rather than immediately fitting the lens model. The intended
+next step is to use the highest-confidence voted stars as an initial pair set,
+fit the selected optical model, and then fall back to the normal pixel-space
+RMS guard before adding weaker stars.
 
 \subsection{Known Weaknesses for Wide-Field Images}
 

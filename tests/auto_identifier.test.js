@@ -866,6 +866,59 @@ function skyPlaneYaleStars(maxMag = 4.0) {
         .sort((a, b) => a.mag - b.mag || a.key.localeCompare(b.key));
 }
 
+function localSkyPlaneYaleStars(maxMag = 6.0) {
+    return AidaTools.visibleStars(YaleCatalog, DATE, LAT_DEG, LON_DEG, maxMag, 88)
+        .map((star, index) => ({
+            ...star,
+            x: star.ze * Math.sin(star.az),
+            y: -star.ze * Math.cos(star.az),
+            key: catalogKey(star),
+            rank: index + 1,
+        }))
+        .sort((a, b) => a.mag - b.mag || a.key.localeCompare(b.key));
+}
+
+function skyAngularDistanceDeg(a, b) {
+    const sinZa = Math.sin(a.ze);
+    const sinZb = Math.sin(b.ze);
+    const dot = sinZa * sinZb * Math.cos(a.az - b.az) + Math.cos(a.ze) * Math.cos(b.ze);
+    return Math.acos(Math.max(-1, Math.min(1, dot))) * 180 / Math.PI;
+}
+
+function syntheticNearbyAsterismStars(count = 4) {
+    const stars = localSkyPlaneYaleStars(6.0);
+    for (let start = 0; start < stars.length; start += 1) {
+        const patch = [stars[start]];
+        for (let i = 0; i < stars.length && patch.length < count; i += 1) {
+            if (i === start) {
+                continue;
+            }
+            const candidate = stars[i];
+            if (patch.every(existing => {
+                const distanceDeg = skyAngularDistanceDeg(existing, candidate);
+                return distanceDeg >= 1.5 && distanceDeg <= 30.0;
+            })) {
+                patch.push(candidate);
+            }
+        }
+        if (patch.length === count) {
+            return patch;
+        }
+    }
+    throw new Error("could not find a compact synthetic Yale asterism patch");
+}
+
+function transformSkyPatchToImage(stars, rotationDeg, skyRadPerPixel, offset = {x: 720, y: 460}) {
+    const angle = rotationDeg * Math.PI / 180;
+    const ca = Math.cos(angle);
+    const sa = Math.sin(angle);
+    return stars.map(star => ({
+        id: star.key,
+        x: offset.x + (ca * star.x - sa * star.y) / skyRadPerPixel,
+        y: offset.y + (sa * star.x + ca * star.y) / skyRadPerPixel,
+    }));
+}
+
 function affinePoint(point) {
     return {
         x: 500 * point.x - 85 * point.y + WIDTH / 2,
@@ -910,6 +963,64 @@ function syntheticAsterismDetections(catalog) {
     });
     return detections;
 }
+
+test("synthetic local asterism recovers sky angle per image pixel scale", () => {
+    const skyStars = syntheticNearbyAsterismStars(4);
+    for (let i = 0; i < skyStars.length - 1; i += 1) {
+        for (let j = i + 1; j < skyStars.length; j += 1) {
+            const distanceDeg = skyAngularDistanceDeg(skyStars[i], skyStars[j]);
+            assert.ok(
+                distanceDeg >= 1.5 && distanceDeg <= 30.0,
+                `synthetic stars should be 1.5-30 deg apart, got ${distanceDeg}`,
+            );
+        }
+    }
+    const skyRadPerPixel = 0.00135;
+    const imageStars = transformSkyPatchToImage(skyStars, 37.0, skyRadPerPixel);
+    const estimate = AutoIdentifier.estimateLocalSkyImageTransform(
+        imageStars.slice(0, 3),
+        skyStars.slice(0, 3),
+    );
+    assert.equal(estimate.valid, true);
+    assert.equal(estimate.edgeCount, 3);
+    assert.ok(
+        Math.abs(estimate.scale - skyRadPerPixel) < 1e-12,
+        `expected scale ${skyRadPerPixel}, got ${estimate.scale}`,
+    );
+    assert.ok(
+        estimate.scaleRatio < 1.000000000001,
+        `synthetic linear transform should have identical edge scales, got ratio ${estimate.scaleRatio}`,
+    );
+});
+
+test("synthetic neighboring asterisms have consistent image-to-sky rotation angle", () => {
+    const skyStars = syntheticNearbyAsterismStars(4);
+    const rotationDeg = -23.5;
+    const expectedRotation = rotationDeg * Math.PI / 180;
+    const imageStars = transformSkyPatchToImage(skyStars, rotationDeg, 0.0011);
+    const seed = AutoIdentifier.estimateLocalSkyImageTransform(
+        [imageStars[0], imageStars[1], imageStars[2]],
+        [skyStars[0], skyStars[1], skyStars[2]],
+    );
+    const support = AutoIdentifier.estimateLocalSkyImageTransform(
+        [imageStars[0], imageStars[1], imageStars[3]],
+        [skyStars[0], skyStars[1], skyStars[3]],
+    );
+    assert.equal(seed.valid, true);
+    assert.equal(support.valid, true);
+    assert.ok(
+        AutoIdentifier.wrappedAngleDistance(seed.rotation, expectedRotation) < 1e-12,
+        `seed rotation should recover ${rotationDeg} deg`,
+    );
+    assert.ok(
+        AutoIdentifier.wrappedAngleDistance(support.rotation, expectedRotation) < 1e-12,
+        `support rotation should recover ${rotationDeg} deg`,
+    );
+    assert.ok(
+        AutoIdentifier.wrappedAngleDistance(seed.rotation, support.rotation) < 1e-12,
+        "neighboring synthetic asterisms should have consistent rotation",
+    );
+});
 
 test("auto identifier recovers synthetic Yale-catalog stars for all lens models", () => {
     for (const optmod of MODELS) {

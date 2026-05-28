@@ -13,6 +13,7 @@
     const rotationContext = rotationCanvas.getContext("2d");
     const zoomCanvas = document.getElementById("zoomCanvas");
     const zoomContext = zoomCanvas.getContext("2d", {willReadFrequently: true});
+    const zoomCoordinateReadout = document.getElementById("zoomCoordinateReadout");
     const hint = document.getElementById("canvasHint");
     const cardinalLayer = document.getElementById("cardinalLayer");
     const statusEl = document.getElementById("status");
@@ -55,6 +56,30 @@
         },
     };
     const BROWN_CONRADY_OPTMOD = 20;
+    const LUCKY2_KNOWN_VALIDATION_CASES = [
+        {
+            match: /IMG_0180/i,
+            label: "IMG_0180 known Brown-Conrady solution",
+            optmod: BROWN_CONRADY_OPTMOD,
+            optpar: [
+                -0.930619392276,
+                -0.696135319765,
+                -10.6257143061,
+                -58.3372255832,
+                -13.8552972553,
+                -0.00331804443963,
+                -0.00453644704115,
+                0.202002919758,
+                -0.620076062169,
+                0.630007093352,
+                0.00101960645854,
+                0.000927270824448,
+            ],
+            maxMag: 4.0,
+            maxZenithDeg: 88,
+            matchRadiusPx: 26,
+        },
+    ];
     const controls = {
         file: document.getElementById("imageFile"),
         timestampUtc: document.getElementById("timestampUtc"),
@@ -96,6 +121,7 @@
         brownP1: document.getElementById("brownP1"),
         brownP2: document.getElementById("brownP2"),
         luckyFit: document.getElementById("luckyFit"),
+        luckyFit2: document.getElementById("luckyFit2"),
         fitLens: document.getElementById("fitLens"),
         fitLensLm: document.getElementById("fitLensLm"),
         closeAssociateFit: document.getElementById("closeAssociateFit"),
@@ -169,12 +195,18 @@
             tycho2: null,
         },
         catalogStatus: "Tycho-2 catalogue loading...",
+        yaleAsterismIndex: null,
+        yaleAsterismIndexStatus: "Yale asterism index loading...",
+        lucky2YaleAsterismIndex: null,
+        lucky2YaleAsterismIndexStatus: "Lucky2 Yale asterism index loading...",
         fisheyeDetection: null,
         showAutoDetectionMarkers: true,
         deletedDetectionIds: new Set(),
         autoMatches: [],
         detectorCache: null,
         detectorStatus: "detector: no image",
+        autoDetectorOptions: null,
+        autoDetectorStatus: "detector tuning: not run",
         detectionGeneration: 0,
         automaticMatchingStatus: "automatic matching: not run",
         autoIdentifyBusy: false,
@@ -188,6 +220,7 @@
         showFitResiduals: false,
         showAsterismLines: true,
         asterismEdges: [],
+        lucky2Diagnostics: null,
         triangleDebugSnapshot: null,
         starPickingLegendVisible: true,
         starPickingLegendDrag: null,
@@ -440,6 +473,14 @@
     function rawImagePixelFromModelImagePixel(x, y) {
         const [displayedX, displayedY] = displayedImagePixelFromModelImagePixel(x, y);
         return rawImagePixelFromDisplayedImagePixel(displayedX, displayedY);
+    }
+
+    function modelImagePixelFromRawImagePixel(x, y) {
+        const [displayedX, displayedY] = displayedImagePixelFromRawImagePixel(x, y);
+        return [
+            state.flipX ? state.image.width - 1 - displayedX : displayedX,
+            state.flipY ? state.image.height - 1 - displayedY : displayedY,
+        ];
     }
 
     function isMaskedImagePixel(x, y, pad = 0) {
@@ -1006,6 +1047,10 @@
             b: {...edge.b},
             label: edge.label || "",
         }));
+    }
+
+    function clearLucky2Diagnostics() {
+        state.lucky2Diagnostics = null;
     }
 
     function autoPairingUndoSnapshot(label) {
@@ -2318,6 +2363,45 @@ end
         }
     }
 
+    async function loadYaleAsterismIndex() {
+        if (!window.WiscYaleAsterismIndex || typeof window.WiscYaleAsterismIndex.load !== "function") {
+            state.yaleAsterismIndexStatus = "Yale asterism index unavailable: loader missing";
+            return;
+        }
+        try {
+            const index = await window.WiscYaleAsterismIndex.load();
+            state.yaleAsterismIndex = index;
+            state.yaleAsterismIndexStatus = `${index.count} triangles loaded`;
+            render();
+        } catch (error) {
+            state.yaleAsterismIndex = null;
+            state.yaleAsterismIndexStatus = `Yale asterism index unavailable (${error.message || error})`;
+            render();
+        }
+    }
+
+    async function loadLucky2YaleAsterismIndex() {
+        if (!window.WiscYaleAsterismIndex || typeof window.WiscYaleAsterismIndex.load !== "function") {
+            state.lucky2YaleAsterismIndexStatus = "Lucky2 Yale asterism index unavailable: loader missing";
+            return;
+        }
+        const url = window.WiscYaleAsterismIndex.defaultUrl ||
+            "data/yale_asterisms_mag4_min1p5_max40.bin.gz?v=20260527a";
+        try {
+            const index = await window.WiscYaleAsterismIndex.load(url);
+            state.lucky2YaleAsterismIndex = index;
+            state.lucky2YaleAsterismIndexStatus =
+                `${index.count} triangles loaded (mag <= ${Number(index.maxMag).toFixed(1)}, ` +
+                `${Number(index.minSepDeg).toFixed(1)}-${Number(index.maxSepDeg).toFixed(0)} deg)`;
+            render();
+        } catch (error) {
+            state.lucky2YaleAsterismIndex = null;
+            state.lucky2YaleAsterismIndexStatus =
+                `Lucky2 Yale asterism index unavailable (${error.message || error})`;
+            render();
+        }
+    }
+
     function isMatchedCatalogStar(star) {
         const key = catalogKey(star);
         return state.matches.some(match => {
@@ -3304,6 +3388,226 @@ end
         return [x, y];
     }
 
+    function radialProjectionValue(theta, alpha, optmod) {
+        if (optmod === 2) {
+            return Math.sin(alpha * theta);
+        }
+        if (optmod === 3) {
+            return (1.0 - alpha) * Math.tan(theta) + alpha * theta;
+        }
+        if (optmod === 4) {
+            return Math.pow(Math.max(0, Math.abs(theta)), alpha);
+        }
+        if (optmod === 5) {
+            return Math.tan(alpha * theta);
+        }
+        if (optmod === 12) {
+            if (alpha > 0) {
+                return Math.tan(alpha * theta) / alpha;
+            }
+            if (alpha < 0) {
+                return Math.sin(alpha * theta) / alpha;
+            }
+            return Math.abs(theta);
+        }
+        return NaN;
+    }
+
+    function thetaFromRadialDistance(q, alpha, optmod) {
+        if (!Number.isFinite(q) || q < 0) {
+            return NaN;
+        }
+        if (q <= 1e-12) {
+            return 0;
+        }
+        if (optmod === 2) {
+            if (Math.abs(alpha) < 1e-12) {
+                return q;
+            }
+            const value = Math.max(-1, Math.min(1, q));
+            return Math.asin(value) / alpha;
+        }
+        if (optmod === 4) {
+            if (Math.abs(alpha) < 1e-12) {
+                return NaN;
+            }
+            return Math.pow(q, 1 / alpha);
+        }
+        if (optmod === 5) {
+            if (Math.abs(alpha) < 1e-12) {
+                return q;
+            }
+            return Math.atan(q) / alpha;
+        }
+        if (optmod === 12) {
+            if (alpha > 0) {
+                return Math.atan(alpha * q) / alpha;
+            }
+            if (alpha < 0) {
+                return Math.asin(Math.max(-1, Math.min(1, alpha * q))) / alpha;
+            }
+            return q;
+        }
+        if (optmod === 3) {
+            let lo = 0;
+            let hi = Math.PI / 2 - 1e-6;
+            for (let i = 0; i < 70; i++) {
+                const mid = 0.5 * (lo + hi);
+                const value = radialProjectionValue(mid, alpha, optmod);
+                if (!Number.isFinite(value) || value > q) {
+                    hi = mid;
+                } else {
+                    lo = mid;
+                }
+            }
+            return 0.5 * (lo + hi);
+        }
+        return NaN;
+    }
+
+    function undistortBrownConrady(xd, yd, optpar) {
+        let x = xd;
+        let y = yd;
+        const k1 = optpar[7] || 0;
+        const k2 = optpar[8] || 0;
+        const k3 = optpar[9] || 0;
+        const p1 = optpar[10] || 0;
+        const p2 = optpar[11] || 0;
+        for (let i = 0; i < 12; i++) {
+            const r2 = x * x + y * y;
+            const r4 = r2 * r2;
+            const r6 = r4 * r2;
+            const radial = 1.0 + k1 * r2 + k2 * r4 + k3 * r6;
+            const xDistorted = x * radial + 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x);
+            const yDistorted = y * radial + p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y;
+            x += xd - xDistorted;
+            y += yd - yDistorted;
+        }
+        return {x, y};
+    }
+
+    function cameraVectorFromModelImagePixel(x, y, optpar, optmod) {
+        const width = state.image.width;
+        const height = state.image.height;
+        const f1 = optpar[0];
+        const f2 = optpar[1];
+        if (!Number.isFinite(f1) || !Number.isFinite(f2) || Math.abs(f1) < 1e-12 || Math.abs(f2) < 1e-12) {
+            return null;
+        }
+        const u = (x + 1) / width - 0.5 - optpar[5];
+        const v = (y + 1) / height - 0.5 - optpar[6];
+        const optmodBrownConrady = 20;
+        if (optmod === 1) {
+            const sx = u / f1;
+            const sy = v / f2;
+            const norm = Math.hypot(sx, sy, 1);
+            return {s1: sx / norm, s2: sy / norm, s3: 1 / norm};
+        }
+        if (optmod === optmodBrownConrady) {
+            const undistorted = undistortBrownConrady(u / f1, v / f2, optpar);
+            const norm = Math.hypot(undistorted.x, undistorted.y, 1);
+            return {s1: undistorted.x / norm, s2: undistorted.y / norm, s3: 1 / norm};
+        }
+        const qx = u / f1;
+        const qy = v / f2;
+        const q = Math.hypot(qx, qy);
+        if (q <= 1e-12) {
+            return {s1: 0, s2: 0, s3: 1};
+        }
+        const theta = thetaFromRadialDistance(q, optpar[7], optmod);
+        if (!Number.isFinite(theta)) {
+            return null;
+        }
+        const radial = Math.sin(theta);
+        return {
+            s1: (qx / q) * radial,
+            s2: (qy / q) * radial,
+            s3: Math.cos(theta),
+        };
+    }
+
+    function azElFromModelImagePixel(x, y) {
+        if (!state.image) {
+            return null;
+        }
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value);
+        const s = cameraVectorFromModelImagePixel(x, y, optpar, optmod);
+        if (!s) {
+            return null;
+        }
+        const rot = AidaTools.cameraRot(optpar[2], optpar[3], optpar[4]);
+        const e1 = s.s1 * rot[0] + s.s2 * rot[1] + s.s3 * rot[2];
+        const e2 = s.s1 * rot[3] + s.s2 * rot[4] + s.s3 * rot[5];
+        const e3 = s.s1 * rot[6] + s.s2 * rot[7] + s.s3 * rot[8];
+        const norm = Math.hypot(e1, e2, e3);
+        if (norm <= 1e-12) {
+            return null;
+        }
+        const east = e1 / norm;
+        const north = e2 / norm;
+        const up = Math.max(-1, Math.min(1, e3 / norm));
+        const az = ((Math.atan2(east, north) * AidaTools.RAD) % 360 + 360) % 360;
+        const el = Math.asin(up) * AidaTools.RAD;
+        return {az, el};
+    }
+
+    function julianDateForDate(date) {
+        let year = date.getUTCFullYear();
+        let month = date.getUTCMonth() + 1;
+        const day = date.getUTCDate();
+        const hour = date.getUTCHours();
+        const minute = date.getUTCMinutes();
+        const second = date.getUTCSeconds() + date.getUTCMilliseconds() / 1000.0;
+        if (month <= 2) {
+            year -= 1;
+            month += 12;
+        }
+        const a = Math.floor(year / 100);
+        const b = 2 - a + Math.floor(a / 4);
+        const dayFraction = (hour + minute / 60.0 + second / 3600.0) / 24.0;
+        return Math.floor(365.25 * (year + 4716)) +
+            Math.floor(30.6001 * (month + 1)) +
+            day + dayFraction + b - 1524.5;
+    }
+
+    function gmstDegreesForDate(date) {
+        const jd = julianDateForDate(date);
+        const t = (jd - 2451545.0) / 36525.0;
+        return ((280.46061837 +
+            360.98564736629 * (jd - 2451545.0) +
+            0.000387933 * t * t -
+            t * t * t / 38710000.0) % 360 + 360) % 360;
+    }
+
+    function raDecOfDateFromAzEl(azDeg, elDeg, date, latDeg, lonDeg) {
+        const az = azDeg * AidaTools.DEG;
+        const el = elDeg * AidaTools.DEG;
+        const lat = latDeg * AidaTools.DEG;
+        const cosEl = Math.cos(el);
+        const east = cosEl * Math.sin(az);
+        const north = cosEl * Math.cos(az);
+        const up = Math.sin(el);
+        const dec = Math.asin(Math.max(-1, Math.min(1, north * Math.cos(lat) + up * Math.sin(lat))));
+        const hourAngle = Math.atan2(-east, up * Math.cos(lat) - north * Math.sin(lat));
+        const lst = (gmstDegreesForDate(date) + lonDeg) * AidaTools.DEG;
+        const ra = ((lst - hourAngle) * AidaTools.RAD % 360 + 360) % 360;
+        return {ra, dec: dec * AidaTools.RAD};
+    }
+
+    function skyCoordinatesFromRawImagePixel(rawX, rawY) {
+        const [modelX, modelY] = modelImagePixelFromRawImagePixel(rawX, rawY);
+        const azel = azElFromModelImagePixel(modelX, modelY);
+        if (!azel || !Number.isFinite(azel.az) || !Number.isFinite(azel.el)) {
+            return null;
+        }
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const radec = raDecOfDateFromAzEl(azel.az, azel.el, date, lat, lon);
+        return {...azel, ...radec};
+    }
+
     function horizonPointForAz(azDeg, optpar, optmod) {
         const center = projectAzEl(0, 90, optpar, optmod, false) ||
             canvasPixelFromImagePixel(state.image.width / 2, state.image.height / 2);
@@ -3668,6 +3972,7 @@ end
     function clearTransientDebugOverlays() {
         state.asterismEdges = [];
         state.triangleDebugSnapshot = null;
+        clearLucky2Diagnostics();
         state.showFitResiduals = false;
         state.pendingMatch = null;
         state.centroidPreview = null;
@@ -3863,6 +4168,44 @@ end
         }
     }
 
+    function drawLucky2Diagnostics() {
+        const diag = state.lucky2Diagnostics;
+        if (!state.image || !diag || !(state.displayMode === "pairing" || state.displayMode === "pureImage")) {
+            return;
+        }
+        const byId = diag.byDetectionId || new Map();
+        for (const detection of activeDetectedStars()) {
+            const row = byId.get(detection.id);
+            if (!row) {
+                continue;
+            }
+            const count = row.count;
+            const topVote = Number.isFinite(row.topVote) ? row.topVote : 0;
+            const knownLost = row.knownTruth && row.knownCandidatePresent === false;
+            const knownPresent = row.knownTruth && row.knownCandidatePresent === true;
+            const color = knownLost ? markerColor("red", 0.96) :
+                topVote > 3 ? markerColor("green", 0.92) :
+                count > 1 ? markerColor("yellow", 0.86) :
+                    markerColor("red", 0.90);
+            queueMarker(imageMarkerCanvasPixel(detection.x, detection.y), {
+                type: "ring",
+                size: (knownLost || topVote > 3 ? 24 : 22) * (window.devicePixelRatio || 1),
+                color,
+            });
+            const suffix = knownLost ? " lost" : knownPresent ? " ok" : "";
+            const voteLabel = row.topVoteStarName && topVote > 0 ?
+                `${row.topVoteStarName} ${topVote}` :
+                `${Number.isFinite(count) ? count : "?"}`;
+            addOverlayLabel(
+                `${voteLabel}${suffix}`,
+                imageMarkerCanvasPixel(detection.x + 10, detection.y - 10),
+                knownLost ? "lucky2-count-label lucky2-count-label-lost" :
+                    topVote > 3 ? "lucky2-count-label lucky2-count-label-unique" : "lucky2-count-label",
+                true
+            );
+        }
+    }
+
     function drawBadStarFinderMarkers() {
         if (!state.image || !(state.displayMode === "pairing" || state.displayMode === "pureImage")) {
             return;
@@ -3917,7 +4260,10 @@ end
             addOverlaySvgLineLayer(supportEdges, "support-asterism-lines");
         }
         if (state.asterismEdges.length) {
-            addOverlaySvgLineLayer(state.asterismEdges, "lucky-asterism-lines");
+            addOverlaySvgLineLayer(
+                state.asterismEdges,
+                state.lucky2Diagnostics ? "lucky2-unique-asterism-lines" : "lucky-asterism-lines"
+            );
         }
     }
 
@@ -3949,11 +4295,13 @@ end
         if (state.displayMode === "pairing") {
             drawAsterismLines();
             drawAutoDetectionMarkers();
+            drawLucky2Diagnostics();
             drawBadStarFinderMarkers();
             drawCatalogPairingMarkers();
             drawMatchMarkers(optpar, optmod);
         } else if (state.displayMode === "pureImage") {
             drawAutoDetectionMarkers();
+            drawLucky2Diagnostics();
             drawBadStarFinderMarkers();
         } else {
             drawStarNameLabels();
@@ -4040,6 +4388,7 @@ end
             `optpar: [${optparWithModel}]\n` +
             `image high-pass: ${controls.highPassImage.checked ? `${controls.highPassWidth.value} px Gaussian` : "off"}\n` +
             `star catalogue: ${activeStarCatalogName()} (${state.catalogStatus})\n` +
+            `Yale asterism index: ${state.yaleAsterismIndexStatus}\n` +
             `catalog stars <= mag ${controls.maxMag.value}: ` +
             `${state.projected.filter(star => star.mag <= Number(controls.maxMag.value)).length}\n` +
             `f1/f2: ${optpar[0].toFixed(6)}, ${optpar[1].toFixed(6)}\n` +
@@ -4304,6 +4653,9 @@ end
         controls.fitLens.disabled = disabled;
         controls.fitLensLm.disabled = disabled;
         controls.luckyFit.disabled = disabled;
+        if (controls.luckyFit2) {
+            controls.luckyFit2.disabled = disabled;
+        }
         if (controls.closeAssociateFit) {
             controls.closeAssociateFit.disabled = disabled;
         }
@@ -4549,7 +4901,9 @@ end
     }
 
     function applyDetectorThreshold(cache) {
-        const thresholdSigma = 2.0;
+        const thresholdSigma = state.autoDetectorOptions &&
+                Number.isFinite(state.autoDetectorOptions.displayThresholdSigma) ?
+            state.autoDetectorOptions.displayThresholdSigma : 2.0;
         const preThreshold = cache.bg + Math.max(2, 0.35 * thresholdSigma * cache.sigma);
         const candidates = cache.candidates.filter(candidate =>
             candidate.peakValue >= preThreshold &&
@@ -4559,8 +4913,10 @@ end
             )
         );
         const selected = [];
-        const suppression2 = 8 * 8;
-        const maxDetections = 250;
+        const suppression2 = 30 * 30;
+        const maxDetections = state.autoDetectorOptions &&
+                Number.isFinite(state.autoDetectorOptions.displayMaxDetections) ?
+            state.autoDetectorOptions.displayMaxDetections : 250;
         for (const candidate of candidates) {
             if (selected.length >= maxDetections) {
                 break;
@@ -4581,7 +4937,7 @@ end
         state.detectedStars = selected.map((det, i) => ({...det, rank: i + 1}));
         state.detectorStatus = `${cache.status}; ` +
             `prefilter ${preThreshold.toFixed(1)}, threshold ${thresholdSigma.toFixed(1)} local sigma, ` +
-            `${candidates.length} thresholded candidates, max ${maxDetections}`;
+            `${candidates.length} thresholded candidates, max ${maxDetections}; ${state.autoDetectorStatus}`;
         updateAutoMatches();
     }
 
@@ -4603,6 +4959,163 @@ end
         applyDetectorThreshold(state.detectorCache);
     }
 
+    function percentile(sortedValues, fraction) {
+        if (!sortedValues.length) {
+            return NaN;
+        }
+        const index = Math.max(0, Math.min(sortedValues.length - 1,
+            Math.round((sortedValues.length - 1) * fraction)));
+        return sortedValues[index];
+    }
+
+    function tunedDetectorThresholdFromCandidates(candidates, targetCount) {
+        const snrs = candidates
+            .map(candidate => Number(candidate.localSnr))
+            .filter(Number.isFinite)
+            .sort((a, b) => b - a);
+        if (!snrs.length) {
+            return 1.5;
+        }
+        const index = Math.max(0, Math.min(snrs.length - 1, targetCount - 1));
+        return Math.max(1.25, Math.min(3.8, snrs[index]));
+    }
+
+    function summarizeDetectorTuning(result) {
+        const candidates = Array.isArray(result && result.candidates) ? result.candidates : [];
+        const good = candidates.filter(candidate =>
+            Number.isFinite(candidate.score) &&
+            Number.isFinite(candidate.localSnr) &&
+            Number.isFinite(candidate.radius) &&
+            Number.isFinite(candidate.elongation) &&
+            candidate.localSnr >= 1.25 &&
+            candidate.matchedFilterSnr >= 1.0 &&
+            candidate.radius >= 0.25 &&
+            candidate.elongation <= 4.8 &&
+            candidate.roundnessFactor >= 0.05
+        );
+        const desiredCount = Math.max(40, Math.min(180, good.length || candidates.length || 40));
+        const targetCount = good.length > 180 ? 150 : good.length < 40 ? 40 : desiredCount;
+        const thresholdSigma = tunedDetectorThresholdFromCandidates(good.length ? good : candidates, targetCount);
+        const sortedByScore = (good.length ? good : candidates).slice()
+            .sort((a, b) => b.score - a.score)
+            .slice(0, Math.max(1, Math.min(targetCount, good.length || candidates.length || 1)));
+        const radii = sortedByScore.map(candidate => candidate.radius).filter(Number.isFinite).sort((a, b) => a - b);
+        const elongations = sortedByScore.map(candidate => candidate.elongation).filter(Number.isFinite).sort((a, b) => a - b);
+        const medianRadius = percentile(radii, 0.5);
+        const highElongation = percentile(elongations, 0.9);
+        const maxRadiusPx = Number.isFinite(medianRadius) ?
+            Math.max(4.5, Math.min(9.0, 2.35 * medianRadius)) : 5.0;
+        const maxElongation = Number.isFinite(highElongation) ?
+            Math.max(3.0, Math.min(4.8, 1.25 * highElongation)) : 4.0;
+        const mode = good.length > 220 ? "raise" : good.length < 40 ? "lower" : "balanced";
+        const displayMaxDetections = Math.max(40, Math.min(180, good.length || targetCount));
+        return {
+            mode,
+            thresholdSigma,
+            localThresholdSigma: thresholdSigma,
+            displayThresholdSigma: thresholdSigma,
+            displayMaxDetections,
+            maxRadiusPx,
+            maxElongation,
+            suppressionRadiusPx: 30,
+            crowdingRadiusPx: good.length > 140 ? 36 : 30,
+            maxCrowding: good.length > 140 ? 7 : 8,
+            crowdingScorePower: good.length > 140 ? 1.25 : 1.15,
+            candidateCount: candidates.length,
+            goodCandidateCount: good.length,
+            targetCount,
+            medianRadius,
+        };
+    }
+
+    function applyImageDetectorTuning(detectorOptions = {}) {
+        const tuned = state.autoDetectorOptions;
+        if (!tuned || detectorOptions.disableImageAutoTune === true) {
+            return {...detectorOptions};
+        }
+        const out = {...detectorOptions};
+        const adjustThreshold = current => {
+            if (!Number.isFinite(current)) {
+                return tuned.thresholdSigma;
+            }
+            if (tuned.mode === "raise") {
+                return Math.max(current, tuned.thresholdSigma);
+            }
+            if (tuned.mode === "lower") {
+                return Math.min(current, tuned.thresholdSigma);
+            }
+            return current;
+        };
+        out.thresholdSigma = adjustThreshold(Number(out.thresholdSigma));
+        out.localThresholdSigma = adjustThreshold(Number(out.localThresholdSigma));
+        out.maxRadiusPx = Math.max(
+            Number.isFinite(out.maxRadiusPx) ? Number(out.maxRadiusPx) : 0,
+            tuned.maxRadiusPx
+        );
+        out.maxElongation = Math.max(
+            Number.isFinite(out.maxElongation) ? Number(out.maxElongation) : 0,
+            tuned.maxElongation
+        );
+        out.suppressionRadiusPx = Math.max(30, Number.isFinite(out.suppressionRadiusPx) ?
+            out.suppressionRadiusPx : tuned.suppressionRadiusPx);
+        if (!Number.isFinite(out.crowdingRadiusPx)) {
+            out.crowdingRadiusPx = tuned.crowdingRadiusPx;
+        }
+        if (!Number.isFinite(out.maxCrowding)) {
+            out.maxCrowding = tuned.maxCrowding;
+        }
+        if (!Number.isFinite(out.crowdingScorePower)) {
+            out.crowdingScorePower = tuned.crowdingScorePower;
+        }
+        return out;
+    }
+
+    async function tuneStarDetectorForImage(loadId = state.imageLoadId) {
+        state.autoDetectorOptions = null;
+        state.autoDetectorStatus = "detector tuning: not run";
+        if (!state.imagePixels || !state.image || !window.AidaStarDetector) {
+            return null;
+        }
+        setLoadingProgress(88, "Optimizing star detector settings...");
+        let lastProgress = 0;
+        const result = await window.AidaStarDetector.detectBrightStars(state.imagePixels, {
+            maxDetections: 160,
+            scanStep: state.image.width * state.image.height >= 8000000 ? 2 : 1,
+            thresholdSigma: 1.25,
+            localThresholdSigma: 1.25,
+            requireGlobalThreshold: false,
+            maxRadiusPx: 9,
+            maxElongation: 4.8,
+            suppressionRadiusPx: 30,
+            crowdingRadiusPx: 36,
+            maxCrowding: 9,
+            crowdingScorePower: 1.15,
+            maskPredicate: (x, y) =>
+                isMaskedImagePixel(x, y) ||
+                isJunkStarFinderPixel(x, y),
+            onProgress: (percent, text) => {
+                const now = performance.now();
+                if (now - lastProgress > 500 || percent >= 99) {
+                    lastProgress = now;
+                    setLoadingProgress(88 + 7 * percent / 100, `Optimizing star detector: ${text}`);
+                }
+            },
+            yieldFn: async () => {
+                await yieldToBrowser();
+            },
+        });
+        if (loadId !== state.imageLoadId) {
+            return null;
+        }
+        const tuned = summarizeDetectorTuning(result);
+        state.autoDetectorOptions = tuned;
+        state.autoDetectorStatus =
+            `detector tuning: ${tuned.mode}, ${tuned.goodCandidateCount}/${tuned.candidateCount} high-quality candidates, ` +
+            `target ${tuned.displayMaxDetections}, sigma ${tuned.thresholdSigma.toFixed(2)}, ` +
+            `max radius ${tuned.maxRadiusPx.toFixed(1)} px`;
+        return tuned;
+    }
+
     async function detectBrightImageStarsForAutoIdentify(maxDetections = 50, detectorOptions = {}) {
         state.detectedStars = [];
         state.autoMatches = [];
@@ -4621,9 +5134,10 @@ end
         const inRegion = (x, y) => !regionBounds ||
             x >= regionBounds.x0 && x <= regionBounds.x1 &&
             y >= regionBounds.y0 && y <= regionBounds.y1;
+        const tunedRest = applyImageDetectorTuning(detectorRest);
         const result = await window.AidaStarDetector.detectBrightStars(state.imagePixels, {
             maxDetections,
-            ...detectorRest,
+            ...tunedRest,
             maskPredicate: (x, y) =>
                 !inRegion(x, y) ||
                 isMaskedImagePixel(x, y) ||
@@ -4657,6 +5171,10 @@ end
 
     function hideZoomCanvas() {
         zoomCanvas.classList.remove("visible");
+        if (zoomCoordinateReadout) {
+            zoomCoordinateReadout.classList.remove("visible");
+            zoomCoordinateReadout.setAttribute("aria-hidden", "true");
+        }
     }
 
     function updateZoomCanvas(event) {
@@ -4731,10 +5249,13 @@ end
         if (top + zoomSize > panelRect.height) {
             top = cssY - zoomSize - 18;
         }
-        zoomCanvas.style.left = `${Math.max(8, left)}px`;
-        zoomCanvas.style.top = `${Math.max(8, top)}px`;
+        const zoomLeft = Math.max(8, left);
+        const zoomTop = Math.max(8, top);
+        zoomCanvas.style.left = `${zoomLeft}px`;
+        zoomCanvas.style.top = `${zoomTop}px`;
         zoomCanvas.classList.add("visible");
         drawDetectedStarCentersOnZoom(point, size, half);
+        updateZoomCoordinateReadout(point, zoomLeft, zoomTop);
     }
 
     function zoomPatchPoint(rawX, rawY, point, size, half, pad = 12) {
@@ -4765,6 +5286,26 @@ end
         zoomContext.arc(x, y, radius, 0, 2 * Math.PI);
         zoomContext.fill();
         zoomContext.restore();
+    }
+
+    function updateZoomCoordinateReadout(point, zoomLeft, zoomTop) {
+        if (!zoomCoordinateReadout) {
+            return;
+        }
+        const coords = skyCoordinatesFromRawImagePixel(point.x, point.y);
+        if (!coords) {
+            zoomCoordinateReadout.classList.remove("visible");
+            zoomCoordinateReadout.setAttribute("aria-hidden", "true");
+            return;
+        }
+        zoomCoordinateReadout.innerHTML = [
+            `az ${coords.az.toFixed(2)}&deg;&nbsp; el ${coords.el.toFixed(2)}&deg;`,
+            `ra ${coords.ra.toFixed(2)}&deg;&nbsp; dec ${coords.dec.toFixed(2)}&deg;`,
+        ].map(line => `<div>${line}</div>`).join("");
+        zoomCoordinateReadout.style.left = `${zoomLeft + 8}px`;
+        zoomCoordinateReadout.style.top = `${zoomTop + 8}px`;
+        zoomCoordinateReadout.classList.add("visible");
+        zoomCoordinateReadout.setAttribute("aria-hidden", "false");
     }
 
     function drawDetectedStarCentersOnZoom(point, size, half) {
@@ -6696,6 +7237,9 @@ end
         }
         state.autoIdentifyBusy = true;
         controls.luckyFit.disabled = true;
+        if (controls.luckyFit2) {
+            controls.luckyFit2.disabled = true;
+        }
         controls.fitLens.disabled = true;
         controls.fitLensLm.disabled = true;
         if (controls.closeAssociateFit) {
@@ -6716,7 +7260,7 @@ end
                 requireGlobalThreshold: false,
                 maxRadiusPx: 9,
                 maxElongation: 4.5,
-                suppressionRadiusPx: 8,
+                suppressionRadiusPx: 30,
                 crowdingRadiusPx: 30,
                 maxCrowding: 10,
                 crowdingScorePower: 1.1,
@@ -6802,6 +7346,9 @@ end
         } finally {
             hideLoadingProgress();
             controls.luckyFit.disabled = false;
+            if (controls.luckyFit2) {
+                controls.luckyFit2.disabled = false;
+            }
             controls.fitLens.disabled = false;
             controls.fitLensLm.disabled = false;
             if (controls.closeAssociateFit) {
@@ -6969,8 +7516,9 @@ end
 
     async function runLuckyFitStage(stage, stageIndex, totalStages) {
         setLuckyMaxMagnitude(stage.maxMagnitude);
+        const labelPrefix = stage.labelPrefix || "I'm feeling lucky";
         const pass = await runAutoIdentifyPass({
-            label: `I'm feeling lucky ${stageIndex}/${totalStages}`,
+            label: `${labelPrefix} ${stageIndex}/${totalStages}`,
             maxDetections: stage.maxDetections,
             maxMagnitude: stage.maxMagnitude,
             detectorOptions: stage.detectorOptions,
@@ -6990,7 +7538,7 @@ end
             minAsterismChecksForNewStars: stage.minAsterismChecksForNewStars,
             maxAsterismCheckPartners: stage.maxAsterismCheckPartners,
             newStarAsterismSignatureTolerance: stage.newStarAsterismSignatureTolerance,
-            methodLabel: "lucky auto star finder",
+            methodLabel: stage.methodLabel || "lucky auto star finder",
         });
         let seeded = false;
         if (stage.seedFromBlind && stage.allowProvisionalBlindPairs === true && pass.result.matches.length >= 4) {
@@ -7076,6 +7624,1109 @@ end
         return {accepted, attempted, skipped: false, counts, lastRms};
     }
 
+    function luckyMode2AsterismOptions(extra = {}) {
+        return {
+            minAngularSideDeg: 1.5,
+            maxAngularSideDeg: 30.0,
+            maxCatalogLocalTriangleSideDeg: 30.0,
+            maxCatalogLocalNeighbors: 32,
+            maxBlindNeighborTriangles: 10,
+            blindTriangleSignatureRadius: 0.018,
+            maxBlindTriangleThirdErrorDeg: 0.9,
+            ...extra,
+        };
+    }
+
+    function tunedLuckyMode2DetectorOptions(extra = {}) {
+        const tuned = state.autoDetectorOptions || {};
+        return {
+            scanStep: 1,
+            thresholdSigma: Number.isFinite(tuned.thresholdSigma) ? tuned.thresholdSigma : 1.7,
+            localThresholdSigma: Number.isFinite(tuned.localThresholdSigma) ? tuned.localThresholdSigma : 1.7,
+            requireGlobalThreshold: false,
+            maxRadiusPx: Number.isFinite(tuned.maxRadiusPx) ? tuned.maxRadiusPx : 6,
+            maxElongation: Number.isFinite(tuned.maxElongation) ? tuned.maxElongation : 4.2,
+            suppressionRadiusPx: Number.isFinite(tuned.suppressionRadiusPx) ? Math.max(30, tuned.suppressionRadiusPx) : 30,
+            crowdingRadiusPx: Number.isFinite(tuned.crowdingRadiusPx) ? tuned.crowdingRadiusPx : 34,
+            maxCrowding: Number.isFinite(tuned.maxCrowding) ? tuned.maxCrowding : 8,
+            crowdingScorePower: Number.isFinite(tuned.crowdingScorePower) ? tuned.crowdingScorePower : 1.2,
+            ...extra,
+        };
+    }
+
+    function luckyMode2Stages() {
+        const optmod = Number(controls.optmod.value) || 2;
+        const detectorTarget = state.autoDetectorOptions &&
+                Number.isFinite(state.autoDetectorOptions.displayMaxDetections) ?
+            state.autoDetectorOptions.displayMaxDetections : 140;
+        const commonBlind = luckyMode2AsterismOptions({
+            preflattenModelCandidates: optmod === 2 ? ["fisheye"] : ["pinhole", "fisheye"],
+            preflattenF1Candidates: optmod === 2 ?
+                [0.80, 0.70, 0.90, 1.00, 0.60] :
+                [0.60, 0.70, 0.85, 1.00, 1.15],
+            preflattenRadialAlphaCandidates: optmod === 2 ?
+                [0.30, 0.50, 0.60, 0.80, 0.90, 1.00] :
+                [0.20, 0.35, 0.50, 0.65, 0.80, 0.95],
+            preflattenDu: 0,
+            preflattenDv: 0,
+            maxCatalogTriangles: 60000,
+            maxBlindCandidateRotations: 18000,
+            maxBlindCandidateRotationsPerSign: 12000,
+            rejectAmbiguousBlindMatches: true,
+            blindAmbiguityRadiusDeg: 0.9,
+            blindAmbiguityDistanceSlackDeg: 0.3,
+            blindPixelAmbiguityRadiusPx: 16,
+            blindPixelAmbiguityDistanceSlackPx: 8,
+            ambiguityMaxMagnitude: 7.0,
+            blindEarlyAcceptMatches: 10,
+            blindEarlyAcceptMedianDeg: 0.65,
+        });
+        return [
+            {
+                labelPrefix: "Lucky mode 2",
+                methodLabel: "lucky mode 2 tuned star finder",
+                phase: "tuned 1.5-30 deg blind bootstrap",
+                maxDetections: Math.max(60, Math.min(140, detectorTarget + 30)),
+                maxMagnitude: 6.0,
+                seedFromBlind: true,
+                includeBlind: true,
+                includeAsterisms: false,
+                detectorOptions: tunedLuckyMode2DetectorOptions(),
+                blindOptions: {
+                    ...commonBlind,
+                    maxDetections: Math.max(60, Math.min(140, detectorTarget + 30)),
+                    maxBlindVerifyDetections: Math.max(60, Math.min(140, detectorTarget + 30)),
+                    maxCatalogStars: 420,
+                    maxCatalogTriangleStars: 360,
+                    maxDetectionTriangleStars: 140,
+                    maxDetectionTriangles: 9000,
+                },
+                maxAddDistancePx: 1.0,
+                maxMedianDistance: 0.65,
+            },
+            {
+                labelPrefix: "Lucky mode 2",
+                methodLabel: "lucky mode 2 tuned star finder",
+                phase: "deeper tuned blind bootstrap",
+                maxDetections: Math.max(100, Math.min(260, detectorTarget + 90)),
+                maxMagnitude: 6.8,
+                seedFromBlind: true,
+                includeBlind: true,
+                includeAsterisms: false,
+                runOnlyWithoutSeed: true,
+                detectorOptions: tunedLuckyMode2DetectorOptions({thresholdSigma: 1.45, localThresholdSigma: 1.45}),
+                blindOptions: {
+                    ...commonBlind,
+                    maxDetections: Math.max(100, Math.min(260, detectorTarget + 90)),
+                    maxBlindVerifyDetections: Math.max(100, Math.min(260, detectorTarget + 90)),
+                    maxCatalogStars: 650,
+                    maxCatalogTriangleStars: 480,
+                    maxDetectionTriangleStars: 220,
+                    maxDetectionTriangles: 18000,
+                    maxBlindCandidateRotations: 26000,
+                    maxBlindCandidateRotationsPerSign: 16000,
+                    blindEarlyAcceptMatches: 12,
+                },
+                maxAddDistancePx: 1.2,
+                maxMedianDistance: 0.75,
+            },
+            {
+                labelPrefix: "Lucky mode 2",
+                methodLabel: "lucky mode 2 projected star finder",
+                phase: "model-guided expansion",
+                maxDetections: Math.max(120, Math.min(320, detectorTarget + 120)),
+                maxMagnitude: 7.0,
+                includeBlind: false,
+                includeAsterisms: false,
+                detectorOptions: tunedLuckyMode2DetectorOptions({thresholdSigma: 1.8, localThresholdSigma: 1.8}),
+                projectedOptions: {
+                    maxDetections: Math.max(120, Math.min(320, detectorTarget + 120)),
+                    maxCatalogStars: 700,
+                    maxDistancePx: 20,
+                    translationSearchRadiusPx: 36,
+                    minMatches: 8,
+                    rejectAmbiguousMatches: true,
+                    ambiguityRadiusPx: 14,
+                    ambiguityDistanceSlackPx: 10,
+                },
+                maxAddDistancePx: 5,
+                maxMedianDistance: 10,
+                rejectIfRmsIncreasePx: 0.8,
+                minAsterismChecksForNewStars: 1,
+            },
+        ];
+    }
+
+    function setIntersection(a, b) {
+        if (!a || !b) {
+            return new Set();
+        }
+        const small = a.size <= b.size ? a : b;
+        const large = a.size <= b.size ? b : a;
+        const result = new Set();
+        for (const value of small) {
+            if (large.has(value)) {
+                result.add(value);
+            }
+        }
+        return result;
+    }
+
+    function lucky2TriangleSignature(a, b, c) {
+        const sides = [
+            Math.hypot(a.x - b.x, a.y - b.y),
+            Math.hypot(a.x - c.x, a.y - c.y),
+            Math.hypot(b.x - c.x, b.y - c.y),
+        ].sort((x, y) => x - y);
+        const [shortSide, midSide, longSide] = sides;
+        if (!Number.isFinite(longSide) || longSide <= 0) {
+            return null;
+        }
+        const area2 = Math.abs(
+            (b.x - a.x) * (c.y - a.y) -
+            (b.y - a.y) * (c.x - a.x)
+        );
+        return {
+            ac: shortSide / longSide,
+            bc: midSide / longSide,
+            shortSide,
+            midSide,
+            longSide,
+            height: area2 / longSide,
+        };
+    }
+
+    function appendLucky2TriangleEdges(a, b, c, label, edgeKeys) {
+        const pairs = [[a, b], [a, c], [b, c]];
+        for (const [u, v] of pairs) {
+            const idA = String(u.id);
+            const idB = String(v.id);
+            const key = idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
+            if (edgeKeys.has(key)) {
+                continue;
+            }
+            edgeKeys.add(key);
+            state.asterismEdges.push({
+                a: {x: u.x, y: u.y},
+                b: {x: v.x, y: v.y},
+                label,
+            });
+        }
+    }
+
+    function rebuildLucky2UniqueEdges(acceptedTriangles, candidateSets) {
+        state.asterismEdges = [];
+        const edgeKeys = new Set();
+        for (const triangle of acceptedTriangles) {
+            const stars = triangle.stars;
+            const pairs = [[stars[0], stars[1]], [stars[0], stars[2]], [stars[1], stars[2]]];
+            for (const [a, b] of pairs) {
+                const setA = candidateSets.get(a.id);
+                const setB = candidateSets.get(b.id);
+                if (!setA || !setB || setA.size !== 1 || setB.size !== 1) {
+                    continue;
+                }
+                const idA = String(a.id);
+                const idB = String(b.id);
+                const key = idA < idB ? `${idA}:${idB}` : `${idB}:${idA}`;
+                if (edgeKeys.has(key)) {
+                    continue;
+                }
+                edgeKeys.add(key);
+                state.asterismEdges.push({
+                    a: {x: a.x, y: a.y},
+                    b: {x: b.x, y: b.y},
+                    label: triangle.label,
+                });
+            }
+        }
+    }
+
+    function lucky2VisibleYaleStarIndexSet(maxZenithDeg = 90.0, maxMag = 4.0) {
+        const visible = new Set();
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const rows = state.catalogs.yale || [];
+        for (let index = 0; index < rows.length; index += 1) {
+            const row = rows[index];
+            if (!row || row[2] > maxMag) {
+                continue;
+            }
+            const azze = AidaTools.radecToAzZe(row[0], row[1], date, lat, lon);
+            if (Number.isFinite(azze.az) && Number.isFinite(azze.ze) && azze.ze * AidaTools.RAD <= maxZenithDeg) {
+                visible.add(index);
+            }
+        }
+        return visible;
+    }
+
+    function currentLucky2KnownValidationCase() {
+        const name = `${state.imageName || ""} ${state.currentImageMetadata && state.currentImageMetadata.name || ""}`;
+        return LUCKY2_KNOWN_VALIDATION_CASES.find(testCase => testCase.match.test(name)) || null;
+    }
+
+    function lucky2KnownTruthMapForDetections(detections) {
+        const testCase = currentLucky2KnownValidationCase();
+        if (!testCase || !state.image || !Array.isArray(detections) || !detections.length) {
+            return {testCase: null, byDetectionId: new Map(), projectedKnownStars: [], found: 0, missed: 0};
+        }
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const maxMag = Number.isFinite(testCase.maxMag) ? testCase.maxMag : 4.0;
+        const maxZenithDeg = Number.isFinite(testCase.maxZenithDeg) ? testCase.maxZenithDeg : 88;
+        const projectedKnownStars = [];
+        for (const [yaleIndex, row] of (state.catalogs.yale || []).entries()) {
+            const mag = Number(row && row[2]);
+            if (!row || !Number.isFinite(mag) || mag > maxMag) {
+                continue;
+            }
+            const azze = AidaTools.radecToAzZe(row[0], row[1], date, lat, lon);
+            if (!Number.isFinite(azze.az) || !Number.isFinite(azze.ze) ||
+                    azze.ze * AidaTools.RAD > maxZenithDeg) {
+                continue;
+            }
+            const xy = AidaTools.cameraModel(
+                azze.az,
+                azze.ze,
+                testCase.optpar,
+                testCase.optmod,
+                state.image.width,
+                state.image.height
+            );
+            if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
+                continue;
+            }
+            const [rawX, rawY] = rawImagePixelFromModelImagePixel(xy.x, xy.y);
+            if (rawX < -20 || rawX > state.image.width + 20 ||
+                    rawY < -20 || rawY > state.image.height + 20) {
+                continue;
+            }
+            projectedKnownStars.push({
+                yaleIndex,
+                star: {
+                    raHours: row[0],
+                    decDeg: row[1],
+                    mag,
+                    name: row[3] || "",
+                    id: row[4],
+                },
+                x: rawX,
+                y: rawY,
+            });
+        }
+        const radius = Number.isFinite(testCase.matchRadiusPx) ? testCase.matchRadiusPx : 24;
+        const radius2 = radius * radius;
+        const pairs = [];
+        for (const known of projectedKnownStars) {
+            for (const detection of detections) {
+                const dx = detection.x - known.x;
+                const dy = detection.y - known.y;
+                const d2 = dx * dx + dy * dy;
+                if (d2 <= radius2) {
+                    pairs.push({known, detection, distance: Math.sqrt(d2)});
+                }
+            }
+        }
+        pairs.sort((a, b) => a.distance - b.distance);
+        const usedDetections = new Set();
+        const usedKnown = new Set();
+        const byDetectionId = new Map();
+        for (const pair of pairs) {
+            if (usedDetections.has(pair.detection.id) || usedKnown.has(pair.known.yaleIndex)) {
+                continue;
+            }
+            usedDetections.add(pair.detection.id);
+            usedKnown.add(pair.known.yaleIndex);
+            byDetectionId.set(pair.detection.id, {
+                ...pair.known,
+                distance: pair.distance,
+                testCase: testCase.label,
+            });
+        }
+        return {
+            testCase,
+            byDetectionId,
+            projectedKnownStars,
+            found: byDetectionId.size,
+            missed: projectedKnownStars.length - usedKnown.size,
+        };
+    }
+
+    function filterCandidateSetByAllowedStars(candidateSet, allowedStars) {
+        if (!allowedStars || allowedStars.size === 0) {
+            return new Set(candidateSet);
+        }
+        const filtered = new Set();
+        for (const starIndex of candidateSet) {
+            if (allowedStars.has(starIndex)) {
+                filtered.add(starIndex);
+            }
+        }
+        return filtered;
+    }
+
+    function lucky2YaleSkyPlaneMap(allowedYaleStars) {
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const rows = state.catalogs.yale || [];
+        const map = new Map();
+        for (const starIndex of allowedYaleStars) {
+            const row = rows[starIndex];
+            if (!row) {
+                continue;
+            }
+            const azze = AidaTools.radecToAzZe(row[0], row[1], date, lat, lon);
+            if (!Number.isFinite(azze.az) || !Number.isFinite(azze.ze)) {
+                continue;
+            }
+            map.set(starIndex, {
+                x: azze.ze * Math.sin(azze.az),
+                y: -azze.ze * Math.cos(azze.az),
+            });
+        }
+        return map;
+    }
+
+    function circularMeanAngle(angles) {
+        let x = 0;
+        let y = 0;
+        for (const angle of angles) {
+            x += Math.cos(angle);
+            y += Math.sin(angle);
+        }
+        return Math.atan2(y, x);
+    }
+
+    function wrappedAngleDistance(a, b) {
+        let d = a - b;
+        while (d > Math.PI) d -= 2 * Math.PI;
+        while (d < -Math.PI) d += 2 * Math.PI;
+        return Math.abs(d);
+    }
+
+    function signedTriangleArea2(points) {
+        if (!Array.isArray(points) || points.length < 3) {
+            return NaN;
+        }
+        const [a, b, c] = points;
+        return (b.x - a.x) * (c.y - a.y) -
+            (b.y - a.y) * (c.x - a.x);
+    }
+
+    function signNonzero(value, epsilon = 1e-12) {
+        if (!Number.isFinite(value) || Math.abs(value) <= epsilon) {
+            return 0;
+        }
+        return value > 0 ? 1 : -1;
+    }
+
+    function lucky2TriangleHypotheses(imageStars, records, skyMap, maxSamples = 6000) {
+        const permutations = [
+            [0, 1, 2], [0, 2, 1], [1, 0, 2],
+            [1, 2, 0], [2, 0, 1], [2, 1, 0],
+        ];
+        const edgePairs = [[0, 1], [0, 2], [1, 2]];
+        const hypotheses = [];
+        const stride = records.length > 0 ? Math.max(1, Math.ceil(records.length / Math.max(1, Math.floor(maxSamples / 6)))) : 1;
+        for (let recordIndex = 0; recordIndex < records.length && hypotheses.length < maxSamples; recordIndex += stride) {
+            const record = records[recordIndex];
+            for (const permutation of permutations) {
+                const edgeAngles = [];
+                const edgeScales = [];
+                const skyTriangle = permutation.map(sourceIndex => skyMap.get(record.stars[sourceIndex]));
+                if (skyTriangle.some(point => !point)) {
+                    continue;
+                }
+                const imageHandedness = signNonzero(signedTriangleArea2(imageStars), 1e-6);
+                const skyHandedness = signNonzero(signedTriangleArea2(skyTriangle), 1e-12);
+                if (imageHandedness === 0 || skyHandedness === 0) {
+                    continue;
+                }
+                for (const [u, v] of edgePairs) {
+                    const imgU = imageStars[u];
+                    const imgV = imageStars[v];
+                    const skyU = skyTriangle[u];
+                    const skyV = skyTriangle[v];
+                    const imageAngle = Math.atan2(imgV.y - imgU.y, imgV.x - imgU.x);
+                    const skyAngle = Math.atan2(skyV.y - skyU.y, skyV.x - skyU.x);
+                    const pixelDistance = Math.hypot(imgV.x - imgU.x, imgV.y - imgU.y);
+                    const skyDistance = Math.hypot(skyV.x - skyU.x, skyV.y - skyU.y);
+                    if (pixelDistance <= 1e-9 || skyDistance <= 1e-9) {
+                        continue;
+                    }
+                    edgeAngles.push(imageAngle - skyAngle);
+                    edgeScales.push(skyDistance / pixelDistance);
+                }
+                if (edgeAngles.length === edgePairs.length && edgeScales.length === edgePairs.length) {
+                    const scaleMean = edgeScales.reduce((sum, value) => sum + value, 0) / edgeScales.length;
+                    const scaleSpread = Math.max(...edgeScales) / Math.max(1e-12, Math.min(...edgeScales));
+                    if (Number.isFinite(scaleMean) && scaleSpread <= 2.2) {
+                        hypotheses.push({
+                            assignments: permutation.map(sourceIndex => record.stars[sourceIndex]),
+                            rotation: circularMeanAngle(edgeAngles),
+                            scale: scaleMean,
+                            handedness: imageHandedness * skyHandedness,
+                        });
+                    }
+                }
+            }
+        }
+        return hypotheses;
+    }
+
+    function lucky2HypothesesCompatible(
+        seedStars,
+        seedHypothesis,
+        supportStars,
+        supportHypothesis,
+        skyMap,
+        maxRotationDistanceRad,
+        maxScaleRatio,
+        maxSharedEdgeScaleRatio,
+        options = {}
+    ) {
+        const checkNeighborhoodOrdering = options.checkNeighborhoodOrdering !== false;
+        if (!seedHypothesis || !supportHypothesis) {
+            return false;
+        }
+        if (seedHypothesis.handedness !== supportHypothesis.handedness) {
+            return false;
+        }
+        const scaleRatio = Math.max(seedHypothesis.scale, supportHypothesis.scale) /
+            Math.max(1e-12, Math.min(seedHypothesis.scale, supportHypothesis.scale));
+        if (wrappedAngleDistance(seedHypothesis.rotation, supportHypothesis.rotation) > maxRotationDistanceRad ||
+                scaleRatio > maxScaleRatio) {
+            return false;
+        }
+        for (let i = 0; i < seedStars.length; i += 1) {
+            for (let j = 0; j < supportStars.length; j += 1) {
+                if (seedStars[i].id === supportStars[j].id &&
+                        seedHypothesis.assignments[i] !== supportHypothesis.assignments[j]) {
+                    return false;
+                }
+            }
+        }
+        const shared = [];
+        for (let i = 0; i < seedStars.length; i += 1) {
+            for (let j = 0; j < supportStars.length; j += 1) {
+                if (seedStars[i].id === supportStars[j].id) {
+                    shared.push({seedIndex: i, supportIndex: j, star: seedStars[i]});
+                }
+            }
+        }
+        if (shared.length >= 2) {
+            for (let i = 0; i < shared.length - 1; i += 1) {
+                for (let j = i + 1; j < shared.length; j += 1) {
+                    const a = shared[i];
+                    const b = shared[j];
+                    const skyA = skyMap.get(seedHypothesis.assignments[a.seedIndex]);
+                    const skyB = skyMap.get(seedHypothesis.assignments[b.seedIndex]);
+                    if (!skyA || !skyB) {
+                        return false;
+                    }
+                    const pixelDistance = Math.hypot(b.star.x - a.star.x, b.star.y - a.star.y);
+                    const skyDistance = Math.hypot(skyB.x - skyA.x, skyB.y - skyA.y);
+                    if (pixelDistance <= 1e-9 || skyDistance <= 1e-12) {
+                        return false;
+                    }
+                    const sharedEdgeScale = skyDistance / pixelDistance;
+                    const seedEdgeRatio = Math.max(sharedEdgeScale, seedHypothesis.scale) /
+                        Math.max(1e-12, Math.min(sharedEdgeScale, seedHypothesis.scale));
+                    const supportEdgeRatio = Math.max(sharedEdgeScale, supportHypothesis.scale) /
+                        Math.max(1e-12, Math.min(sharedEdgeScale, supportHypothesis.scale));
+                    if (seedEdgeRatio > maxSharedEdgeScaleRatio || supportEdgeRatio > maxSharedEdgeScaleRatio) {
+                        return false;
+                    }
+                }
+            }
+        }
+        if (checkNeighborhoodOrdering &&
+                !lucky2NeighborhoodOrderingConsistent(seedStars, seedHypothesis, supportStars, supportHypothesis, skyMap)) {
+            return false;
+        }
+        return true;
+    }
+
+    function lucky2CandidateSetsFromHypotheses(hypotheses) {
+        const sets = [new Set(), new Set(), new Set()];
+        for (const hypothesis of hypotheses || []) {
+            hypothesis.assignments.forEach((starIndex, vertexIndex) => {
+                sets[vertexIndex].add(starIndex);
+            });
+        }
+        return sets;
+    }
+
+    function lucky2SeedHypothesesSupportedBySharedEdge(seedStars, seedHypotheses, supportStars, supportHypotheses, options = {}) {
+        const maxRotationDistanceRad = Number.isFinite(options.maxRotationDistanceRad) ?
+            options.maxRotationDistanceRad :
+            Infinity;
+        const maxScaleRatio = Number.isFinite(options.maxScaleRatio) ?
+            options.maxScaleRatio :
+            Infinity;
+        const shared = [];
+        for (let seedIndex = 0; seedIndex < seedStars.length; seedIndex += 1) {
+            for (let supportIndex = 0; supportIndex < supportStars.length; supportIndex += 1) {
+                if (seedStars[seedIndex].id === supportStars[supportIndex].id) {
+                    shared.push({seedIndex, supportIndex});
+                }
+            }
+        }
+        if (shared.length < 2) {
+            return [];
+        }
+        const a = shared[0];
+        const b = shared[1];
+        const supportByPair = new Map();
+        for (const supportHypothesis of supportHypotheses || []) {
+            const key = `${supportHypothesis.assignments[a.supportIndex]}:${supportHypothesis.assignments[b.supportIndex]}`;
+            if (!supportByPair.has(key)) {
+                supportByPair.set(key, []);
+            }
+            supportByPair.get(key).push(supportHypothesis);
+        }
+        return (seedHypotheses || []).filter(seedHypothesis => {
+            const key = `${seedHypothesis.assignments[a.seedIndex]}:${seedHypothesis.assignments[b.seedIndex]}`;
+            const supportRows = supportByPair.get(key);
+            if (!supportRows || !supportRows.length) {
+                return false;
+            }
+            for (const supportHypothesis of supportRows) {
+                if (wrappedAngleDistance(seedHypothesis.rotation, supportHypothesis.rotation) > maxRotationDistanceRad) {
+                    continue;
+                }
+                const minScale = Math.min(seedHypothesis.scale, supportHypothesis.scale);
+                const maxScale = Math.max(seedHypothesis.scale, supportHypothesis.scale);
+                if (!(minScale > 0) || maxScale / minScale > maxScaleRatio) {
+                    continue;
+                }
+                return true;
+            }
+            return false;
+        });
+    }
+
+    function lucky2AddVotes(voteCounts, detections, hypotheses) {
+        if (!voteCounts || !detections || !hypotheses) {
+            return 0;
+        }
+        let votesAdded = 0;
+        for (const hypothesis of hypotheses) {
+            hypothesis.assignments.forEach((starIndex, vertexIndex) => {
+                const detection = detections[vertexIndex];
+                if (!detection || !Number.isInteger(starIndex)) {
+                    return;
+                }
+                if (!voteCounts.has(detection.id)) {
+                    voteCounts.set(detection.id, new Map());
+                }
+                const perStar = voteCounts.get(detection.id);
+                perStar.set(starIndex, (perStar.get(starIndex) || 0) + 1);
+                votesAdded += 1;
+            });
+        }
+        return votesAdded;
+    }
+
+    function lucky2NeighborhoodOrderingConsistent(seedStars, seedHypothesis, supportStars, supportHypothesis, skyMap) {
+        for (let seedCenterIndex = 0; seedCenterIndex < seedStars.length; seedCenterIndex += 1) {
+            for (let supportCenterIndex = 0; supportCenterIndex < supportStars.length; supportCenterIndex += 1) {
+                if (seedStars[seedCenterIndex].id !== supportStars[supportCenterIndex].id) {
+                    continue;
+                }
+                const centerSky = skyMap.get(seedHypothesis.assignments[seedCenterIndex]);
+                if (!centerSky) {
+                    return false;
+                }
+                for (let seedNeighborIndex = 0; seedNeighborIndex < seedStars.length; seedNeighborIndex += 1) {
+                    if (seedNeighborIndex === seedCenterIndex) {
+                        continue;
+                    }
+                    for (let supportNeighborIndex = 0; supportNeighborIndex < supportStars.length; supportNeighborIndex += 1) {
+                        if (supportNeighborIndex === supportCenterIndex ||
+                                seedStars[seedNeighborIndex].id === supportStars[supportNeighborIndex].id) {
+                            continue;
+                        }
+                        const seedSky = skyMap.get(seedHypothesis.assignments[seedNeighborIndex]);
+                        const supportSky = skyMap.get(supportHypothesis.assignments[supportNeighborIndex]);
+                        if (!seedSky || !supportSky) {
+                            return false;
+                        }
+                        const imageSign = signNonzero(
+                            (seedStars[seedNeighborIndex].x - seedStars[seedCenterIndex].x) *
+                                (supportStars[supportNeighborIndex].y - seedStars[seedCenterIndex].y) -
+                            (seedStars[seedNeighborIndex].y - seedStars[seedCenterIndex].y) *
+                                (supportStars[supportNeighborIndex].x - seedStars[seedCenterIndex].x),
+                            1e-6
+                        );
+                        const skySign = signNonzero(
+                            (seedSky.x - centerSky.x) * (supportSky.y - centerSky.y) -
+                                (seedSky.y - centerSky.y) * (supportSky.x - centerSky.x),
+                            1e-12
+                        );
+                        if (imageSign !== 0 && skySign !== 0 &&
+                                imageSign * skySign !== seedHypothesis.handedness) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    function lucky2LookupTriangleCandidates(a, b, c, index, allowedYaleStars, skyMap, deltaAc, deltaBc, imageScale) {
+        const sig = lucky2TriangleSignature(a, b, c);
+        if (!sig || sig.shortSide < 50 || sig.longSide > 0.55 * imageScale ||
+                sig.ac < 0.18 || sig.bc < 0.35 || sig.height < 20) {
+            return {accepted: false, reason: "geometry", sig: null, hits: 0, candidates: new Set(), candidatesByVertex: [], hypotheses: []};
+        }
+        const hitIndices = index.get_asterisms(sig.ac, sig.bc, deltaAc, deltaBc);
+        if (!hitIndices.length) {
+            return {accepted: false, reason: "nohits", sig, hits: 0, candidates: new Set(), candidatesByVertex: [], hypotheses: []};
+        }
+        const visibleRecords = index.getRecords(hitIndices)
+            .filter(record => record.stars.every(starIndex => allowedYaleStars.has(starIndex)));
+        visibleRecords.sort((a, b) => {
+            const da = Math.hypot(a.ac - sig.ac, a.bc - sig.bc);
+            const db = Math.hypot(b.ac - sig.ac, b.bc - sig.bc);
+            return da - db;
+        });
+        const visibleCandidates = new Set(visibleRecords.flatMap(record => record.stars));
+        if (visibleCandidates.size === 0) {
+            return {accepted: false, reason: "belowhorizon", sig, hits: hitIndices.length, candidates: visibleCandidates, candidatesByVertex: [], hypotheses: []};
+        }
+        const hypotheses = lucky2TriangleHypotheses([a, b, c], visibleRecords, skyMap);
+        if (hypotheses.length === 0) {
+            return {accepted: false, reason: "nohypotheses", sig, hits: visibleRecords.length, candidates: visibleCandidates, candidatesByVertex: [], hypotheses};
+        }
+        const candidatesByVertex = [new Set(), new Set(), new Set()];
+        for (const hypothesis of hypotheses) {
+            hypothesis.assignments.forEach((starIndex, vertexIndex) => {
+                candidatesByVertex[vertexIndex].add(starIndex);
+            });
+        }
+        return {
+            accepted: true,
+            reason: "accepted",
+            sig,
+            hits: visibleRecords.length,
+            rawHits: hitIndices.length,
+            candidates: visibleCandidates,
+            candidatesByVertex,
+            hypotheses,
+        };
+    }
+
+    function lucky2SupportTriangleCheck(a, b, c, seedLookup, selected, activeLimit, index, allowedYaleStars, skyMap, deltaAc, deltaBc, imageScale) {
+        const baseIds = new Set([a.id, b.id, c.id]);
+        const cx = (a.x + b.x + c.x) / 3;
+        const cy = (a.y + b.y + c.y) / 3;
+        const neighborPool = selected
+            .slice(0, activeLimit)
+            .filter(star => !baseIds.has(star.id))
+            .map(star => ({
+                star,
+                distance: Math.min(
+                    Math.hypot(star.x - a.x, star.y - a.y),
+                    Math.hypot(star.x - b.x, star.y - b.y),
+                    Math.hypot(star.x - c.x, star.y - c.y),
+                    0.6 * Math.hypot(star.x - cx, star.y - cy)
+                ),
+            }))
+            .sort((u, v) => u.distance - v.distance)
+            .slice(0, 12)
+            .map(row => row.star);
+        let support = 0;
+        const supportedSeedHypotheses = [];
+        const supportedKeys = new Set();
+        const seedStars = [a, b, c];
+        const edges = [[a, b], [a, c], [b, c]];
+        for (const neighbor of neighborPool) {
+            for (const [u, v] of edges) {
+                const result = lucky2LookupTriangleCandidates(
+                    u,
+                    v,
+                    neighbor,
+                    index,
+                    allowedYaleStars,
+                    skyMap,
+                    deltaAc,
+                    deltaBc,
+                    imageScale
+                );
+                if (!result.accepted) {
+                    continue;
+                }
+                const supportStars = [u, v, neighbor];
+                const supportedThisTriangle = lucky2SeedHypothesesSupportedBySharedEdge(
+                    seedStars,
+                    seedLookup.hypotheses,
+                    supportStars,
+                    result.hypotheses,
+                    {
+                        maxRotationDistanceRad: 90 * AidaTools.DEG,
+                        maxScaleRatio: 1.2,
+                    }
+                );
+                if (!supportedThisTriangle.length) {
+                    continue;
+                }
+                support += 1;
+                for (const seedHypothesis of supportedThisTriangle) {
+                    const key = seedHypothesis.assignments.join("|");
+                    if (!supportedKeys.has(key)) {
+                        supportedKeys.add(key);
+                        supportedSeedHypotheses.push(seedHypothesis);
+                    }
+                }
+                if (supportedSeedHypotheses.length >= 360) {
+                    return {support, supportedSeedHypotheses};
+                }
+            }
+        }
+        return {support, supportedSeedHypotheses};
+    }
+
+    function updateLucky2DiagnosticCounts(candidateSets, detections, stats = {}, voteCounts = null, knownTruth = null) {
+        const byDetectionId = new Map();
+        const truthByDetection = knownTruth && knownTruth.byDetectionId ? knownTruth.byDetectionId : new Map();
+        for (const detection of detections) {
+            const set = candidateSets.get(detection.id);
+            const votes = voteCounts ? voteCounts.get(detection.id) : null;
+            const rankedVotes = votes ? Array.from(votes.entries())
+                .filter(([starIndex]) => !set || set.has(starIndex))
+                .sort((a, b) => b[1] - a[1] || a[0] - b[0]) : [];
+            const truth = truthByDetection.get(detection.id) || null;
+            const candidates = set ? Array.from(set) : [];
+            const searchComplete = stats.searchComplete === true;
+            const topVoteStarIndex = rankedVotes.length ? rankedVotes[0][0] : null;
+            const topVoteStarRow = Number.isInteger(topVoteStarIndex) ?
+                (state.catalogs.yale || [])[topVoteStarIndex] :
+                null;
+            const topVoteStarName = topVoteStarRow ?
+                compactStarDisplayName(topVoteStarRow[3] || `Yale ${topVoteStarIndex}`) :
+                "";
+            byDetectionId.set(detection.id, {
+                count: set ? set.size : 0,
+                candidates,
+                topVote: rankedVotes.length ? rankedVotes[0][1] : 0,
+                topVoteStarIndex,
+                topVoteStarName,
+                totalVotes: rankedVotes.reduce((sum, row) => sum + row[1], 0),
+                knownTruth: truth,
+                knownCandidatePresent: truth ?
+                    (set && set.has(truth.yaleIndex) ? true :
+                        searchComplete ? false : null) :
+                    null,
+            });
+        }
+        state.lucky2Diagnostics = {
+            byDetectionId,
+            stats,
+        };
+    }
+
+    async function feelingLuckyFit2() {
+        if (!state.image || !state.imagePixels) {
+            state.fitMessage = "Lucky mode 2: load an image with readable pixels first";
+            render();
+            return;
+        }
+        if (state.autoIdentifyBusy || state.luckyFitBusy) {
+            return;
+        }
+        state.luckyFitBusy = true;
+        controls.luckyFit.disabled = true;
+        if (controls.luckyFit2) {
+            controls.luckyFit2.disabled = true;
+        }
+        controls.fitLens.disabled = true;
+        controls.fitLensLm.disabled = true;
+        state.asterismEdges = [];
+        clearLucky2Diagnostics();
+        state.showAsterismLines = true;
+        state.showAutoDetectionMarkers = true;
+        setTriangleDebugSnapshot(null);
+        try {
+            setLoadingProgress(2, "Lucky mode 2: loading Yale mag-4 asterism index...");
+            if (!state.lucky2YaleAsterismIndex) {
+                await loadLucky2YaleAsterismIndex();
+            }
+            const index = state.lucky2YaleAsterismIndex;
+            if (!index || typeof index.get_asterisms !== "function") {
+                throw new Error(state.lucky2YaleAsterismIndexStatus || "Lucky2 Yale asterism index unavailable");
+            }
+            if (!state.autoDetectorOptions) {
+                await tuneStarDetectorForImage();
+            }
+            setLoadingProgress(8, "Lucky mode 2: detecting stars in raw image...");
+            const detections = (await detectBrightImageStarsForAutoIdentify(
+                260,
+                {
+                    scanStep: 1,
+                    disableImageAutoTune: true,
+                    thresholdSigma: 1.05,
+                    localThresholdSigma: 1.05,
+                    requireGlobalThreshold: false,
+                    minMatchedFilterSnr: 0.45,
+                    maxShapeCandidates: 3600,
+                    maxRadiusPx: 14,
+                    maxElongation: 8,
+                    maxSaturatedPixels: 300,
+                    minCoreFluxFraction: 0.035,
+                    maxOuterFluxFraction: 0.88,
+                    minPeakDominance: 0.98,
+                    coreFluxPenaltyPower: 0.85,
+                    peakDominancePenaltyPower: 0.80,
+                    outerFluxPenaltyPower: 0.80,
+                    elongationPenaltyPower: 0.85,
+                    centroidOffsetPenaltyPower: 0.70,
+                    suppressionRadiusPx: 50,
+                    minimumSuppressionRadiusPx: 50,
+                    crowdingRadiusPx: 0,
+                    maxCrowding: Infinity,
+                }
+            ))
+                .filter(detection => detection && Number.isFinite(detection.x) && Number.isFinite(detection.y));
+            if (detections.length < 4) {
+                throw new Error(`only ${detections.length} star detections`);
+            }
+
+            const imageScale = Math.max(state.image.width, state.image.height);
+            const centerX = state.image.width / 2;
+            const centerY = state.image.height / 2;
+            const selected = detections
+                .slice()
+                .sort((a, b) => {
+                    const da = Math.hypot(a.x - centerX, a.y - centerY);
+                    const db = Math.hypot(b.x - centerX, b.y - centerY);
+                    return da - db;
+                });
+            const candidateSets = new Map();
+            const acceptedTriangleRecords = [];
+            const deltaAc = 0.020;
+            const deltaBc = 0.020;
+            const lucky2MaxMag = Number.isFinite(index.maxMag) ? index.maxMag : 3.0;
+            const allowedYaleStars = lucky2VisibleYaleStarIndexSet(90.0, lucky2MaxMag);
+            const yaleSkyMap = lucky2YaleSkyPlaneMap(allowedYaleStars);
+            const voteCounts = new Map();
+            const knownTruth = lucky2KnownTruthMapForDetections(selected);
+            const totalTriangles = selected.length >= 3 ?
+                selected.length * (selected.length - 1) * (selected.length - 2) / 6 :
+                0;
+            const stats = {
+                detections: detections.length,
+                selected: selected.length,
+                totalTriangles,
+                rawTriangles: 0,
+                queriedTriangles: 0,
+                acceptedTriangles: 0,
+                rejectedNoHits: 0,
+                rejectedNoSupport: 0,
+                rejectedGeometry: 0,
+                supportTriangles: 0,
+                voteAssignments: 0,
+                rotationToleranceDeg: 90,
+                scaleToleranceRatio: 1.2,
+                sharedEdgeScaleToleranceRatio: null,
+                handednessConsistency: false,
+                supportTriangleSharedIdentityConsistency: true,
+                supportTriangleRotationScaleConsistency: true,
+                neighborhoodOrderingConsistency: false,
+                totalHits: 0,
+                deltaAc,
+                deltaBc,
+                growthStage: 0,
+                activeStars: 0,
+                visibleYaleStars: allowedYaleStars.size,
+                asterismIndex: `mag<=${Number(lucky2MaxMag).toFixed(1)}, ` +
+                    `${Number(index.minSepDeg).toFixed(1)}-${Number(index.maxSepDeg).toFixed(0)} deg, ` +
+                    `${index.count} triangles`,
+                knownValidationCase: knownTruth.testCase ? knownTruth.testCase.label : "",
+                knownStarsProjected: knownTruth.projectedKnownStars.length,
+                knownStarsDetected: knownTruth.found,
+                knownStarsMissedByDetector: knownTruth.missed,
+                searchComplete: false,
+            };
+            updateLucky2DiagnosticCounts(candidateSets, selected, stats, voteCounts, knownTruth);
+            render();
+
+            let lastRender = performance.now();
+            const centerSeedCount = Math.min(12, selected.length);
+            const growBatchSize = 8;
+            let previousLimit = 0;
+            for (let limit = centerSeedCount; limit <= selected.length; limit = Math.min(selected.length, limit + growBatchSize)) {
+                stats.growthStage += 1;
+                stats.activeStars = limit;
+                for (let k = Math.max(2, previousLimit); k < limit; k += 1) {
+                    for (let i = 0; i < k - 1; i += 1) {
+                        for (let j = i + 1; j < k; j += 1) {
+                            stats.rawTriangles += 1;
+                            const a = selected[i];
+                            const b = selected[j];
+                            const c = selected[k];
+                            const lookup = lucky2LookupTriangleCandidates(
+                                a,
+                                b,
+                                c,
+                                index,
+                                allowedYaleStars,
+                                yaleSkyMap,
+                                deltaAc,
+                                deltaBc,
+                                imageScale
+                            );
+                            if (!lookup.accepted && lookup.reason === "geometry") {
+                                stats.rejectedGeometry += 1;
+                                continue;
+                            }
+                            stats.queriedTriangles += 1;
+                            if (!lookup.accepted) {
+                                stats.rejectedNoHits += 1;
+                                continue;
+                            }
+                            const supportCheck = lucky2SupportTriangleCheck(
+                                a,
+                                b,
+                                c,
+                                lookup,
+                                selected,
+                                limit,
+                                index,
+                                allowedYaleStars,
+                                yaleSkyMap,
+                                deltaAc,
+                                deltaBc,
+                                imageScale
+                            );
+                            const support = supportCheck.support;
+                            if (support < 1) {
+                                stats.rejectedNoSupport += 1;
+                                continue;
+                            }
+                            stats.supportTriangles += support;
+                            stats.totalHits += lookup.hits;
+                            stats.voteAssignments += lucky2AddVotes(
+                                voteCounts,
+                                [a, b, c],
+                                supportCheck.supportedSeedHypotheses
+                            );
+                            const supportedCandidatesByVertex = lucky2CandidateSetsFromHypotheses(
+                                supportCheck.supportedSeedHypotheses
+                            );
+                            for (const [vertexIndex, detection] of [a, b, c].entries()) {
+                                const existing = candidateSets.get(detection.id);
+                                const vertexCandidates = supportedCandidatesByVertex[vertexIndex];
+                                if (!existing) {
+                                    candidateSets.set(detection.id, new Set(vertexCandidates));
+                                } else {
+                                    for (const starIndex of vertexCandidates) {
+                                        existing.add(starIndex);
+                                    }
+                                }
+                            }
+                            stats.acceptedTriangles += 1;
+                            acceptedTriangleRecords.push({
+                                stars: [a, b, c],
+                                label: `${lookup.hits} Yale candidates, ordered support ${support}, a/c=${lookup.sig.ac.toFixed(3)}, b/c=${lookup.sig.bc.toFixed(3)}`,
+                            });
+                            const now = performance.now();
+                            if (now - lastRender > 650) {
+                                lastRender = now;
+                                updateLucky2DiagnosticCounts(candidateSets, selected, stats, voteCounts, knownTruth);
+                                const uniqueNow = Array.from(candidateSets.values()).filter(set => set.size === 1).length;
+                                const ambiguousNow = Array.from(candidateSets.values()).filter(set => set.size > 1).length;
+                                rebuildLucky2UniqueEdges(acceptedTriangleRecords, candidateSets);
+                                setLoadingProgress(
+                                    18 + Math.min(74, totalTriangles > 0 ? 74 * stats.rawTriangles / totalTriangles : 0),
+                                    `Lucky mode 2: extending raw asterism graph, ` +
+                                        `center-out stage ${stats.growthStage}, ${limit}/${selected.length} active stars, ` +
+                                        `${stats.rawTriangles}/${totalTriangles} triangles tested, ` +
+                                        `${uniqueNow} unique, ${ambiguousNow} ambiguous stars, ` +
+                                        `${stats.voteAssignments} vote assignments...`
+                                );
+                                render();
+                                await yieldToBrowser();
+                            }
+                        }
+                    }
+                }
+                previousLimit = limit;
+                updateLucky2DiagnosticCounts(candidateSets, selected, stats, voteCounts, knownTruth);
+                rebuildLucky2UniqueEdges(acceptedTriangleRecords, candidateSets);
+                render();
+                await yieldToBrowser();
+                if (limit === selected.length) {
+                    break;
+                }
+            }
+
+            stats.searchComplete = true;
+            updateLucky2DiagnosticCounts(candidateSets, selected, stats, voteCounts, knownTruth);
+            rebuildLucky2UniqueEdges(acceptedTriangleRecords, candidateSets);
+            const counts = Array.from(candidateSets.values()).map(set => set.size);
+            const unique = counts.filter(count => count === 1).length;
+            const ambiguous = counts.filter(count => count > 1).length;
+            const meanHits = stats.queriedTriangles > 0 ? stats.totalHits / stats.queriedTriangles : 0;
+            let knownSearched = 0;
+            let knownPresent = 0;
+            let knownLost = 0;
+            if (knownTruth.testCase) {
+                for (const [detectionId, truth] of knownTruth.byDetectionId.entries()) {
+                    const set = candidateSets.get(detectionId);
+                    if (set) {
+                        knownSearched += 1;
+                    }
+                    if (set && set.has(truth.yaleIndex)) {
+                        knownPresent += 1;
+                    } else {
+                        knownLost += 1;
+                    }
+                }
+                stats.knownStarsInSearch = knownSearched;
+                stats.knownCandidatesPresent = knownPresent;
+                stats.knownCandidatesLost = knownLost;
+                updateLucky2DiagnosticCounts(candidateSets, selected, stats, voteCounts, knownTruth);
+            }
+            const knownStatus = knownTruth.testCase ?
+                `; known ${knownTruth.testCase.label}: ${knownTruth.found}/${knownTruth.projectedKnownStars.length} ` +
+                    `detected, ${knownPresent}/${knownSearched} retained as candidates, ${knownLost} lost` :
+                "";
+            state.automaticMatchingStatus =
+                `Lucky mode 2 center-out graph search: ${stats.acceptedTriangles}/${stats.queriedTriangles} raw triangles accepted; ` +
+                `${unique} unique stars, ${ambiguous} ambiguous stars; ` +
+                `index ${stats.asterismIndex}; ` +
+                `${stats.visibleYaleStars} Yale stars above horizon; ` +
+                `${stats.rejectedNoSupport} rejected without support; ` +
+                `${stats.voteAssignments} vote assignments; ` +
+                `mean ${meanHits.toFixed(1)} catalogue hits/query${knownStatus}`;
+            state.fitMessage =
+                `Lucky mode 2 stopped after graph extension only: ${unique} green unique stars, ` +
+                `${ambiguous} yellow ambiguous stars from ${selected.length}/${detections.length} detections. No lens fit was attempted.`;
+            playInteractionSound(unique > 0 ? "fit" : "click");
+            render();
+        } catch (error) {
+            state.fitMessage = `Lucky mode 2 failed: ${error.message || error}`;
+            render();
+        } finally {
+            hideLoadingProgress();
+            controls.luckyFit.disabled = false;
+            if (controls.luckyFit2) {
+                controls.luckyFit2.disabled = false;
+            }
+            controls.fitLens.disabled = false;
+            controls.fitLensLm.disabled = false;
+            if (controls.closeAssociateFit) {
+                controls.closeAssociateFit.disabled = false;
+            }
+            state.luckyFitBusy = false;
+        }
+    }
+
     async function feelingLuckyFit() {
         if (!state.image || !state.imagePixels) {
             state.fitMessage = "I'm feeling lucky: load an image with readable pixels first";
@@ -7092,11 +8743,15 @@ end
         }
         state.luckyFitBusy = true;
         controls.luckyFit.disabled = true;
+        if (controls.luckyFit2) {
+            controls.luckyFit2.disabled = true;
+        }
         controls.fitLens.disabled = true;
         controls.fitLensLm.disabled = true;
         const optmod = Number(controls.optmod.value) || 2;
         const undoSnapshot = autoPairingUndoSnapshot("I'm feeling lucky");
         state.asterismEdges = [];
+        clearLucky2Diagnostics();
         state.showAsterismLines = true;
         setTriangleDebugSnapshot(null);
         const removedBadAreaMatches = removeAutomaticMatchesInBadStarFinderRegions();
@@ -7116,7 +8771,7 @@ end
                     requireGlobalThreshold: false,
                     maxRadiusPx: 5,
                     maxElongation: 4.0,
-                    suppressionRadiusPx: 10,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 36,
                     maxCrowding: 7,
                     crowdingScorePower: 1.25,
@@ -7167,7 +8822,7 @@ end
                     requireGlobalThreshold: false,
                     maxRadiusPx: 5,
                     maxElongation: 4.0,
-                    suppressionRadiusPx: 10,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 36,
                     maxCrowding: 7,
                     crowdingScorePower: 1.25,
@@ -7220,7 +8875,7 @@ end
                     requireGlobalThreshold: false,
                     maxRadiusPx: 5,
                     maxElongation: 4.0,
-                    suppressionRadiusPx: 10,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 36,
                     maxCrowding: 7,
                     crowdingScorePower: 1.25,
@@ -7294,7 +8949,7 @@ end
                     localThresholdSigma: 2.9,
                     requireGlobalThreshold: false,
                     maxElongation: 3.1,
-                    suppressionRadiusPx: 8,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 30,
                     maxCrowding: 8,
                     crowdingScorePower: 1.15,
@@ -7325,7 +8980,7 @@ end
                     localThresholdSigma: 2.7,
                     requireGlobalThreshold: false,
                     maxElongation: 3.2,
-                    suppressionRadiusPx: 8,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 30,
                     maxCrowding: 8,
                     crowdingScorePower: 1.15,
@@ -7549,7 +9204,7 @@ end
                             requireGlobalThreshold: false,
                             maxRadiusPx: 8,
                             maxElongation: 4.5,
-                            suppressionRadiusPx: 10,
+                            suppressionRadiusPx: 30,
                             crowdingRadiusPx: 34,
                             maxCrowding: 7,
                             crowdingScorePower: 1.2,
@@ -7658,7 +9313,7 @@ end
                     requireGlobalThreshold: false,
                     maxRadiusPx: 5,
                     maxElongation: 4.0,
-                    suppressionRadiusPx: 10,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 36,
                     maxCrowding: 7,
                     crowdingScorePower: 1.25,
@@ -7700,7 +9355,7 @@ end
                     requireGlobalThreshold: false,
                     maxRadiusPx: 5,
                     maxElongation: 4.0,
-                    suppressionRadiusPx: 10,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 36,
                     maxCrowding: 7,
                     crowdingScorePower: 1.25,
@@ -7743,7 +9398,7 @@ end
                     requireGlobalThreshold: false,
                     maxRadiusPx: 5,
                     maxElongation: 4.0,
-                    suppressionRadiusPx: 10,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 36,
                     maxCrowding: 7,
                     crowdingScorePower: 1.25,
@@ -7808,7 +9463,7 @@ end
                     requireGlobalThreshold: false,
                     maxRadiusPx: 5,
                     maxElongation: 4.0,
-                    suppressionRadiusPx: 10,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 36,
                     maxCrowding: 7,
                     crowdingScorePower: 1.25,
@@ -7839,7 +9494,7 @@ end
                     requireGlobalThreshold: false,
                     maxRadiusPx: 5,
                     maxElongation: 4.0,
-                    suppressionRadiusPx: 10,
+                    suppressionRadiusPx: 30,
                     crowdingRadiusPx: 36,
                     maxCrowding: 7,
                     crowdingScorePower: 1.25,
@@ -7985,6 +9640,9 @@ end
         } finally {
             hideLoadingProgress();
             controls.luckyFit.disabled = false;
+            if (controls.luckyFit2) {
+                controls.luckyFit2.disabled = false;
+            }
             controls.fitLens.disabled = false;
             controls.fitLensLm.disabled = false;
             if (controls.closeAssociateFit) {
@@ -8065,6 +9723,7 @@ end
         state.matches = [];
         state.asterismEdges = [];
         state.triangleDebugSnapshot = null;
+        clearLucky2Diagnostics();
         state.pendingMatch = null;
         state.showPickedMatchMarkers = true;
         state.lastFitVector = null;
@@ -8121,6 +9780,8 @@ end
         state.triangleDebugSnapshot = null;
         state.detectorCache = null;
         state.detectorStatus = "detector: no image";
+        state.autoDetectorOptions = null;
+        state.autoDetectorStatus = "detector tuning: not run";
         state.detectionGeneration += 1;
         state.autoIdentifyBusy = false;
         state.luckyFitBusy = false;
@@ -8132,6 +9793,9 @@ end
         state.lastLensEquation = "";
         controls.optmod.value = "2";
         controls.luckyFit.disabled = false;
+        if (controls.luckyFit2) {
+            controls.luckyFit2.disabled = false;
+        }
         controls.fitLens.disabled = false;
         controls.fitLensLm.disabled = false;
         if (controls.submitTestCase) {
@@ -8215,7 +9879,7 @@ end
                 return;
             }
             setLoadingProgress(30, "Reading image pixels...");
-            window.setTimeout(() => {
+            window.setTimeout(async () => {
                 if (loadId !== state.imageLoadId) {
                     return;
                 }
@@ -8295,6 +9959,12 @@ end
                 if (loadMessages.length > 0) {
                     state.fitMessage = loadMessages.join("; ");
                 }
+                state.autoDetectorOptions = null;
+                state.autoDetectorStatus = "detector tuning: not run";
+                state.detectorCache = null;
+                state.detectorStatus = state.imagePixels ? "detector: ready" : "detector: image readback unavailable";
+                state.detectedStars = [];
+                state.autoMatches = [];
                 state.pendingMatch = null;
                 if (onLoaded) {
                     onLoaded(img);
@@ -9353,6 +11023,12 @@ end
         playInteractionSound("fit");
         feelingLuckyFit();
     });
+    if (controls.luckyFit2) {
+        controls.luckyFit2.addEventListener("click", () => {
+            playInteractionSound("fit");
+            feelingLuckyFit2();
+        });
+    }
     controls.toggleAmbientMusic.addEventListener("click", toggleAmbientMusic);
     controls.toggleFitResiduals.addEventListener("click", toggleFitResiduals);
     function moveStarPickingLegend(clientX, clientY) {
@@ -9765,6 +11441,7 @@ end
         initializeApp.done = true;
         state.lastLensEquation = "";
         loadTycho2Catalog();
+        loadYaleAsterismIndex();
         updateLensEquation(currentOptpar(), Number(controls.optmod.value));
         refreshTestCaseList();
         if (!state.image) {
