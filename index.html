@@ -237,6 +237,9 @@
             <button id="fitLensLm" type="button">Fit lens with Levenberg-Marquardt (G)</button>
             <button id="undoFit" type="button" disabled>Undo</button>
             <div id="localTestCaseTools" hidden>
+                <label>Submit pass key
+                    <input id="submitPassKey" type="password" autocomplete="off" placeholder="Required for server submission">
+                </label>
                 <button id="submitTestCase" type="button">Submit as test case</button>
                 <div id="saveFeedback" class="save-feedback" aria-live="polite" hidden></div>
                 <label>Load test case
@@ -279,6 +282,6 @@ window.MathJax = {
 <script src="js/yale_asterism_index.js?v=20260528a"></script>
 <script src="js/star_detector.js?v=20260527-lucky2-loose"></script>
 <script src="js/auto_identifier.js?v=20260526a"></script>
-<script src="js/app.js?v=0.3.2-hosted-submissions"></script>
+<script src="js/app.js?v=0.3.3-submit-passkey"></script>
 </body>
 </html>

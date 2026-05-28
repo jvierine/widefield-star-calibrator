@@ -23,6 +23,7 @@ function parseArgs(argv) {
         host: "127.0.0.1",
         port: 8790,
         testCaseDir: process.env.AIDA_TEST_CASE_DIR || DEFAULT_TEST_CASE_DIR,
+        submitPassKey: process.env.AIDA_SUBMIT_PASSKEY || "",
     };
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -41,10 +42,27 @@ function parseArgs(argv) {
             i += 1;
         } else if (arg.startsWith("--test-case-dir=")) {
             options.testCaseDir = arg.slice("--test-case-dir=".length);
+        } else if (arg === "--submit-passkey" && argv[i + 1]) {
+            options.submitPassKey = argv[i + 1];
+            i += 1;
+        } else if (arg.startsWith("--submit-passkey=")) {
+            options.submitPassKey = arg.slice("--submit-passkey=".length);
         }
     }
     options.testCaseDir = path.resolve(options.testCaseDir);
     return options;
+}
+
+function requireSubmitPassKey(req, options) {
+    if (!options.submitPassKey) {
+        return;
+    }
+    const submitted = String(req.headers["x-aida-submit-passkey"] || "");
+    if (submitted !== options.submitPassKey) {
+        const error = new Error("invalid submit pass key");
+        error.statusCode = 403;
+        throw error;
+    }
 }
 
 function contentType(filename) {
@@ -285,6 +303,7 @@ async function handle(req, res, options) {
             return;
         }
         if (req.method === "POST" && url.pathname === "/api/test-cases") {
+            requireSubmitPassKey(req, options);
             sendJson(res, 200, saveTestCase(options.testCaseDir, await readJsonBody(req)));
             return;
         }
@@ -324,7 +343,7 @@ async function handle(req, res, options) {
     } catch (error) {
         const message = error.message || String(error);
         const clientError = /^(empty|invalid|missing|request body too large|image too large|metadata too large|unsupported|unreasonable|image content)/i.test(message);
-        sendJson(res, clientError ? 400 : 500, {error: message});
+        sendJson(res, error.statusCode || (clientError ? 400 : 500), {error: message});
     }
 }
 
@@ -336,6 +355,7 @@ function main() {
     server.listen(options.port, options.host, () => {
         console.log(`WISC: http://${options.host}:${options.port}/`);
         console.log(`WISC test-case submissions: ${options.testCaseDir}`);
+        console.log(`WISC submit pass key: ${options.submitPassKey ? "required" : "not configured"}`);
     });
 }
 

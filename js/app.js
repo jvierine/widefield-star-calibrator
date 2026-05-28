@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.2";
+    const APP_VERSION = "v0.3.3";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -130,6 +130,7 @@
         copyOptpar: document.getElementById("copyOptpar"),
         copyPythonMapper: document.getElementById("copyPythonMapper"),
         localTestCaseTools: document.getElementById("localTestCaseTools"),
+        submitPassKey: document.getElementById("submitPassKey"),
         submitTestCase: document.getElementById("submitTestCase"),
         saveFeedback: document.getElementById("saveFeedback"),
         testCaseSelect: document.getElementById("testCaseSelect"),
@@ -1567,9 +1568,13 @@
         try {
             const testCase = currentTestCaseObject();
             const imageDataUrl = await imagePixelsPngDataUrl();
+            const submitPassKey = controls.submitPassKey ? controls.submitPassKey.value.trim() : "";
             const response = await fetch("/api/test-cases", {
                 method: "POST",
-                headers: {"content-type": "application/json"},
+                headers: {
+                    "content-type": "application/json",
+                    "x-aida-submit-passkey": submitPassKey,
+                },
                 body: JSON.stringify({testCase, imageDataUrl}),
             });
             const result = await response.json();
