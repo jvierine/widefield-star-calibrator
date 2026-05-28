@@ -1,9 +1,9 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.1";
-    const LOCAL_TEST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-    const LOCAL_TEST_CASES_ENABLED = location.protocol === "file:" || LOCAL_TEST_HOSTS.has(location.hostname);
+    const APP_VERSION = "v0.3.2";
+    const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
+        location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
     const NOT_STAR_TILE_SIZE = 128;
     const MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION = 8 / 4032;
@@ -1547,7 +1547,7 @@
     }
 
     async function submitCurrentTestCase() {
-        if (!LOCAL_TEST_CASES_ENABLED) {
+        if (!TEST_CASES_ENABLED) {
             return;
         }
         if (!state.image || !state.imagePixels) {
@@ -1594,7 +1594,7 @@
     }
 
     async function refreshTestCaseList(selectId = "") {
-        if (!LOCAL_TEST_CASES_ENABLED || !controls.testCaseSelect) {
+        if (!TEST_CASES_ENABLED || !controls.testCaseSelect) {
             return;
         }
         try {
@@ -1712,7 +1712,7 @@
     }
 
     async function loadSelectedTestCase() {
-        if (!LOCAL_TEST_CASES_ENABLED) {
+        if (!TEST_CASES_ENABLED) {
             return;
         }
         const id = controls.testCaseSelect && controls.testCaseSelect.value;
@@ -11145,15 +11145,15 @@ end
         copyTextToClipboard(exportFunctionText(language), `${language} mapper code`);
     });
     if (controls.localTestCaseTools) {
-        controls.localTestCaseTools.hidden = !LOCAL_TEST_CASES_ENABLED;
+        controls.localTestCaseTools.hidden = !TEST_CASES_ENABLED;
     }
-    if (LOCAL_TEST_CASES_ENABLED && controls.submitTestCase) {
+    if (TEST_CASES_ENABLED && controls.submitTestCase) {
         controls.submitTestCase.addEventListener("click", () => {
             playInteractionSound("click");
             submitCurrentTestCase();
         });
     }
-    if (LOCAL_TEST_CASES_ENABLED && controls.loadTestCase) {
+    if (TEST_CASES_ENABLED && controls.loadTestCase) {
         controls.loadTestCase.addEventListener("click", () => {
             playInteractionSound("click");
             loadSelectedTestCase();

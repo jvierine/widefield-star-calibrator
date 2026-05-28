@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 "use strict";
 
-const fs = require("node:fs");
-const http = require("node:http");
-const path = require("node:path");
-const {URL} = require("node:url");
+const fs = require("fs");
+const http = require("http");
+const path = require("path");
+const {URL} = require("url");
 
 const ROOT = path.join(__dirname, "..");
 const DEFAULT_TEST_CASE_DIR = "/mnt/shovel/aida";
