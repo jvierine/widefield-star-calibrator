@@ -502,6 +502,43 @@ test("FITS parser integrates multiple image frames into one grayscale image", ()
     assert.deepEqual(gray, [0, 85, 170, 255]);
 });
 
+test("FITS parser loads cropped ALIS and ALIS4D fixture files", () => {
+    const cases = [
+        {
+            file: "alis_2015-02-16T16.58.20T_crop.fits",
+            width: 64,
+            height: 64,
+            frameCount: 1,
+            bitpix: 16,
+            timestampUtc: "2015-02-16T16:58:20.007525Z",
+        },
+        {
+            file: "alis4d_2022-10-24T20.50.10O_crop3.fits",
+            width: 64,
+            height: 64,
+            frameCount: 3,
+            bitpix: 16,
+            timestampUtc: "2022-10-24T20:50:10.000000Z",
+        },
+    ];
+
+    for (const c of cases) {
+        const fixture = fs.readFileSync(path.join(__dirname, "fixtures", "fits", c.file));
+        const parsed = AidaTools.parseFitsImage(bufferToArrayBuffer(fixture));
+        assert.equal(parsed.width, c.width);
+        assert.equal(parsed.height, c.height);
+        assert.equal(parsed.frameCount, c.frameCount);
+        assert.equal(parsed.header.BITPIX, c.bitpix);
+        assert.equal(parsed.metadata.timestampUtc, c.timestampUtc);
+        assert.equal(parsed.imageData.data.length, c.width * c.height * 4);
+        assert.ok(parsed.stretch.high > parsed.stretch.low, `${c.file} should have a valid display stretch`);
+        assert.ok(
+            parsed.imageData.data.some((value, index) => index % 4 !== 3 && value !== parsed.imageData.data[0]),
+            `${c.file} should produce non-uniform display pixels`
+        );
+    }
+});
+
 test("star catalog preserves negative zero-degree declinations", () => {
     const mintaka = loadStarCatalog().find(row => row[3] === "Mintaka");
     assert.ok(mintaka, "Mintaka must be present in the catalog");

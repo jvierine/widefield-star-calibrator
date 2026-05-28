@@ -2145,6 +2145,10 @@ end
         return optpar;
     }
 
+    function usesRectilinearDragControls(optmod = Number(controls.optmod.value) || 2) {
+        return optmod === 1 || optmod === BROWN_CONRADY_OPTMOD;
+    }
+
     function zenithCanvasPixelForCameraAngles(alphaDeg, betaDeg, gammaDeg) {
         if (!state.image) {
             return null;
@@ -4468,7 +4472,7 @@ end
             if (state.showKdePositionDots) {
                 return "KDE dot inspection: all other markings are hidden. Press k to return to the normal overlay.";
             }
-            return "Star pairing view: left-drag moves the 90 deg elevation point in x/y. Right-drag rotates the azimuth grid around that point. Wheel edits f1/f2 together. Press c for Stellarium view, x for pure image/Stellarium views, s to pick an image star, h to show/hide detected stars, k for KDE sub-pixel dots, n to show/hide star names, d to delete a star pairing, hold m to mark bad yellow detections, or z to zoom.";
+            return "Star pairing view: left-drag moves the view. Right-drag rotates the view. Wheel edits f1/f2 together. Press c for Stellarium view, x for pure image/Stellarium views, s to pick an image star, h to show/hide detected stars, k for KDE sub-pixel dots, n to show/hide star names, d to delete a star pairing, hold m to mark bad yellow detections, or z to zoom.";
         }
         if (!state.pendingMatch) {
             return "Star pairing: hold s and click the image star. A KDE centroid fit will select the sub-pixel star position.";
@@ -11237,7 +11241,9 @@ end
         }
         playPingSound();
         state.dragging = true;
-        state.lensDragMode = event.button === 0 ? "zenithPosition" : "azimuthGridRoll";
+        state.lensDragMode = event.button === 0 ?
+            (usesRectilinearDragControls() ? "rectilinearElevationRoll" : "zenithPosition") :
+            "azimuthGridRoll";
         state.lastMouse = [event.clientX, event.clientY];
         canvas.setPointerCapture(event.pointerId);
     });
@@ -11275,6 +11281,14 @@ end
                 beta,
                 gamma
             );
+            syncModelOptparFromControls();
+            recomputeAndRender();
+        } else if (state.lensDragMode === "rectilinearElevationRoll") {
+            const boresight = boresightAzElFromCameraAngles(alpha, beta);
+            const newEl = clamp(boresight.el + dyCss * 0.06, -5, 90);
+            const newGamma = wrapDegrees180(gamma - dxCss * 0.06);
+            setCameraAnglesFromBoresightAzEl(boresight.az, newEl);
+            controls.rotGamma.value = newGamma.toPrecision(12);
             syncModelOptparFromControls();
             recomputeAndRender();
         } else if (state.lensDragMode === "azimuthGridRoll") {
