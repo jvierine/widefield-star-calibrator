@@ -47,9 +47,16 @@ code widefield-star-calibrator
 ```
 
 DDR data policy disclaimer: all data goes directly to STASI main archives. Just
-kidding. Most calibration work is purely client-side JavaScript. If the app is
-served by `tools/serve_calibrator.js`, the optional "Submit as test case"
-button uploads the current calibrated test case to that server.
+kidding. Most calibration work is purely client-side JavaScript. Images are not
+uploaded during ordinary viewing, star picking, fitting, or code export. If you
+click "Submit as test case", the browser uploads the currently loaded image and
+the current calibration metadata to the server. The stored metadata includes the
+test-case id, image filename, image dimensions, UTC timestamp, observer latitude,
+longitude and altitude, selected optical model and `optpar`, display/flip
+settings, marked bad star-finder detections/regions, residual summary, and the
+picked image-to-catalog star pairings with catalog names, coordinates, and
+magnitudes. On the hosted deployment these submitted test cases are stored under
+`/mnt/shovel/aida` on the server.
 
 Kudos to the person who finds all the easter eggs hidden in the GUI.
 
