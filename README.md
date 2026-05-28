@@ -55,8 +55,8 @@ test-case id, image filename, image dimensions, UTC timestamp, observer latitude
 longitude and altitude, selected optical model and `optpar`, display/flip
 settings, marked bad star-finder detections/regions, residual summary, and the
 picked image-to-catalog star pairings with catalog names, coordinates, and
-magnitudes. On the hosted deployment these submitted test cases are stored under
-`/mnt/shovel/aida` on the server.
+magnitudes. On the hosted deployment these submitted test cases are stored on
+the server for testing and development of the calibrator.
 
 Kudos to the person who finds all the easter eggs hidden in the GUI.
 
