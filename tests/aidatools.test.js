@@ -70,6 +70,9 @@ function makeSyntheticFits() {
         fitsCard("BSCALE", "1"),
         fitsCard("BZERO", "0"),
         fitsCard("DATE-OBS", "'2026-05-28T12:34:56.000000'"),
+        fitsCard("LATITUDE", "68.35555"),
+        fitsCard("LONGITUD", "18.81958"),
+        fitsCard("ALTITUDE", "360."),
         fitsCard("END"),
     ];
     const headerText = cards.join("").padEnd(2880, " ");
@@ -490,7 +493,10 @@ test("FITS parser integrates multiple image frames into one grayscale image", ()
     assert.equal(parsed.height, 2);
     assert.equal(parsed.frameCount, 2);
     assert.equal(parsed.header.BITPIX, 16);
-    assert.equal(parsed.metadata.timestampUtc, "2026-05-28T12:34:56.000000Z");
+    assert.equal(parsed.metadata.timestampUtc.toISOString(), "2026-05-28T12:34:56.000Z");
+    assert.equal(parsed.metadata.latDeg, 68.35555);
+    assert.equal(parsed.metadata.lonDeg, 18.81958);
+    assert.equal(parsed.metadata.altM, 360);
 
     const gray = [];
     for (let i = 0; i < parsed.imageData.data.length; i += 4) {
@@ -510,7 +516,7 @@ test("FITS parser loads cropped ALIS and ALIS4D fixture files", () => {
             height: 64,
             frameCount: 1,
             bitpix: 16,
-            timestampUtc: "2015-02-16T16:58:20.007525Z",
+            timestampUtc: "2015-02-16T16:58:20.007Z",
         },
         {
             file: "alis4d_2022-10-24T20.50.10O_crop3.fits",
@@ -518,7 +524,10 @@ test("FITS parser loads cropped ALIS and ALIS4D fixture files", () => {
             height: 64,
             frameCount: 3,
             bitpix: 16,
-            timestampUtc: "2022-10-24T20:50:10.000000Z",
+            timestampUtc: "2022-10-24T20:50:10.000Z",
+            latDeg: 68.35555,
+            lonDeg: 18.81958,
+            altM: 360,
         },
     ];
 
@@ -529,7 +538,12 @@ test("FITS parser loads cropped ALIS and ALIS4D fixture files", () => {
         assert.equal(parsed.height, c.height);
         assert.equal(parsed.frameCount, c.frameCount);
         assert.equal(parsed.header.BITPIX, c.bitpix);
-        assert.equal(parsed.metadata.timestampUtc, c.timestampUtc);
+        assert.equal(parsed.metadata.timestampUtc.toISOString(), c.timestampUtc);
+        if (Number.isFinite(c.latDeg)) {
+            assert.equal(parsed.metadata.latDeg, c.latDeg);
+            assert.equal(parsed.metadata.lonDeg, c.lonDeg);
+            assert.equal(parsed.metadata.altM, c.altM);
+        }
         assert.equal(parsed.imageData.data.length, c.width * c.height * 4);
         assert.ok(parsed.stretch.high > parsed.stretch.low, `${c.file} should have a valid display stretch`);
         assert.ok(

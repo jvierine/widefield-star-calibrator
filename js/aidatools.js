@@ -147,6 +147,25 @@
         return sorted[idx];
     }
 
+    function fitsHeaderNumber(header, keys) {
+        for (const key of keys) {
+            const value = Number(header[key]);
+            if (Number.isFinite(value)) {
+                return value;
+            }
+        }
+        return NaN;
+    }
+
+    function parseFitsDateObs(value) {
+        if (typeof value !== "string") {
+            return null;
+        }
+        const isoUtc = value.trim().replace(" ", "T").replace(/Z?$/, "Z");
+        const date = new Date(isoUtc);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+
     function parseFitsImage(buffer, options = {}) {
         const {header, cards, dataOffset} = parseFitsHeader(buffer);
         const bitpix = Number(header.BITPIX);
@@ -216,8 +235,19 @@
             new ImageData(rgba, width, height) :
             {data: rgba, width, height};
         const metadata = {};
-        if (typeof header["DATE-OBS"] === "string") {
-            metadata.timestampUtc = header["DATE-OBS"].replace(" ", "T").replace(/Z?$/, "Z");
+        const timestampUtc = parseFitsDateObs(header["DATE-OBS"]);
+        if (timestampUtc) {
+            metadata.timestampUtc = timestampUtc;
+        }
+        const latDeg = fitsHeaderNumber(header, ["LATITUDE"]);
+        const lonDeg = fitsHeaderNumber(header, ["LONGITUD", "LONGITUDE"]);
+        if (Number.isFinite(latDeg) && Number.isFinite(lonDeg)) {
+            metadata.latDeg = latDeg;
+            metadata.lonDeg = lonDeg;
+        }
+        const altM = fitsHeaderNumber(header, ["ALTITUDE"]);
+        if (Number.isFinite(altM)) {
+            metadata.altM = altM;
         }
         return {
             header,
