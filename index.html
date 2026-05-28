@@ -46,7 +46,7 @@
         </button>
         <label class="file-button">
             Load image
-            <input id="imageFile" type="file" accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,.heic,.heif">
+            <input id="imageFile" type="file" accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/fits,application/fits,application/fits-image,.heic,.heif,.fits,.fit,.fts">
         </label>
     </div>
 </header>
@@ -92,7 +92,7 @@
             </div>
             <canvas id="densityCanvas" width="420" height="300"></canvas>
         </div>
-        <div class="hint" id="canvasHint">Drop or load a PNG/JPEG/HEIC calibration frame.</div>
+        <div class="hint" id="canvasHint">Drop or load a PNG/JPEG/HEIC/FITS calibration frame.</div>
         <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
             <div class="loading-box">
                 <div id="loadingText">Loading image...</div>

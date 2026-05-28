@@ -68,7 +68,7 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
   workflow, which detects stars, matches triangle asterisms, fits the selected
   lens model, expands to fainter stars, and prunes obvious bad automatic
   matches.
-- Loads PNG, JPEG, HEIC, and HEIF images.
+- Loads PNG, JPEG, HEIC, HEIF, and FITS images.
 - Loads a bundled iPhone HEIC example image automatically on startup.
 - Reads UTC time and observer position from EXIF metadata when available.
 - Falls back to known allsky7 filename/station metadata when possible.
@@ -184,7 +184,7 @@ The installer links `wisc` into `~/.local/bin` by default.
 Set `PREFIX=/usr/local` or `BINDIR=/some/bin` before running the script to
 choose another install location. The command-line calibrator needs
 [Node.js](https://nodejs.org/), and the installer fetches the Node
-image-decoding dependencies used for PNG, JPEG, HEIC, and HEIF input.
+image-decoding dependencies used for PNG, JPEG, HEIC, HEIF, and FITS input.
 
 Run the browser-style "I'm feeling lucky" calibration from the command line by
 giving `wisc` an image filename. Latitude, longitude, altitude, and UTC time may
