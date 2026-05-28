@@ -5286,7 +5286,8 @@ end
         return x >= -pad && x <= size + pad && y >= -pad && y <= size + pad ? {x, y} : null;
     }
 
-    function drawZoomCross(x, y, color, radius = 7, lineWidth = 1.5) {
+    function drawZoomCross(x, y, color, radius = 7, lineWidth = 1.5, gap = 2.5) {
+        const inner = Math.max(0, Math.min(radius * 0.75, gap));
         zoomContext.save();
         zoomContext.strokeStyle = color;
         zoomContext.lineWidth = lineWidth;
@@ -5294,8 +5295,12 @@ end
         zoomContext.shadowBlur = 3;
         zoomContext.beginPath();
         zoomContext.moveTo(x - radius, y);
+        zoomContext.lineTo(x - inner, y);
+        zoomContext.moveTo(x + inner, y);
         zoomContext.lineTo(x + radius, y);
         zoomContext.moveTo(x, y - radius);
+        zoomContext.lineTo(x, y - inner);
+        zoomContext.moveTo(x, y + inner);
         zoomContext.lineTo(x, y + radius);
         zoomContext.stroke();
         zoomContext.restore();
