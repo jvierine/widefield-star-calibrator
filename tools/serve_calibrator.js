@@ -7,10 +7,23 @@ const path = require("node:path");
 const {URL} = require("node:url");
 
 const ROOT = path.join(__dirname, "..");
-const TEST_CASE_DIR = path.join(ROOT, "test_cases");
+const DEFAULT_TEST_CASE_DIR = "/mnt/shovel/aida";
+const MAX_JSON_BODY_BYTES = Number(process.env.AIDA_MAX_JSON_BODY_BYTES || 80 * 1024 * 1024);
+const MAX_IMAGE_BYTES = Number(process.env.AIDA_MAX_IMAGE_BYTES || 64 * 1024 * 1024);
+const MAX_METADATA_BYTES = Number(process.env.AIDA_MAX_METADATA_BYTES || 2 * 1024 * 1024);
+const ALLOWED_IMAGE_TYPES = new Map([
+    ["image/png", {ext: ".png", signatures: [Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])]}],
+    ["image/jpeg", {ext: ".jpg", signatures: [Buffer.from([0xff, 0xd8, 0xff])]}],
+    ["image/heic", {ext: ".heic", signatures: []}],
+    ["image/heif", {ext: ".heif", signatures: []}],
+]);
 
 function parseArgs(argv) {
-    const options = {host: "127.0.0.1", port: 8790};
+    const options = {
+        host: "127.0.0.1",
+        port: 8790,
+        testCaseDir: process.env.AIDA_TEST_CASE_DIR || DEFAULT_TEST_CASE_DIR,
+    };
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
         if (arg === "--host" && argv[i + 1]) {
@@ -23,8 +36,14 @@ function parseArgs(argv) {
             i += 1;
         } else if (arg.startsWith("--port=")) {
             options.port = Number(arg.slice("--port=".length));
+        } else if (arg === "--test-case-dir" && argv[i + 1]) {
+            options.testCaseDir = argv[i + 1];
+            i += 1;
+        } else if (arg.startsWith("--test-case-dir=")) {
+            options.testCaseDir = arg.slice("--test-case-dir=".length);
         }
     }
+    options.testCaseDir = path.resolve(options.testCaseDir);
     return options;
 }
 
@@ -38,6 +57,8 @@ function contentType(filename) {
         ".png": "image/png",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
+        ".heic": "image/heic",
+        ".heif": "image/heif",
         ".svg": "image/svg+xml; charset=utf-8",
     }[ext] || "application/octet-stream";
 }
@@ -53,13 +74,16 @@ function safeCaseId(value) {
 function readJsonBody(req) {
     return new Promise((resolve, reject) => {
         let body = "";
+        let bytes = 0;
         req.setEncoding("utf8");
         req.on("data", chunk => {
-            body += chunk;
-            if (body.length > 200_000_000) {
-                reject(new Error("request body too large"));
+            bytes += Buffer.byteLength(chunk, "utf8");
+            if (bytes > MAX_JSON_BODY_BYTES) {
+                reject(new Error(`request body too large; limit is ${MAX_JSON_BODY_BYTES} bytes`));
                 req.destroy();
+                return;
             }
+            body += chunk;
         });
         req.on("end", () => {
             try {
@@ -80,14 +104,67 @@ function sendJson(res, status, payload) {
     res.end(JSON.stringify(payload, null, 2));
 }
 
-function listTestCases() {
-    if (!fs.existsSync(TEST_CASE_DIR)) {
+function assertStoragePath(testCaseDir, target) {
+    const relative = path.relative(testCaseDir, target);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+        throw new Error("invalid storage path");
+    }
+}
+
+function imageInfoFromDataUrl(dataUrl) {
+    const match = String(dataUrl || "").match(/^data:(image\/(?:png|jpeg|heic|heif));base64,([A-Za-z0-9+/=\s]+)$/i);
+    if (!match) {
+        throw new Error("missing imageDataUrl; allowed types are PNG, JPEG, HEIC, and HEIF");
+    }
+    const mime = match[1].toLowerCase();
+    const allowed = ALLOWED_IMAGE_TYPES.get(mime);
+    if (!allowed) {
+        throw new Error("unsupported image type");
+    }
+    const base64 = match[2].replace(/\s+/g, "");
+    const estimatedBytes = Math.floor(base64.length * 3 / 4);
+    if (estimatedBytes > MAX_IMAGE_BYTES) {
+        throw new Error(`image too large; limit is ${MAX_IMAGE_BYTES} bytes`);
+    }
+    const buffer = Buffer.from(base64, "base64");
+    if (buffer.length === 0) {
+        throw new Error("empty image");
+    }
+    if (buffer.length > MAX_IMAGE_BYTES) {
+        throw new Error(`image too large; limit is ${MAX_IMAGE_BYTES} bytes`);
+    }
+    if (!imageBufferMatchesMime(buffer, mime)) {
+        throw new Error(`image content does not look like ${mime}`);
+    }
+    return {mime, ext: allowed.ext, buffer};
+}
+
+function imageBufferMatchesMime(buffer, mime) {
+    if (mime === "image/heic" || mime === "image/heif") {
+        return looksLikeIsoBmffImage(buffer, mime);
+    }
+    const allowed = ALLOWED_IMAGE_TYPES.get(mime);
+    return allowed.signatures.some(signature => buffer.subarray(0, signature.length).equals(signature));
+}
+
+function looksLikeIsoBmffImage(buffer, mime) {
+    if (buffer.length < 12 || buffer.toString("ascii", 4, 8) !== "ftyp") {
+        return false;
+    }
+    const brand = buffer.toString("ascii", 8, 12).toLowerCase();
+    const compatible = buffer.subarray(16, Math.min(buffer.length, 128)).toString("ascii").toLowerCase();
+    const brands = mime === "image/heic" ? ["heic", "heix", "hevc", "hevx"] : ["heif", "heim", "mif1", "msf1"];
+    return brands.some(value => brand === value || compatible.includes(value));
+}
+
+function listTestCases(testCaseDir) {
+    if (!fs.existsSync(testCaseDir)) {
         return [];
     }
-    return fs.readdirSync(TEST_CASE_DIR)
+    return fs.readdirSync(testCaseDir)
         .sort((a, b) => a.localeCompare(b))
         .map(name => {
-            const dir = path.join(TEST_CASE_DIR, name);
+            const dir = path.join(testCaseDir, name);
             const metadataPath = path.join(dir, "metadata.json");
             if (!fs.existsSync(metadataPath)) {
                 return null;
@@ -102,7 +179,7 @@ function listTestCases() {
                     matches: Array.isArray(metadata.matches) ? metadata.matches.length : 0,
                     residualRmsPx: metadata.residual && Number.isFinite(metadata.residual.rmsPx) ?
                         metadata.residual.rmsPx : null,
-                    metadata: path.relative(ROOT, metadataPath),
+                    metadata: path.relative(testCaseDir, metadataPath),
                 };
             } catch (error) {
                 return null;
@@ -111,12 +188,13 @@ function listTestCases() {
         .filter(Boolean);
 }
 
-function loadTestCase(id) {
+function loadTestCase(testCaseDir, id) {
     const safeId = safeCaseId(id);
     if (safeId !== id) {
         throw new Error("invalid test case id");
     }
-    const dir = path.join(TEST_CASE_DIR, safeId);
+    const dir = path.join(testCaseDir, safeId);
+    assertStoragePath(testCaseDir, dir);
     const metadataPath = path.join(dir, "metadata.json");
     if (!fs.existsSync(metadataPath)) {
         throw new Error("test case not found");
@@ -133,37 +211,45 @@ function loadTestCase(id) {
     };
 }
 
-function saveTestCase(payload) {
+function saveTestCase(testCaseDir, payload) {
     const testCase = payload && payload.testCase;
     if (!testCase || typeof testCase !== "object") {
         throw new Error("missing testCase object");
     }
-    const dataUrl = String(payload.imageDataUrl || "");
-    const match = dataUrl.match(/^data:image\/png;base64,([A-Za-z0-9+/=]+)$/);
-    if (!match) {
-        throw new Error("missing PNG imageDataUrl");
+    if (Number(testCase.width) > 100_000 || Number(testCase.height) > 100_000) {
+        throw new Error("unreasonable image dimensions");
     }
     const id = safeCaseId(testCase.id || testCase.image);
-    fs.mkdirSync(TEST_CASE_DIR, {recursive: true});
-    const caseDir = path.join(TEST_CASE_DIR, id);
+    const image = imageInfoFromDataUrl(payload.imageDataUrl);
+    fs.mkdirSync(testCaseDir, {recursive: true});
+    const caseDir = path.join(testCaseDir, id);
+    assertStoragePath(testCaseDir, caseDir);
     const updated = fs.existsSync(path.join(caseDir, "metadata.json"));
     fs.mkdirSync(caseDir, {recursive: true});
-    const imageName = `${path.basename(caseDir)}.png`;
+    const imageName = `${path.basename(caseDir)}${image.ext}`;
     const metadata = {
         ...testCase,
         id: path.basename(caseDir),
         image: imageName,
         source: "aida browser manual calibration",
+        imageMimeType: image.mime,
+        imageBytes: image.buffer.length,
         savedUtc: new Date().toISOString(),
         updatedUtc: updated ? new Date().toISOString() : undefined,
     };
-    fs.writeFileSync(path.join(caseDir, imageName), Buffer.from(match[1], "base64"));
-    fs.writeFileSync(path.join(caseDir, "metadata.json"), `${JSON.stringify(metadata, null, 2)}\n`);
+    const metadataJson = `${JSON.stringify(metadata, null, 2)}\n`;
+    if (Buffer.byteLength(metadataJson, "utf8") > MAX_METADATA_BYTES) {
+        throw new Error(`metadata too large; limit is ${MAX_METADATA_BYTES} bytes`);
+    }
+    fs.writeFileSync(path.join(caseDir, imageName), image.buffer, {mode: 0o640});
+    fs.writeFileSync(path.join(caseDir, "metadata.json"), metadataJson, {mode: 0o640});
     return {
         caseId: metadata.id,
-        relativeDir: path.relative(ROOT, caseDir),
-        metadata: path.relative(ROOT, path.join(caseDir, "metadata.json")),
-        image: path.relative(ROOT, path.join(caseDir, imageName)),
+        relativeDir: path.relative(testCaseDir, caseDir),
+        metadata: path.relative(testCaseDir, path.join(caseDir, "metadata.json")),
+        image: path.relative(testCaseDir, path.join(caseDir, imageName)),
+        imageBytes: image.buffer.length,
+        imageMimeType: image.mime,
         updated,
     };
 }
@@ -191,20 +277,20 @@ function serveStatic(req, res, url) {
     });
 }
 
-async function handle(req, res) {
+async function handle(req, res, options) {
     const url = new URL(req.url, "http://localhost");
     try {
         if (req.method === "GET" && url.pathname === "/api/test-cases") {
-            sendJson(res, 200, listTestCases());
+            sendJson(res, 200, listTestCases(options.testCaseDir));
             return;
         }
         if (req.method === "POST" && url.pathname === "/api/test-cases") {
-            sendJson(res, 200, saveTestCase(await readJsonBody(req)));
+            sendJson(res, 200, saveTestCase(options.testCaseDir, await readJsonBody(req)));
             return;
         }
         const caseMatch = url.pathname.match(/^\/api\/test-cases\/([^/]+)$/);
         if (req.method === "GET" && caseMatch) {
-            sendJson(res, 200, loadTestCase(decodeURIComponent(caseMatch[1])));
+            sendJson(res, 200, loadTestCase(options.testCaseDir, decodeURIComponent(caseMatch[1])));
             return;
         }
         const imageMatch = url.pathname.match(/^\/api\/test-cases\/([^/]+)\/image\/([^/]+)$/);
@@ -215,12 +301,18 @@ async function handle(req, res) {
                 sendJson(res, 400, {error: "invalid test case id"});
                 return;
             }
-            const imagePath = path.join(TEST_CASE_DIR, id, image);
+            const imagePath = path.join(options.testCaseDir, id, image);
+            assertStoragePath(options.testCaseDir, imagePath);
             if (!fs.existsSync(imagePath)) {
                 sendJson(res, 404, {error: "image not found"});
                 return;
             }
-            res.writeHead(200, {"content-type": "image/png", "cache-control": "no-store"});
+            const type = contentType(imagePath);
+            if (!ALLOWED_IMAGE_TYPES.has(type)) {
+                sendJson(res, 403, {error: "forbidden image type"});
+                return;
+            }
+            res.writeHead(200, {"content-type": type, "cache-control": "no-store"});
             fs.createReadStream(imagePath).pipe(res);
             return;
         }
@@ -237,13 +329,23 @@ async function handle(req, res) {
 function main() {
     const options = parseArgs(process.argv.slice(2));
     const server = http.createServer((req, res) => {
-        handle(req, res);
+        handle(req, res, options);
     });
     server.listen(options.port, options.host, () => {
         console.log(`WISC: http://${options.host}:${options.port}/`);
+        console.log(`WISC test-case submissions: ${options.testCaseDir}`);
     });
 }
 
 if (require.main === module) {
     main();
 }
+
+module.exports = {
+    ALLOWED_IMAGE_TYPES,
+    DEFAULT_TEST_CASE_DIR,
+    MAX_IMAGE_BYTES,
+    imageInfoFromDataUrl,
+    parseArgs,
+    safeCaseId,
+};

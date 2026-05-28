@@ -47,8 +47,9 @@ code widefield-star-calibrator
 ```
 
 DDR data policy disclaimer: all data goes directly to STASI main archives. Just
-kidding, the tool is purely client-side JavaScript code. No data is ever
-transmitted to an external server.
+kidding. Most calibration work is purely client-side JavaScript. If the app is
+served by `tools/serve_calibrator.js`, the optional "Submit as test case"
+button uploads the current calibrated test case to that server.
 
 Kudos to the person who finds all the easter eggs hidden in the GUI.
 
