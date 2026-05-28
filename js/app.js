@@ -4387,6 +4387,7 @@ end
             Number.isFinite(lastFitDiff) ?
                 "last accepted fit: current\n" :
                 "last accepted fit: none\n";
+        const fitsHeaderText = formatFitsHeaderStatus(state.currentImageMetadata);
         updateLensEquation(optpar, optmod);
         drawRotationVisualization();
         statusEl.textContent =
@@ -4419,10 +4420,22 @@ end
             `star pairing armed: ${state.starMatchMode ? "on" : "off"}${state.pendingMatch ? " (select catalog star)" : ""}\n` +
             `matched star pairs: ${state.matches.length}\n` +
             fitStaleText +
+            fitsHeaderText +
             `${state.automaticMatchingStatus}\n` +
             `${autoDetectionStatusText()}\n` +
             `${fitResidualStatusText()}\n` +
             state.fitMessage;
+    }
+
+    function formatFitsHeaderStatus(metadata) {
+        if (!metadata || !Array.isArray(metadata.fitsCards) || metadata.fitsCards.length === 0) {
+            return "";
+        }
+        return "FITS header cards:\n" +
+            metadata.fitsCards
+                .map(card => `  ${String(card).trimEnd()}`)
+                .join("\n") +
+            "\n";
     }
 
     function recomputeAndRender() {
@@ -10021,6 +10034,8 @@ end
             return primary;
         }
         return {
+            ...primary,
+            ...secondary,
             timestampUtc: secondary.timestampUtc || primary.timestampUtc,
             latDeg: Number.isFinite(secondary.latDeg) ? secondary.latDeg : primary.latDeg,
             lonDeg: Number.isFinite(secondary.lonDeg) ? secondary.lonDeg : primary.lonDeg,
@@ -10070,7 +10085,11 @@ end
             return {
                 blob,
                 displayName: file.name.replace(/\.(fits|fit|fts)$/i, ".png"),
-                metadata: parsed.metadata,
+                metadata: {
+                    ...parsed.metadata,
+                    fitsHeader: parsed.header,
+                    fitsCards: parsed.cards,
+                },
                 message: `FITS: integrated ${parsed.frameCount} frame${parsed.frameCount === 1 ? "" : "s"}`,
             };
         }
