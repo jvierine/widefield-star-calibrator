@@ -41,6 +41,196 @@
         );
     }
 
+    function fitsCardValue(text) {
+        const eq = text.indexOf("=");
+        if (eq < 0) {
+            return null;
+        }
+        let value = text.slice(eq + 1);
+        let inQuote = false;
+        let out = "";
+        for (let i = 0; i < value.length; i += 1) {
+            const ch = value[i];
+            if (ch === "'") {
+                inQuote = !inQuote;
+                out += ch;
+            } else if (ch === "/" && !inQuote) {
+                break;
+            } else {
+                out += ch;
+            }
+        }
+        value = out.trim();
+        if (value.startsWith("'")) {
+            const end = value.lastIndexOf("'");
+            return value.slice(1, end > 0 ? end : undefined).trim();
+        }
+        if (value === "T") {
+            return true;
+        }
+        if (value === "F") {
+            return false;
+        }
+        const numeric = Number(value.replace(/[dD]/g, "e"));
+        return Number.isFinite(numeric) ? numeric : value;
+    }
+
+    function parseFitsHeader(buffer) {
+        const bytes = new Uint8Array(buffer);
+        const decoder = new TextDecoder("ascii");
+        const header = {};
+        const cards = [];
+        let offset = 0;
+        for (; offset + 80 <= bytes.length; offset += 80) {
+            const card = decoder.decode(bytes.subarray(offset, offset + 80));
+            cards.push(card);
+            const key = card.slice(0, 8).trim();
+            if (key) {
+                const value = fitsCardValue(card);
+                if (value !== null) {
+                    header[key] = value;
+                }
+            }
+            if (key === "END") {
+                offset += 80;
+                break;
+            }
+        }
+        if (cards.length === 0 || String(header.SIMPLE) !== "true") {
+            throw new Error("not a primary FITS image");
+        }
+        const dataOffset = Math.ceil(offset / 2880) * 2880;
+        return {header, cards, dataOffset};
+    }
+
+    function fitsPixelReader(view, bitpix) {
+        if (bitpix === 8) {
+            return offset => view.getUint8(offset);
+        }
+        if (bitpix === 16) {
+            return offset => view.getInt16(offset, false);
+        }
+        if (bitpix === 32) {
+            return offset => view.getInt32(offset, false);
+        }
+        if (bitpix === -32) {
+            return offset => view.getFloat32(offset, false);
+        }
+        if (bitpix === -64) {
+            return offset => view.getFloat64(offset, false);
+        }
+        throw new Error(`unsupported FITS BITPIX ${bitpix}`);
+    }
+
+    function fitsBytesPerPixel(bitpix) {
+        if (bitpix === 8) {
+            return 1;
+        }
+        if (bitpix === 16 || bitpix === -16) {
+            return 2;
+        }
+        if (bitpix === 32 || bitpix === -32) {
+            return 4;
+        }
+        if (bitpix === 64 || bitpix === -64) {
+            return 8;
+        }
+        throw new Error(`unsupported FITS BITPIX ${bitpix}`);
+    }
+
+    function percentile(values, fraction) {
+        if (!values.length) {
+            return NaN;
+        }
+        const sorted = values.slice().sort((a, b) => a - b);
+        const idx = Math.max(0, Math.min(sorted.length - 1, Math.floor(fraction * (sorted.length - 1))));
+        return sorted[idx];
+    }
+
+    function parseFitsImage(buffer, options = {}) {
+        const {header, cards, dataOffset} = parseFitsHeader(buffer);
+        const bitpix = Number(header.BITPIX);
+        const naxis = Number(header.NAXIS);
+        const width = Number(header.NAXIS1);
+        const height = Number(header.NAXIS2);
+        if (!Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || naxis < 2) {
+            throw new Error("FITS image must have positive NAXIS1 and NAXIS2");
+        }
+        const dims = [];
+        for (let i = 1; i <= naxis; i += 1) {
+            const dim = Number(header[`NAXIS${i}`]);
+            if (!Number.isInteger(dim) || dim <= 0) {
+                throw new Error(`invalid FITS NAXIS${i}`);
+            }
+            dims.push(dim);
+        }
+        const planePixels = width * height;
+        const frameCount = dims.slice(2).reduce((prod, dim) => prod * dim, 1);
+        const totalPixels = planePixels * frameCount;
+        const bytesPerPixel = fitsBytesPerPixel(bitpix);
+        if (dataOffset + totalPixels * bytesPerPixel > buffer.byteLength) {
+            throw new Error("FITS data section is shorter than expected");
+        }
+        const view = new DataView(buffer, dataOffset);
+        const readPixel = fitsPixelReader(view, bitpix);
+        const bscale = Number.isFinite(Number(header.BSCALE)) ? Number(header.BSCALE) : 1;
+        const bzero = Number.isFinite(Number(header.BZERO)) ? Number(header.BZERO) : 0;
+        const integrated = new Float64Array(planePixels);
+        let byteOffset = 0;
+        for (let frame = 0; frame < frameCount; frame += 1) {
+            for (let i = 0; i < planePixels; i += 1) {
+                integrated[i] += readPixel(byteOffset) * bscale + bzero;
+                byteOffset += bytesPerPixel;
+            }
+        }
+
+        const sampleStep = Math.max(1, Math.floor(integrated.length / 50000));
+        const samples = [];
+        for (let i = 0; i < integrated.length; i += sampleStep) {
+            const value = integrated[i];
+            if (Number.isFinite(value)) {
+                samples.push(value);
+            }
+        }
+        let lo = Number.isFinite(options.low) ? Number(options.low) : percentile(samples, 0.005);
+        let hi = Number.isFinite(options.high) ? Number(options.high) : percentile(samples, 0.995);
+        if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+            lo = Math.min(...samples);
+            hi = Math.max(...samples);
+        }
+        if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+            lo = 0;
+            hi = 1;
+        }
+        const scale = 255 / (hi - lo);
+        const rgba = new Uint8ClampedArray(planePixels * 4);
+        for (let i = 0; i < planePixels; i += 1) {
+            const gray = Math.max(0, Math.min(255, Math.round((integrated[i] - lo) * scale)));
+            const k = i * 4;
+            rgba[k] = gray;
+            rgba[k + 1] = gray;
+            rgba[k + 2] = gray;
+            rgba[k + 3] = 255;
+        }
+        const imageData = typeof ImageData === "function" ?
+            new ImageData(rgba, width, height) :
+            {data: rgba, width, height};
+        const metadata = {};
+        if (typeof header["DATE-OBS"] === "string") {
+            metadata.timestampUtc = header["DATE-OBS"].replace(" ", "T").replace(/Z?$/, "Z");
+        }
+        return {
+            header,
+            cards,
+            width,
+            height,
+            frameCount,
+            imageData,
+            metadata,
+            stretch: {low: lo, high: hi},
+        };
+    }
+
     function precessJ2000ToDate(raHours, decDeg, date) {
         const t = (julianDate(date) - 2451545.0) / 36525.0;
         const arcsecToRad = DEG / 3600.0;
@@ -1385,6 +1575,8 @@
         guessTimestampFromImageName,
         parseExifMetadata,
         normalizeExternalExifMetadata,
+        parseFitsHeader,
+        parseFitsImage,
         cameraRot,
         cameraAnglesFromRotation,
         cameraModel,

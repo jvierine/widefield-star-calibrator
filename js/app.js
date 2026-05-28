@@ -10002,6 +10002,13 @@ end
             type === "image/heic-sequence" || type === "image/heif-sequence";
     }
 
+    function isFitsFile(file) {
+        const name = String(file.name || "").toLowerCase();
+        const type = String(file.type || "").toLowerCase();
+        return name.endsWith(".fits") || name.endsWith(".fit") || name.endsWith(".fts") ||
+            type === "image/fits" || type === "application/fits" || type === "application/fits-image";
+    }
+
     function mergeMetadata(primary, secondary) {
         if (!primary) {
             return secondary || null;
@@ -10035,7 +10042,34 @@ end
         return metadata;
     }
 
-    async function displayBlobForImage(file) {
+    function canvasToPngBlob(canvas) {
+        return new Promise((resolve, reject) => {
+            canvas.toBlob(blob => {
+                if (blob) {
+                    resolve(blob);
+                } else {
+                    reject(new Error("failed to convert FITS image to PNG"));
+                }
+            }, "image/png");
+        });
+    }
+
+    async function displayBlobForImage(file, buffer = null) {
+        if (isFitsFile(file)) {
+            setLoadingProgress(16, `Integrating FITS frames from ${file.name}...`);
+            const parsed = AidaTools.parseFitsImage(buffer || await file.arrayBuffer());
+            const canvas = document.createElement("canvas");
+            canvas.width = parsed.width;
+            canvas.height = parsed.height;
+            canvas.getContext("2d").putImageData(parsed.imageData, 0, 0);
+            const blob = await canvasToPngBlob(canvas);
+            return {
+                blob,
+                displayName: file.name.replace(/\.(fits|fit|fts)$/i, ".png"),
+                metadata: parsed.metadata,
+                message: `FITS: integrated ${parsed.frameCount} frame${parsed.frameCount === 1 ? "" : "s"}`,
+            };
+        }
         if (!isHeicFile(file)) {
             return {blob: file, displayName: file.name};
         }
@@ -10077,10 +10111,14 @@ end
         }
         try {
             const buffer = await file.arrayBuffer();
-            const metadata = await readImageMetadata(file, buffer);
-            const display = await displayBlobForImage(file);
+            const display = await displayBlobForImage(file, buffer);
+            const metadata = mergeMetadata(await readImageMetadata(file, buffer), display.metadata);
             state.localImageUrl = URL.createObjectURL(display.blob);
-            loadImageSource(state.localImageUrl, display.displayName, null, false, metadata, file.name);
+            loadImageSource(state.localImageUrl, display.displayName, img => {
+                if (display.message) {
+                    state.fitMessage = state.fitMessage ? `${state.fitMessage}; ${display.message}` : display.message;
+                }
+            }, false, metadata, file.name);
         } catch (error) {
             state.fitMessage = `image load failed: ${file.name}; ${error.message || error}`;
             hideLoadingProgress();

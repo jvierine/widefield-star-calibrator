@@ -22,6 +22,7 @@ function loadAidaTools() {
         Date,
         Number,
         Array,
+        TextDecoder,
         console,
     };
     vm.createContext(context);
@@ -48,6 +49,35 @@ function loadStarCatalog() {
 
 function bufferToArrayBuffer(buffer) {
     return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+}
+
+function fitsCard(key, value = null) {
+    let text = key.padEnd(8, " ");
+    if (value !== null) {
+        text += `= ${value}`;
+    }
+    return text.padEnd(80, " ").slice(0, 80);
+}
+
+function makeSyntheticFits() {
+    const cards = [
+        fitsCard("SIMPLE", "T"),
+        fitsCard("BITPIX", "16"),
+        fitsCard("NAXIS", "3"),
+        fitsCard("NAXIS1", "2"),
+        fitsCard("NAXIS2", "2"),
+        fitsCard("NAXIS3", "2"),
+        fitsCard("BSCALE", "1"),
+        fitsCard("BZERO", "0"),
+        fitsCard("DATE-OBS", "'2026-05-28T12:34:56.000000'"),
+        fitsCard("END"),
+    ];
+    const headerText = cards.join("").padEnd(2880, " ");
+    const data = Buffer.alloc(2880, 0);
+    [1, 2, 3, 4, 10, 20, 30, 40].forEach((value, index) => {
+        data.writeInt16BE(value, index * 2);
+    });
+    return Buffer.concat([Buffer.from(headerText, "ascii"), data]);
 }
 
 function makeExifJpeg() {
@@ -452,6 +482,24 @@ test("external EXIF metadata normalizer handles HEIC-style fields", () => {
     assertNear(metadata.altM, 123.4);
     assert.equal(metadata.cameraMake, "Apple");
     assert.equal(metadata.cameraModel, "iPhone 15 Pro");
+});
+
+test("FITS parser integrates multiple image frames into one grayscale image", () => {
+    const parsed = AidaTools.parseFitsImage(bufferToArrayBuffer(makeSyntheticFits()), {low: 11, high: 44});
+    assert.equal(parsed.width, 2);
+    assert.equal(parsed.height, 2);
+    assert.equal(parsed.frameCount, 2);
+    assert.equal(parsed.header.BITPIX, 16);
+    assert.equal(parsed.metadata.timestampUtc, "2026-05-28T12:34:56.000000Z");
+
+    const gray = [];
+    for (let i = 0; i < parsed.imageData.data.length; i += 4) {
+        gray.push(parsed.imageData.data[i]);
+        assert.equal(parsed.imageData.data[i], parsed.imageData.data[i + 1]);
+        assert.equal(parsed.imageData.data[i], parsed.imageData.data[i + 2]);
+        assert.equal(parsed.imageData.data[i + 3], 255);
+    }
+    assert.deepEqual(gray, [0, 85, 170, 255]);
 });
 
 test("star catalog preserves negative zero-degree declinations", () => {
