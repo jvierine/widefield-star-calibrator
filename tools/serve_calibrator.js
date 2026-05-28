@@ -322,7 +322,9 @@ async function handle(req, res, options) {
         }
         sendJson(res, 405, {error: "method not allowed"});
     } catch (error) {
-        sendJson(res, 500, {error: error.message || String(error)});
+        const message = error.message || String(error);
+        const clientError = /^(empty|invalid|missing|request body too large|image too large|metadata too large|unsupported|unreasonable|image content)/i.test(message);
+        sendJson(res, clientError ? 400 : 500, {error: message});
     }
 }
 
