@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.4";
+    const APP_VERSION = "v0.3.5";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -5903,6 +5903,10 @@ end
     function invalidateDisplayPixelCaches() {
         state.baseDisplayPixels = null;
         state.baseDisplayCacheKey = "";
+        invalidateHighPassDisplayCache();
+    }
+
+    function invalidateHighPassDisplayCache() {
         state.displayPixels = null;
         state.highPassCacheKey = "";
     }
@@ -9865,6 +9869,23 @@ end
         render();
     }
 
+    let displayRefreshAnimationFrame = 0;
+    function scheduleDisplayImageRefresh(invalidateBase = true) {
+        if (invalidateBase) {
+            invalidateDisplayPixelCaches();
+        } else {
+            invalidateHighPassDisplayCache();
+        }
+        if (displayRefreshAnimationFrame) {
+            return;
+        }
+        displayRefreshAnimationFrame = window.requestAnimationFrame(() => {
+            displayRefreshAnimationFrame = 0;
+            uploadImagePixelsToTexture();
+            render();
+        });
+    }
+
     function resetInteractiveState() {
         state.matches = [];
         state.asterismEdges = [];
@@ -11213,9 +11234,9 @@ end
         }
     }
     controls.highPassImage.addEventListener("change", refreshDisplayImage);
-    controls.highPassWidth.addEventListener("input", refreshDisplayImage);
+    controls.highPassWidth.addEventListener("input", () => scheduleDisplayImageRefresh(false));
     if (controls.displayClipMax) {
-        controls.displayClipMax.addEventListener("input", refreshDisplayImage);
+        controls.displayClipMax.addEventListener("input", scheduleDisplayImageRefresh);
     }
     if (controls.starCatalog) {
         controls.starCatalog.addEventListener("change", () => {
