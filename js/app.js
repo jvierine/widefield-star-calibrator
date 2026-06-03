@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.10";
+    const APP_VERSION = "v0.3.13";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -1584,6 +1584,27 @@
         return imagePixelsPngDataUrl();
     }
 
+    function configuredSubmitPassKey() {
+        const config = window.WISC_AIDA_CONFIG || {};
+        const configured = typeof config.submitPassKey === "string" ? config.submitPassKey.trim() : "";
+        if (configured) {
+            return configured;
+        }
+        return controls.submitPassKey ? controls.submitPassKey.value.trim() : "";
+    }
+
+    function initializeSubmitPassKey() {
+        const config = window.WISC_AIDA_CONFIG || {};
+        const configured = typeof config.submitPassKey === "string" ? config.submitPassKey.trim() : "";
+        if (configured && controls.submitPassKey && !controls.submitPassKey.value) {
+            controls.submitPassKey.value = configured;
+            const label = controls.submitPassKey.closest("label");
+            if (label) {
+                label.hidden = true;
+            }
+        }
+    }
+
     async function submitTestCaseMultipart(testCase, imageFile, submitPassKey) {
         const form = new FormData();
         form.append("testCase", JSON.stringify(testCase));
@@ -1629,7 +1650,7 @@
         controls.submitTestCase.disabled = true;
         try {
             const testCase = currentTestCaseObject();
-            const submitPassKey = controls.submitPassKey ? controls.submitPassKey.value.trim() : "";
+            const submitPassKey = configuredSubmitPassKey();
             const response = state.testCaseImageFile ?
                 await submitTestCaseMultipart(testCase, state.testCaseImageFile, submitPassKey) :
                 await submitTestCaseJson(testCase, submitPassKey);
@@ -11541,6 +11562,9 @@ end
     });
     if (controls.localTestCaseTools) {
         controls.localTestCaseTools.hidden = !TEST_CASES_ENABLED;
+    }
+    if (TEST_CASES_ENABLED) {
+        initializeSubmitPassKey();
     }
     if (TEST_CASES_ENABLED && controls.submitTestCase) {
         controls.submitTestCase.addEventListener("click", () => {

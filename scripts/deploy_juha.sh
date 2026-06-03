@@ -12,6 +12,7 @@ app_url=${AIDA_DEPLOY_APP_URL:-https://juha.no/aida/js/app.js}
 api_port=${AIDA_DEPLOY_API_PORT:-8790}
 json_body_limit=${AIDA_DEPLOY_JSON_BODY_LIMIT:-134217728}
 image_body_limit=${AIDA_DEPLOY_IMAGE_BODY_LIMIT:-67108864}
+config_file=${AIDA_DEPLOY_BROWSER_CONFIG_FILE:-js/aida_config.js}
 
 rsync_excludes=(
     --exclude=.git
@@ -36,6 +37,7 @@ Environment overrides:
   AIDA_DEPLOY_API_PORT     default: $api_port
   AIDA_DEPLOY_JSON_BODY_LIMIT default: $json_body_limit
   AIDA_DEPLOY_IMAGE_BODY_LIMIT default: $image_body_limit
+  AIDA_DEPLOY_BROWSER_CONFIG_FILE default: $config_file
 EOF
 }
 
@@ -103,6 +105,23 @@ if [ "$dry_run" -eq 1 ]; then
     echo "Dry run complete; not restarting or verifying."
     exit 0
 fi
+
+echo "Installing browser submit config on $remote..."
+ssh -o BatchMode=yes "$remote" \
+    "set -eu
+     install_config() {
+         target=\"\$1\"
+         sudo -n mkdir -p \"\$(dirname \"\$target\")\"
+         sudo -n bash -c '
+             set -a
+             . /etc/wisc-aida-api.env
+             set +a
+             node -e \"process.stdout.write(\\\"window.WISC_AIDA_CONFIG = \\\" + JSON.stringify({submitPassKey: process.env.AIDA_SUBMIT_PASSKEY || \\\"\\\"}) + \\\";\\\\n\\\")\" > \"\$1\"
+         ' -- \"\$target\"
+         sudo -n chmod 0644 \"\$target\"
+     }
+     install_config '${live_dir}/${config_file}'
+     install_config '${mirror_dir}/${config_file}'"
 
 if [ "$skip_restart" -eq 0 ]; then
     echo "Restarting $service on $remote..."
