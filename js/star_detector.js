@@ -18,7 +18,14 @@
         return sorted.length % 2 ? sorted[mid] : 0.5 * (sorted[mid - 1] + sorted[mid]);
     }
 
+    function isFloatPixelData(data) {
+        return data && data.constructor && data.constructor.name === "Float32Array";
+    }
+
     function grayAt(data, width, x, y) {
+        if (isFloatPixelData(data)) {
+            return data[y * width + x];
+        }
         const k = 4 * (y * width + x);
         return 0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2];
     }
@@ -36,7 +43,7 @@
                 }
                 if (neighbor === value) {
                     equal += 1;
-                    if (value < 250) {
+                    if (isFloatPixelData(data) || value < 250) {
                         continue;
                     }
                     // Saturated stars often form a small flat-topped plateau. Keep one
@@ -50,7 +57,7 @@
                 }
             }
         }
-        return value >= 250 || equal <= 1;
+        return !isFloatPixelData(data) && value >= 250 || equal <= 1;
     }
 
     function weightedCentroid(pixelData, cx, cy, radius, background, maskPredicate = null) {
@@ -242,6 +249,7 @@
         let myy = 0;
         let mxy = 0;
         let saturated = 0;
+        const countSaturated = !isFloatPixelData(data);
         const coreRadius2 = Math.pow(Math.max(1.1, Math.min(1.8, radius * 0.38)), 2);
         const outerRadius2 = Math.pow(Math.max(1.8, radius * 0.62), 2);
         const shoulderInner2 = Math.pow(1.4, 2);
@@ -274,7 +282,7 @@
                 mxx += w * dx * dx;
                 myy += w * dy * dy;
                 mxy += w * dx * dy;
-                if (sample >= 252) {
+                if (countSaturated && sample >= 252) {
                     saturated += 1;
                 }
             }

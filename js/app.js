@@ -121,7 +121,6 @@
         brownP1: document.getElementById("brownP1"),
         brownP2: document.getElementById("brownP2"),
         luckyFit: document.getElementById("luckyFit"),
-        luckyFit2: document.getElementById("luckyFit2"),
         fitLens: document.getElementById("fitLens"),
         fitLensLm: document.getElementById("fitLensLm"),
         closeAssociateFit: document.getElementById("closeAssociateFit"),
@@ -149,6 +148,7 @@
         image: null,
         texture: null,
         imagePixels: null,
+        imageFloatPixels: null,
         displayPixels: null,
         highPassCacheKey: "",
         imageName: "",
@@ -868,11 +868,12 @@
 
     function detectAndApplyFisheyeInitialGuess(name, exifMetadata = null) {
         state.fisheyeDetection = null;
-        if (!state.imagePixels || metadataLooksLikeIphone(exifMetadata) ||
+        const pixels = processingImagePixels();
+        if (!pixels || metadataLooksLikeIphone(exifMetadata) ||
                 typeof AidaTools.detectFisheyeAnnulus !== "function") {
             return null;
         }
-        const detection = AidaTools.detectFisheyeAnnulus(state.imagePixels, {
+        const detection = AidaTools.detectFisheyeAnnulus(pixels, {
             filename: name,
             alpha: 0.46,
         });
@@ -4548,7 +4549,8 @@ end
     }
 
     function imageGray(x, y) {
-        if (!state.imagePixels) {
+        const pixels = processingImagePixels();
+        if (!pixels) {
             return 0;
         }
         const ix = Math.max(0, Math.min(state.image.width - 1, Math.round(x)));
@@ -4556,8 +4558,11 @@ end
         if (isMaskedImagePixel(ix, iy)) {
             return 0;
         }
+        const data = pixels.data;
+        if (data && data.constructor && data.constructor.name === "Float32Array") {
+            return data[iy * state.image.width + ix];
+        }
         const k = 4 * (iy * state.image.width + ix);
-        const data = state.imagePixels.data;
         return 0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2];
     }
 
@@ -4589,8 +4594,15 @@ end
         if (isMaskedImagePixel(ix, iy)) {
             return 0;
         }
+        const pixels = processingImagePixels();
+        if (!pixels || !pixels.data) {
+            return 0;
+        }
+        const data = pixels.data;
+        if (data.constructor && data.constructor.name === "Float32Array") {
+            return data[iy * state.image.width + ix];
+        }
         const k = 4 * (iy * state.image.width + ix);
-        const data = state.imagePixels.data;
         return 0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2];
     }
 
@@ -4675,9 +4687,6 @@ end
         controls.fitLens.disabled = disabled;
         controls.fitLensLm.disabled = disabled;
         controls.luckyFit.disabled = disabled;
-        if (controls.luckyFit2) {
-            controls.luckyFit2.disabled = disabled;
-        }
         if (controls.closeAssociateFit) {
             controls.closeAssociateFit.disabled = disabled;
         }
@@ -5095,12 +5104,13 @@ end
     async function tuneStarDetectorForImage(loadId = state.imageLoadId) {
         state.autoDetectorOptions = null;
         state.autoDetectorStatus = "detector tuning: not run";
-        if (!state.imagePixels || !state.image || !window.AidaStarDetector) {
+        const pixels = processingImagePixels();
+        if (!pixels || !state.image || !window.AidaStarDetector) {
             return null;
         }
         setLoadingProgress(88, "Optimizing star detector settings...");
         let lastProgress = 0;
-        const result = await window.AidaStarDetector.detectBrightStars(state.imagePixels, {
+        const result = await window.AidaStarDetector.detectBrightStars(pixels, {
             maxDetections: 160,
             scanStep: state.image.width * state.image.height >= 8000000 ? 2 : 1,
             thresholdSigma: 1.25,
@@ -5142,7 +5152,8 @@ end
         state.detectedStars = [];
         state.autoMatches = [];
         state.deletedDetectionIds = new Set();
-        if (!state.imagePixels || !state.image || !window.AidaStarDetector) {
+        const pixels = processingImagePixels();
+        if (!pixels || !state.image || !window.AidaStarDetector) {
             state.detectorCache = null;
             state.detectorStatus = "fast detector: image readback unavailable";
             return [];
@@ -5157,7 +5168,7 @@ end
             x >= regionBounds.x0 && x <= regionBounds.x1 &&
             y >= regionBounds.y0 && y <= regionBounds.y1;
         const tunedRest = applyImageDetectorTuning(detectorRest);
-        const result = await window.AidaStarDetector.detectBrightStars(state.imagePixels, {
+        const result = await window.AidaStarDetector.detectBrightStars(pixels, {
             maxDetections,
             ...tunedRest,
             maskPredicate: (x, y) =>
@@ -5841,6 +5852,12 @@ end
         const width = state.image.width;
         const height = state.image.height;
         const data = state.imagePixels.data;
+        const floatData = state.imageFloatPixels &&
+            state.imageFloatPixels.data &&
+            state.imageFloatPixels.data.constructor &&
+            state.imageFloatPixels.data.constructor.name === "Float32Array" ?
+            state.imageFloatPixels.data :
+            null;
         const x0 = Math.max(0, cx - r);
         const x1 = Math.min(width - 1, cx + r);
         const y0 = Math.max(0, cy - r);
@@ -5857,6 +5874,9 @@ end
                 data[k + 1] = 0;
                 data[k + 2] = 0;
                 data[k + 3] = 255;
+                if (floatData) {
+                    floatData[y * width + x] = 0;
+                }
             }
         }
         state.maskRegions.push({x: cx, y: cy, radius: r});
@@ -7264,9 +7284,6 @@ end
         }
         state.autoIdentifyBusy = true;
         controls.luckyFit.disabled = true;
-        if (controls.luckyFit2) {
-            controls.luckyFit2.disabled = true;
-        }
         controls.fitLens.disabled = true;
         controls.fitLensLm.disabled = true;
         if (controls.closeAssociateFit) {
@@ -7373,9 +7390,6 @@ end
         } finally {
             hideLoadingProgress();
             controls.luckyFit.disabled = false;
-            if (controls.luckyFit2) {
-                controls.luckyFit2.disabled = false;
-            }
             controls.fitLens.disabled = false;
             controls.fitLensLm.disabled = false;
             if (controls.closeAssociateFit) {
@@ -8468,9 +8482,6 @@ end
         }
         state.luckyFitBusy = true;
         controls.luckyFit.disabled = true;
-        if (controls.luckyFit2) {
-            controls.luckyFit2.disabled = true;
-        }
         controls.fitLens.disabled = true;
         controls.fitLensLm.disabled = true;
         state.asterismEdges = [];
@@ -8742,9 +8753,6 @@ end
         } finally {
             hideLoadingProgress();
             controls.luckyFit.disabled = false;
-            if (controls.luckyFit2) {
-                controls.luckyFit2.disabled = false;
-            }
             controls.fitLens.disabled = false;
             controls.fitLensLm.disabled = false;
             if (controls.closeAssociateFit) {
@@ -8770,9 +8778,6 @@ end
         }
         state.luckyFitBusy = true;
         controls.luckyFit.disabled = true;
-        if (controls.luckyFit2) {
-            controls.luckyFit2.disabled = true;
-        }
         controls.fitLens.disabled = true;
         controls.fitLensLm.disabled = true;
         const optmod = Number(controls.optmod.value) || 2;
@@ -9667,9 +9672,6 @@ end
         } finally {
             hideLoadingProgress();
             controls.luckyFit.disabled = false;
-            if (controls.luckyFit2) {
-                controls.luckyFit2.disabled = false;
-            }
             controls.fitLens.disabled = false;
             controls.fitLensLm.disabled = false;
             if (controls.closeAssociateFit) {
@@ -9800,6 +9802,7 @@ end
         state.lastJunkStarFinderPoint = null;
         state.detectedStars = [];
         state.currentImageMetadata = null;
+        state.imageFloatPixels = null;
         state.fisheyeDetection = null;
         state.deletedDetectionIds = new Set();
         state.autoMatches = [];
@@ -9820,9 +9823,6 @@ end
         state.lastLensEquation = "";
         controls.optmod.value = "2";
         controls.luckyFit.disabled = false;
-        if (controls.luckyFit2) {
-            controls.luckyFit2.disabled = false;
-        }
         controls.fitLens.disabled = false;
         controls.fitLensLm.disabled = false;
         if (controls.submitTestCase) {
@@ -9894,7 +9894,45 @@ end
         return applied;
     }
 
-    function loadImageSource(url, name, onLoaded = null, revokeWhenLoaded = false, exifMetadata = null, metadataName = name) {
+    function floatPixelsFromImageData(imageData) {
+        const width = Number(imageData && imageData.width) || 0;
+        const height = Number(imageData && imageData.height) || 0;
+        const src = imageData && imageData.data;
+        const data = new Float32Array(width * height);
+        let low = Infinity;
+        let high = -Infinity;
+        for (let i = 0; i < data.length; i += 1) {
+            const k = i * 4;
+            const value = src && k + 2 < src.length ?
+                0.2126 * src[k] + 0.7152 * src[k + 1] + 0.0722 * src[k + 2] :
+                0;
+            data[i] = value;
+            if (Number.isFinite(value)) {
+                low = Math.min(low, value);
+                high = Math.max(high, value);
+            }
+        }
+        return {
+            data,
+            width,
+            height,
+            dataRange: {low, high},
+        };
+    }
+
+    function processingImagePixels() {
+        return state.imageFloatPixels || state.imagePixels;
+    }
+
+    function loadImageSource(
+        url,
+        name,
+        onLoaded = null,
+        revokeWhenLoaded = false,
+        exifMetadata = null,
+        metadataName = name,
+        floatPixels = null,
+    ) {
         const loadId = ++state.imageLoadId;
         const img = new Image();
         setLoadingProgress(8, `Loading ${name}...`);
@@ -9935,10 +9973,12 @@ end
                 imageContext.drawImage(img, 0, 0);
                 try {
                     state.imagePixels = imageContext.getImageData(0, 0, img.width, img.height);
+                    state.imageFloatPixels = floatPixels || floatPixelsFromImageData(state.imagePixels);
                     setLoadingProgress(50, "Adjusting brightness and contrast...");
                     autoAdjustDisplayStretch();
                 } catch (error) {
                     state.imagePixels = null;
+                    state.imageFloatPixels = null;
                     controls.brightness.value = "0.06";
                     controls.contrast.value = "1.00";
                     state.fitMessage = `image pixel readback unavailable for ${name}; display still works, centroid picking disabled`;
@@ -10090,6 +10130,13 @@ end
             return {
                 blob,
                 displayName: file.name.replace(/\.(fits|fit|fts)$/i, ".png"),
+                floatPixels: {
+                    data: parsed.floatPixels,
+                    width: parsed.width,
+                    height: parsed.height,
+                    dataRange: parsed.dataRange,
+                    stretch: parsed.stretch,
+                },
                 metadata: {
                     ...parsed.metadata,
                     fitsHeader: parsed.header,
@@ -10146,7 +10193,7 @@ end
                 if (display.message) {
                     state.fitMessage = state.fitMessage ? `${state.fitMessage}; ${display.message}` : display.message;
                 }
-            }, false, metadata, file.name);
+            }, false, metadata, file.name, display.floatPixels || null);
         } catch (error) {
             state.fitMessage = `image load failed: ${file.name}; ${error.message || error}`;
             hideLoadingProgress();
@@ -11094,12 +11141,6 @@ end
         playInteractionSound("fit");
         feelingLuckyFit();
     });
-    if (controls.luckyFit2) {
-        controls.luckyFit2.addEventListener("click", () => {
-            playInteractionSound("fit");
-            feelingLuckyFit2();
-        });
-    }
     controls.toggleAmbientMusic.addEventListener("click", toggleAmbientMusic);
     controls.toggleFitResiduals.addEventListener("click", toggleFitResiduals);
     function moveStarPickingLegend(clientX, clientY) {

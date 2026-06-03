@@ -138,15 +138,6 @@
         throw new Error(`unsupported FITS BITPIX ${bitpix}`);
     }
 
-    function percentile(values, fraction) {
-        if (!values.length) {
-            return NaN;
-        }
-        const sorted = values.slice().sort((a, b) => a - b);
-        const idx = Math.max(0, Math.min(sorted.length - 1, Math.floor(fraction * (sorted.length - 1))));
-        return sorted[idx];
-    }
-
     function fitsHeaderNumber(header, keys) {
         for (const key of keys) {
             const value = Number(header[key]);
@@ -194,7 +185,7 @@
         const readPixel = fitsPixelReader(view, bitpix);
         const bscale = Number.isFinite(Number(header.BSCALE)) ? Number(header.BSCALE) : 1;
         const bzero = Number.isFinite(Number(header.BZERO)) ? Number(header.BZERO) : 0;
-        const integrated = new Float64Array(planePixels);
+        const integrated = new Float32Array(planePixels);
         let byteOffset = 0;
         for (let frame = 0; frame < frameCount; frame += 1) {
             for (let i = 0; i < planePixels; i += 1) {
@@ -203,23 +194,22 @@
             }
         }
 
-        const sampleStep = Math.max(1, Math.floor(integrated.length / 50000));
-        const samples = [];
-        for (let i = 0; i < integrated.length; i += sampleStep) {
+        let dataLow = Infinity;
+        let dataHigh = -Infinity;
+        for (let i = 0; i < integrated.length; i += 1) {
             const value = integrated[i];
             if (Number.isFinite(value)) {
-                samples.push(value);
+                dataLow = Math.min(dataLow, value);
+                dataHigh = Math.max(dataHigh, value);
             }
         }
-        let lo = Number.isFinite(options.low) ? Number(options.low) : percentile(samples, 0.005);
-        let hi = Number.isFinite(options.high) ? Number(options.high) : percentile(samples, 0.995);
-        if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
-            lo = Math.min(...samples);
-            hi = Math.max(...samples);
-        }
-        if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) {
+        let lo = Number.isFinite(options.low) ? Number(options.low) : dataLow;
+        let hi = Number.isFinite(options.high) ? Number(options.high) : dataHigh;
+        if (!Number.isFinite(lo) || !Number.isFinite(hi)) {
             lo = 0;
             hi = 1;
+        } else if (hi <= lo) {
+            hi = lo + Math.max(1, Math.abs(lo) * 1e-6);
         }
         const scale = 255 / (hi - lo);
         const rgba = new Uint8ClampedArray(planePixels * 4);
@@ -255,8 +245,10 @@
             width,
             height,
             frameCount,
+            floatPixels: integrated,
             imageData,
             metadata,
+            dataRange: {low: dataLow, high: dataHigh},
             stretch: {low: lo, high: hi},
         };
     }
@@ -554,6 +546,10 @@
         const data = imageData && imageData.data;
         const ix = Math.max(0, Math.min(width - 1, Math.round(x)));
         const iy = Math.max(0, Math.min(height - 1, Math.round(y)));
+        if (data && data.constructor && data.constructor.name === "Float32Array") {
+            const i = iy * width + ix;
+            return i < data.length ? data[i] : 0;
+        }
         const k = 4 * (iy * width + ix);
         if (!data || k + 2 >= data.length) {
             return 0;

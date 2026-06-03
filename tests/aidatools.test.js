@@ -17,6 +17,7 @@ function loadAidaTools() {
         window: {},
         ArrayBuffer,
         DataView,
+        Float32Array,
         Math,
         Uint8Array,
         Date,
@@ -79,6 +80,44 @@ function makeSyntheticFits() {
     const data = Buffer.alloc(2880, 0);
     [1, 2, 3, 4, 10, 20, 30, 40].forEach((value, index) => {
         data.writeInt16BE(value, index * 2);
+    });
+    return Buffer.concat([Buffer.from(headerText, "ascii"), data]);
+}
+
+function makeUnsigned16Fits() {
+    const cards = [
+        fitsCard("SIMPLE", "T"),
+        fitsCard("BITPIX", "16"),
+        fitsCard("NAXIS", "2"),
+        fitsCard("NAXIS1", "2"),
+        fitsCard("NAXIS2", "2"),
+        fitsCard("BSCALE", "1"),
+        fitsCard("BZERO", "32768"),
+        fitsCard("END"),
+    ];
+    const headerText = cards.join("").padEnd(2880, " ");
+    const data = Buffer.alloc(2880, 0);
+    [0, 32768, 49152, 65535].forEach((value, index) => {
+        data.writeInt16BE(value - 32768, index * 2);
+    });
+    return Buffer.concat([Buffer.from(headerText, "ascii"), data]);
+}
+
+function makeConstant16Fits(value) {
+    const cards = [
+        fitsCard("SIMPLE", "T"),
+        fitsCard("BITPIX", "16"),
+        fitsCard("NAXIS", "2"),
+        fitsCard("NAXIS1", "2"),
+        fitsCard("NAXIS2", "2"),
+        fitsCard("BSCALE", "1"),
+        fitsCard("BZERO", "0"),
+        fitsCard("END"),
+    ];
+    const headerText = cards.join("").padEnd(2880, " ");
+    const data = Buffer.alloc(2880, 0);
+    [value, value, value, value].forEach((pixel, index) => {
+        data.writeInt16BE(pixel, index * 2);
     });
     return Buffer.concat([Buffer.from(headerText, "ascii"), data]);
 }
@@ -493,6 +532,8 @@ test("FITS parser integrates multiple image frames into one grayscale image", ()
     assert.equal(parsed.height, 2);
     assert.equal(parsed.frameCount, 2);
     assert.equal(parsed.header.BITPIX, 16);
+    assert.ok(parsed.floatPixels instanceof Float32Array);
+    assert.deepEqual(Array.from(parsed.floatPixels), [11, 22, 33, 44]);
     assert.equal(parsed.metadata.timestampUtc.toISOString(), "2026-05-28T12:34:56.000Z");
     assert.equal(parsed.metadata.latDeg, 68.35555);
     assert.equal(parsed.metadata.lonDeg, 18.81958);
@@ -506,6 +547,35 @@ test("FITS parser integrates multiple image frames into one grayscale image", ()
         assert.equal(parsed.imageData.data[i + 3], 255);
     }
     assert.deepEqual(gray, [0, 85, 170, 255]);
+});
+
+test("FITS parser preserves unsigned 16-bit range and display normalizes without clipping", () => {
+    const parsed = AidaTools.parseFitsImage(bufferToArrayBuffer(makeUnsigned16Fits()));
+    assert.ok(parsed.floatPixels instanceof Float32Array);
+    assert.deepEqual(Array.from(parsed.floatPixels), [0, 32768, 49152, 65535]);
+    assert.equal(parsed.dataRange.low, 0);
+    assert.equal(parsed.dataRange.high, 65535);
+    assert.equal(parsed.stretch.low, 0);
+    assert.equal(parsed.stretch.high, 65535);
+
+    const gray = [];
+    for (let i = 0; i < parsed.imageData.data.length; i += 4) {
+        gray.push(parsed.imageData.data[i]);
+    }
+    assert.deepEqual(gray, [0, 128, 191, 255]);
+});
+
+test("FITS parser displays flat frames without clipping high constants", () => {
+    const parsed = AidaTools.parseFitsImage(bufferToArrayBuffer(makeConstant16Fits(12345)));
+    assert.deepEqual(Array.from(parsed.floatPixels), [12345, 12345, 12345, 12345]);
+    assert.equal(parsed.dataRange.low, 12345);
+    assert.equal(parsed.dataRange.high, 12345);
+    assert.equal(parsed.stretch.low, 12345);
+    assert.ok(parsed.stretch.high > parsed.stretch.low);
+    for (let i = 0; i < parsed.imageData.data.length; i += 4) {
+        assert.equal(parsed.imageData.data[i], 0);
+        assert.equal(parsed.imageData.data[i + 3], 255);
+    }
 });
 
 test("FITS parser loads cropped ALIS and ALIS4D fixture files", () => {
