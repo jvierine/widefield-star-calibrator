@@ -867,6 +867,20 @@ function syntheticFloatImage(width, height, background = 12) {
     return {width, height, data, addGaussian};
 }
 
+function floatImageFromGrayImage(image) {
+    const data = new Float32Array(image.width * image.height);
+    let low = Infinity;
+    let high = -Infinity;
+    for (let i = 0; i < data.length; i += 1) {
+        const k = i * 4;
+        const value = 0.2126 * image.data[k] + 0.7152 * image.data[k + 1] + 0.0722 * image.data[k + 2];
+        data[i] = value;
+        low = Math.min(low, value);
+        high = Math.max(high, value);
+    }
+    return {width: image.width, height: image.height, data, dataRange: {low, high}};
+}
+
 function skyPlaneYaleStars(maxMag = 4.0) {
     return AidaTools.visibleStars(YaleCatalog, DATE, LAT_DEG, LON_DEG, maxMag, 88)
         .map((star, index) => {
@@ -1200,6 +1214,24 @@ test("star detector accepts Float32Array processing images", async () => {
     assert.ok(result.detections.length >= 1);
     assert.ok(Math.hypot(result.detections[0].x - 42, result.detections[0].y - 31) < 2);
     assert.ok(result.detections[0].peakValue > 1000);
+});
+
+test("star detector keeps saturated plateaus in Float32Array display-derived images", async () => {
+    const rgba = syntheticGrayImage(96, 64, 20);
+    rgba.addGaussian(42, 31, 1.1, 1.1, 500);
+    const image = floatImageFromGrayImage(rgba);
+    const result = await StarDetector.detectBrightStars(image, {
+        maxDetections: 3,
+        thresholdSigma: 1.5,
+        localThresholdSigma: 1.5,
+        requireGlobalThreshold: false,
+        maxRadiusPx: 5,
+        maxElongation: 10,
+        suppressionRadiusPx: 5,
+    });
+    assert.ok(result.detections.length >= 1);
+    assert.ok(Math.hypot(result.detections[0].x - 42, result.detections[0].y - 31) < 2);
+    assert.ok(result.detections[0].saturated > 0);
 });
 
 test("star detector oracle metric rewards true compact detections and penalizes false positives", async () => {

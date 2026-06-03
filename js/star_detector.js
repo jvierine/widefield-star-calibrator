@@ -30,7 +30,36 @@
         return 0.2126 * data[k] + 0.7152 * data[k + 1] + 0.0722 * data[k + 2];
     }
 
-    function isStrictLocalMaximum(data, width, x, y, value) {
+    function imageHighValue(pixelData) {
+        const rangeHigh = pixelData && pixelData.dataRange && Number(pixelData.dataRange.high);
+        if (Number.isFinite(rangeHigh)) {
+            return rangeHigh;
+        }
+        const data = pixelData && pixelData.data;
+        if (!isFloatPixelData(data)) {
+            return 255;
+        }
+        let high = -Infinity;
+        for (let i = 0; i < data.length; i += 1) {
+            const value = data[i];
+            if (Number.isFinite(value) && value > high) {
+                high = value;
+            }
+        }
+        return Number.isFinite(high) ? high : 255;
+    }
+
+    function saturatedThreshold(pixelData) {
+        const high = imageHighValue(pixelData);
+        if (high <= 255) {
+            return Math.min(252, high);
+        }
+        return high - Math.max(1e-6, Math.abs(high) * 1e-6);
+    }
+
+    function isStrictLocalMaximum(pixelData, x, y, value, saturationThreshold) {
+        const width = pixelData.width;
+        const data = pixelData.data;
         let equal = 0;
         for (let dy = -1; dy <= 1; dy += 1) {
             for (let dx = -1; dx <= 1; dx += 1) {
@@ -43,7 +72,7 @@
                 }
                 if (neighbor === value) {
                     equal += 1;
-                    if (isFloatPixelData(data) || value < 250) {
+                    if (value < saturationThreshold) {
                         continue;
                     }
                     // Saturated stars often form a small flat-topped plateau. Keep one
@@ -57,7 +86,7 @@
                 }
             }
         }
-        return !isFloatPixelData(data) && value >= 250 || equal <= 1;
+        return value >= saturationThreshold || equal <= 1;
     }
 
     function weightedCentroid(pixelData, cx, cy, radius, background, maskPredicate = null) {
@@ -235,7 +264,7 @@
         return weighted / Math.max(1, sigma) / norm;
     }
 
-    function apertureShape(pixelData, cx, cy, radius, background, maskPredicate = null) {
+    function apertureShape(pixelData, cx, cy, radius, background, saturationThreshold, maskPredicate = null) {
         const width = pixelData.width;
         const height = pixelData.height;
         const data = pixelData.data;
@@ -249,7 +278,6 @@
         let myy = 0;
         let mxy = 0;
         let saturated = 0;
-        const countSaturated = !isFloatPixelData(data);
         const coreRadius2 = Math.pow(Math.max(1.1, Math.min(1.8, radius * 0.38)), 2);
         const outerRadius2 = Math.pow(Math.max(1.8, radius * 0.62), 2);
         const shoulderInner2 = Math.pow(1.4, 2);
@@ -282,7 +310,7 @@
                 mxx += w * dx * dx;
                 myy += w * dy * dy;
                 mxy += w * dx * dy;
-                if (countSaturated && sample >= 252) {
+                if (sample >= saturationThreshold) {
                     saturated += 1;
                 }
             }
@@ -353,6 +381,7 @@
         const cellsX = Math.ceil(width / cellSize);
         const cellsY = Math.ceil(height / cellSize);
         const cellPeaks = Array.from({length: cellsX * cellsY}, () => ({value: -Infinity, x: 0, y: 0}));
+        const saturationThreshold = saturatedThreshold(pixelData);
         const useSpatialBackground = options.useSpatialBackground === true;
         await maybeYield(
             options,
@@ -399,7 +428,7 @@
                     (Number.isFinite(options.scanThresholdSigma) ? options.scanThresholdSigma : 0.5) * localSigmaForScan
                 );
                 if (value < Math.max(scanThreshold, localScanThreshold) ||
-                        !isStrictLocalMaximum(data, width, x, y, value)) {
+                        !isStrictLocalMaximum(pixelData, x, y, value, saturationThreshold)) {
                     continue;
                 }
                 const scanMatchedSnr = matchedFilterSnr(
@@ -519,7 +548,7 @@
             }
             const cx = Math.round(centroid.x);
             const cy = Math.round(centroid.y);
-            const shape = apertureShape(pixelData, cx, cy, apertureRadius, localBackground, maskPredicate);
+            const shape = apertureShape(pixelData, cx, cy, apertureRadius, localBackground, saturationThreshold, maskPredicate);
             if (!shape || shape.radius < 0.25 || shape.radius > maxRadius ||
                     shape.elongation > maxElongation || shape.saturated > maxSaturated) {
                 rejectCounts.nonStarShape += 1;
