@@ -103,12 +103,12 @@
         return {header, cards, dataOffset};
     }
 
-    function fitsPixelReader(view, bitpix) {
+    function fitsPixelReader(view, bitpix, littleEndian = false) {
         if (bitpix === 8) {
             return offset => view.getUint8(offset);
         }
         if (bitpix === 16) {
-            return offset => view.getInt16(offset, false);
+            return offset => view.getInt16(offset, littleEndian);
         }
         if (bitpix === 32) {
             return offset => view.getInt32(offset, false);
@@ -120,6 +120,51 @@
             return offset => view.getFloat64(offset, false);
         }
         throw new Error(`unsupported FITS BITPIX ${bitpix}`);
+    }
+
+    function fitsEndianDifferenceScore(view, width, height, frameCount, littleEndian) {
+        const readPixel = offset => view.getInt16(offset, littleEndian);
+        const sampleStride = Math.max(1, Math.ceil(Math.sqrt(width * height * frameCount / 50000)));
+        const frameBytes = width * height * 2;
+        let score = 0;
+        let count = 0;
+        for (let frame = 0; frame < frameCount; frame += 1) {
+            const frameOffset = frame * frameBytes;
+            for (let y = 0; y < height; y += sampleStride) {
+                const rowOffset = frameOffset + y * width * 2;
+                for (let x = 0; x < width; x += sampleStride) {
+                    const offset = rowOffset + x * 2;
+                    const value = readPixel(offset);
+                    if (!Number.isFinite(value)) {
+                        continue;
+                    }
+                    if (x + 1 < width) {
+                        const right = readPixel(offset + 2);
+                        if (Number.isFinite(right)) {
+                            score += Math.abs(value - right);
+                            count += 1;
+                        }
+                    }
+                    if (y + 1 < height) {
+                        const down = readPixel(offset + width * 2);
+                        if (Number.isFinite(down)) {
+                            score += Math.abs(value - down);
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+        return {score: count > 0 ? score : Infinity, count};
+    }
+
+    function guessFits16LittleEndian(view, width, height, frameCount) {
+        const big = fitsEndianDifferenceScore(view, width, height, frameCount, false);
+        const little = fitsEndianDifferenceScore(view, width, height, frameCount, true);
+        if (Math.min(big.count, little.count) < 16) {
+            return false;
+        }
+        return little.score < big.score;
     }
 
     function fitsBytesPerPixel(bitpix) {
@@ -182,7 +227,8 @@
             throw new Error("FITS data section is shorter than expected");
         }
         const view = new DataView(buffer, dataOffset);
-        const readPixel = fitsPixelReader(view, bitpix);
+        const littleEndian = bitpix === 16 ? guessFits16LittleEndian(view, width, height, frameCount) : false;
+        const readPixel = fitsPixelReader(view, bitpix, littleEndian);
         const bscale = Number.isFinite(Number(header.BSCALE)) ? Number(header.BSCALE) : 1;
         const bzero = Number.isFinite(Number(header.BZERO)) ? Number(header.BZERO) : 0;
         const integrated = new Float32Array(planePixels);
@@ -250,6 +296,7 @@
             metadata,
             dataRange: {low: dataLow, high: dataHigh},
             stretch: {low: lo, high: hi},
+            fitsByteOrder: littleEndian ? "little-endian" : "big-endian",
         };
     }
 

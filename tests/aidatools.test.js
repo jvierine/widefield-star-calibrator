@@ -60,7 +60,7 @@ function fitsCard(key, value = null) {
     return text.padEnd(80, " ").slice(0, 80);
 }
 
-function makeSyntheticFits() {
+function makeSyntheticFits({littleEndian = false} = {}) {
     const cards = [
         fitsCard("SIMPLE", "T"),
         fitsCard("BITPIX", "16"),
@@ -79,8 +79,41 @@ function makeSyntheticFits() {
     const headerText = cards.join("").padEnd(2880, " ");
     const data = Buffer.alloc(2880, 0);
     [1, 2, 3, 4, 10, 20, 30, 40].forEach((value, index) => {
-        data.writeInt16BE(value, index * 2);
+        if (littleEndian) {
+            data.writeInt16LE(value, index * 2);
+        } else {
+            data.writeInt16BE(value, index * 2);
+        }
     });
+    return Buffer.concat([Buffer.from(headerText, "ascii"), data]);
+}
+
+function makeSmooth16Fits({littleEndian = false} = {}) {
+    const width = 8;
+    const height = 8;
+    const cards = [
+        fitsCard("SIMPLE", "T"),
+        fitsCard("BITPIX", "16"),
+        fitsCard("NAXIS", "2"),
+        fitsCard("NAXIS1", String(width)),
+        fitsCard("NAXIS2", String(height)),
+        fitsCard("BSCALE", "1"),
+        fitsCard("BZERO", "0"),
+        fitsCard("END"),
+    ];
+    const headerText = cards.join("").padEnd(2880, " ");
+    const data = Buffer.alloc(2880, 0);
+    for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+            const value = 1000 + x * 3 + y * 29;
+            const offset = (y * width + x) * 2;
+            if (littleEndian) {
+                data.writeInt16LE(value, offset);
+            } else {
+                data.writeInt16BE(value, offset);
+            }
+        }
+    }
     return Buffer.concat([Buffer.from(headerText, "ascii"), data]);
 }
 
@@ -532,6 +565,7 @@ test("FITS parser integrates multiple image frames into one grayscale image", ()
     assert.equal(parsed.height, 2);
     assert.equal(parsed.frameCount, 2);
     assert.equal(parsed.header.BITPIX, 16);
+    assert.equal(parsed.fitsByteOrder, "big-endian");
     assert.ok(parsed.floatPixels instanceof Float32Array);
     assert.deepEqual(Array.from(parsed.floatPixels), [11, 22, 33, 44]);
     assert.equal(parsed.metadata.timestampUtc.toISOString(), "2026-05-28T12:34:56.000Z");
@@ -576,6 +610,16 @@ test("FITS parser displays flat frames without clipping high constants", () => {
         assert.equal(parsed.imageData.data[i], 0);
         assert.equal(parsed.imageData.data[i + 3], 255);
     }
+});
+
+test("FITS parser chooses the smoother 16-bit byte order", () => {
+    const bigEndian = AidaTools.parseFitsImage(bufferToArrayBuffer(makeSmooth16Fits()));
+    const littleEndian = AidaTools.parseFitsImage(
+        bufferToArrayBuffer(makeSmooth16Fits({littleEndian: true})),
+    );
+    assert.equal(bigEndian.fitsByteOrder, "big-endian");
+    assert.equal(littleEndian.fitsByteOrder, "little-endian");
+    assert.deepEqual(Array.from(littleEndian.floatPixels.slice(0, 4)), [1000, 1003, 1006, 1009]);
 });
 
 test("FITS parser loads cropped ALIS and ALIS4D fixture files", () => {
