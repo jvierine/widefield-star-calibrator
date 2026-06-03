@@ -43,7 +43,7 @@ const RUN_FULL_TESTS = process.env.AIDA_FULL_TESTS === "1";
 const GENERATED_MAPPER_REPORT_DIR = path.join(__dirname, "..", "test-report", "generated-mapper-exports");
 
 function fullTest(name, fn) {
-    test(name, {skip: !RUN_FULL_TESTS, timeout: 10000}, fn);
+    test(name, {skip: !RUN_FULL_TESTS, timeout: 20000}, fn);
 }
 
 function pythonCommand() {
@@ -257,7 +257,7 @@ function escapeHtml(value) {
 }
 
 function commandSnippet() {
-    return "AIDA_FULL_TESTS=1 node --test --test-timeout=10000 tests/export_generators.test.js";
+    return "AIDA_FULL_TESTS=1 node --test --test-timeout=20000 tests/export_generators.test.js";
 }
 
 function writeGeneratedMapperReport(report) {

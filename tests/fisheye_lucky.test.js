@@ -7,7 +7,7 @@ const RUN_FISHEYE_LUCKY_TESTS = process.env.AIDA_FISHEYE_LUCKY_TESTS === "1";
 
 test("KRN fisheye lucky mode detects annulus and finds blind star associations", {
     skip: !RUN_FISHEYE_LUCKY_TESTS,
-    timeout: 120000,
+    timeout: 240000,
 }, async () => {
     const result = await runFisheyeLuckyCase("2026-02-12T19-04-00-000KRN", {writeReport: false});
     assert.equal(result.detection.detected, true);

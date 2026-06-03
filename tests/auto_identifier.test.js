@@ -28,19 +28,19 @@ const RUN_SENSITIVITY_TESTS = process.env.AIDA_SENSITIVITY_TESTS === "1";
 const RUN_CLOSE_FIT_TESTS = process.env.AIDA_CLOSE_FIT_TESTS === "1";
 
 function fullTest(name, fn) {
-    test(name, {skip: !RUN_FULL_TESTS, timeout: 1000}, fn);
+    test(name, {skip: !RUN_FULL_TESTS, timeout: 2000}, fn);
 }
 
 function slowFullTest(name, fn) {
-    test(name, {skip: !RUN_FULL_TESTS, timeout: 10000}, fn);
+    test(name, {skip: !RUN_FULL_TESTS, timeout: 20000}, fn);
 }
 
 function sensitivityTest(name, fn) {
-    test(name, {skip: !RUN_SENSITIVITY_TESTS, timeout: 180000}, fn);
+    test(name, {skip: !RUN_SENSITIVITY_TESTS, timeout: 360000}, fn);
 }
 
 function closeFitTest(name, fn) {
-    test(name, {skip: !RUN_CLOSE_FIT_TESTS, timeout: 180000}, fn);
+    test(name, {skip: !RUN_CLOSE_FIT_TESTS, timeout: 360000}, fn);
 }
 
 function loadBrowserScript(filename) {

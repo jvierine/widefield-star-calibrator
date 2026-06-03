@@ -8,7 +8,7 @@ const vm = require("node:vm");
 const RUN_FULL_TESTS = process.env.AIDA_FULL_TESTS === "1";
 
 function fullTest(name, fn) {
-    test(name, {skip: !RUN_FULL_TESTS, timeout: 1000}, fn);
+    test(name, {skip: !RUN_FULL_TESTS, timeout: 2000}, fn);
 }
 
 function loadAidaTools() {

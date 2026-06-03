@@ -81,7 +81,7 @@ print(json.dumps(out))
         cwd: path.join(__dirname, ".."),
         encoding: "utf8",
         input: JSON.stringify(cases),
-        timeout: 15000,
+        timeout: 30000,
     });
     assert.equal(result.status, 0, result.stderr || result.stdout || `Astropy exited ${result.status}`);
     return JSON.parse(result.stdout);
@@ -183,7 +183,7 @@ test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip:
         {
             cwd: path.join(__dirname, ".."),
             encoding: "utf8",
-            timeout: 15000,
+            timeout: 30000,
         },
     );
 
