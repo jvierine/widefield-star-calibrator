@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.7";
+    const APP_VERSION = "v0.3.8";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -5518,25 +5518,43 @@ end
         densityPopup.classList.add("visible");
         densityPopup.setAttribute("aria-hidden", "false");
         densityPopupSubtitle.textContent =
-            `selected x/y ${state.centroidPreview.x.toFixed(4)}, ${state.centroidPreview.y.toFixed(4)} px; ` +
-            `fine-grid value ${state.centroidDensity.selectedValue.toFixed(3)}`;
+            `x/y ${state.centroidPreview.x.toFixed(2)}, ${state.centroidPreview.y.toFixed(2)} ` +
+            `v ${state.centroidDensity.selectedValue.toFixed(2)}`;
         drawDensityPopup();
     }
 
     function positionDensityPopupAwayFromEvent(event) {
         const panel = canvas.parentElement.getBoundingClientRect();
-        const margin = 14;
-        const availableWidth = Math.max(220, panel.width - 2 * margin);
-        const availableHeight = Math.max(220, panel.height - 2 * margin);
-        const popupWidth = Math.min(440, Math.max(260, Math.min(availableWidth, panel.width * 0.34)));
-        const popupHeight = Math.min(360, Math.max(250, Math.min(availableHeight, panel.height * 0.38)));
+        const canvasRect = canvas.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        const vp = imageViewport();
+        const imageRect = {
+            left: canvasRect.left - panel.left + vp.x / dpr,
+            top: canvasRect.top - panel.top + vp.y / dpr,
+            width: vp.w / dpr,
+            height: vp.h / dpr,
+        };
+        const region = imageRect.width >= 180 && imageRect.height >= 150 ? imageRect : {
+            left: 0,
+            top: 0,
+            width: panel.width,
+            height: panel.height,
+        };
+        const margin = 8;
+        const availableWidth = Math.max(180, region.width - 2 * margin);
+        const availableHeight = Math.max(150, region.height - 2 * margin);
+        const popupHeight = Math.min(280, availableHeight);
+        const canvasAspect = densityCanvas.width / Math.max(1, densityCanvas.height);
+        const maxWidthForHeight = Math.max(180, (popupHeight - 42) * canvasAspect);
+        const popupWidth = Math.min(340, availableWidth, maxWidthForHeight,
+            Math.max(220, region.width * 0.46));
         let clickX = panel.width / 2;
         let clickY = panel.height / 2;
         if (event) {
             clickX = event.clientX - panel.left;
             clickY = event.clientY - panel.top;
         }
-        const protectedRadius = Math.max(110, Math.min(190, 0.16 * Math.hypot(panel.width, panel.height)));
+        const protectedRadius = Math.max(70, Math.min(140, 0.14 * Math.hypot(region.width, region.height)));
         const protectedRect = {
             left: clickX - protectedRadius,
             right: clickX + protectedRadius,
@@ -5551,13 +5569,18 @@ end
             return Math.max(0, right - left) * Math.max(0, bottom - top);
         };
         const candidates = [
-            {left: margin, top: margin},
-            {left: panel.width - popupWidth - margin, top: margin},
-            {left: margin, top: panel.height - popupHeight - margin},
-            {left: panel.width - popupWidth - margin, top: panel.height - popupHeight - margin},
+            {left: region.left + margin, top: region.top + margin},
+            {left: region.left + region.width - popupWidth - margin, top: region.top + margin},
+            {left: region.left + margin, top: region.top + region.height - popupHeight - margin},
+            {
+                left: region.left + region.width - popupWidth - margin,
+                top: region.top + region.height - popupHeight - margin,
+            },
         ].map(candidate => ({
-            left: Math.max(margin, Math.min(panel.width - popupWidth - margin, candidate.left)),
-            top: Math.max(margin, Math.min(panel.height - popupHeight - margin, candidate.top)),
+            left: Math.max(region.left + margin,
+                Math.min(region.left + region.width - popupWidth - margin, candidate.left)),
+            top: Math.max(region.top + margin,
+                Math.min(region.top + region.height - popupHeight - margin, candidate.top)),
         }));
         candidates.sort((a, b) => {
             const acx = a.left + popupWidth / 2;
@@ -5569,6 +5592,7 @@ end
             return bScore - aScore;
         });
         densityPopup.style.width = `${popupWidth}px`;
+        densityPopup.style.maxHeight = `${popupHeight}px`;
         densityPopup.style.left = `${candidates[0].left}px`;
         densityPopup.style.top = `${candidates[0].top}px`;
         densityPopup.style.right = "auto";
@@ -5583,13 +5607,13 @@ end
         }
         const w = densityCanvas.width;
         const h = densityCanvas.height;
-        const plot = {x0: 58, y0: 24, w: w - 86, h: h - 78};
+        const plot = {x0: 34, y0: 20, w: w - 52, h: h - 48};
         densityContext.clearRect(0, 0, w, h);
         densityContext.fillStyle = "#020617";
         densityContext.fillRect(0, 0, w, h);
         densityContext.fillStyle = "#dbeafe";
         densityContext.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-        densityContext.fillText("40x interpolated KDE contours", plot.x0, 16);
+        densityContext.fillText("40x KDE", plot.x0, 15);
 
         const sx = fineX => plot.x0 + (fineX / (density.width - 1)) * plot.w;
         const sy = fineY => plot.y0 + (fineY / (density.height - 1)) * plot.h;
@@ -5643,17 +5667,11 @@ end
         densityContext.stroke();
 
         densityContext.fillStyle = "rgba(15, 23, 42, 0.88)";
-        densityContext.fillRect(plot.x0, h - 46, plot.w, 30);
+        densityContext.fillRect(plot.x0, h - 24, plot.w, 16);
         densityContext.fillStyle = "#e5e7eb";
         densityContext.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
         densityContext.fillText(
-            `fine px (${density.selectedFineX}, ${density.selectedFineY}), value ${density.selectedValue.toFixed(3)}`,
-            plot.x0 + 8,
-            h - 27
-        );
-        densityContext.fillStyle = "#a7f3d0";
-        densityContext.fillText(
-            `image x/y ${selected.x.toFixed(4)}, ${selected.y.toFixed(4)}; bg ${density.background.toFixed(2)}; support ${density.gaussianSupportPx}`,
+            `x/y ${selected.x.toFixed(2)}, ${selected.y.toFixed(2)}  v ${density.selectedValue.toFixed(2)}`,
             plot.x0 + 8,
             h - 12
         );

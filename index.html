@@ -85,12 +85,12 @@
         <div id="densityPopup" class="density-popup" aria-hidden="true">
             <div class="density-popup-header">
                 <div>
-                    <div class="density-popup-title">Interpolated Star Density Estimate</div>
+                    <div class="density-popup-title">KDE Centroid</div>
                     <div id="densityPopupSubtitle" class="density-popup-subtitle"></div>
                 </div>
                 <button id="densityPopupClose" type="button" aria-label="Close density estimate">Close</button>
             </div>
-            <canvas id="densityCanvas" width="420" height="300"></canvas>
+            <canvas id="densityCanvas" width="320" height="220"></canvas>
         </div>
         <div class="hint" id="canvasHint">Drop or load a PNG/JPEG/HEIC/FITS calibration frame.</div>
         <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
@@ -284,6 +284,6 @@ window.MathJax = {
 <script src="js/yale_asterism_index.js?v=20260528a"></script>
 <script src="js/star_detector.js?v=20260603-float32-dynamic-range"></script>
 <script src="js/auto_identifier.js?v=20260526a"></script>
-<script src="js/app.js?v=0.3.10-float32-kde-centroid"></script>
+<script src="js/app.js?v=0.3.11-compact-kde-popup"></script>
 </body>
 </html>
