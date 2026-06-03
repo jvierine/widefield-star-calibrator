@@ -158,6 +158,8 @@
         highPassCacheKey: "",
         imageName: "",
         localImageUrl: null,
+        testCaseImageDataUrl: null,
+        testCaseImageName: "",
         baseOptpar: null,
         modelOptpar: null,
         loadedTestCaseId: "",
@@ -1455,7 +1457,7 @@
         return {
             id: caseId,
             title: `${caseId} manual browser calibration`,
-            image: state.imageName || "replace-with-image-file.png",
+            image: state.testCaseImageName || state.imageName || "replace-with-image-file.png",
             width: state.image ? state.image.width : null,
             height: state.image ? state.image.height : null,
             timestampUtc: date.toISOString(),
@@ -1554,6 +1556,22 @@
         });
     }
 
+    function blobDataUrl(blob) {
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    function submissionImageDataUrl() {
+        if (state.testCaseImageDataUrl) {
+            return Promise.resolve(state.testCaseImageDataUrl);
+        }
+        return imagePixelsPngDataUrl();
+    }
+
     async function submitCurrentTestCase() {
         if (!TEST_CASES_ENABLED) {
             return;
@@ -1574,7 +1592,7 @@
         controls.submitTestCase.disabled = true;
         try {
             const testCase = currentTestCaseObject();
-            const imageDataUrl = await imagePixelsPngDataUrl();
+            const imageDataUrl = await submissionImageDataUrl();
             const submitPassKey = controls.submitPassKey ? controls.submitPassKey.value.trim() : "";
             const response = await fetch("/api/test-cases", {
                 method: "POST",
@@ -1745,10 +1763,7 @@
             if (!response.ok) {
                 throw new Error(payload.error || "failed to load test case");
             }
-            resetForNewImage();
-            loadImageSource(payload.imageUrl, payload.testCase.image || `${id}.png`, () => {
-                restoreTestCaseState(payload.testCase);
-            }, false, null, payload.testCase.image || `${id}.png`);
+            await loadTestCaseImageSource(payload, id);
         } catch (error) {
             setSaveFeedback(`Load failed: ${error.message || error}`, true);
             state.fitMessage = `load test case failed: ${error.message || error}`;
@@ -1757,6 +1772,39 @@
             controls.loadTestCase.disabled = false;
             focusImageWindowSoon();
         }
+    }
+
+    async function loadTestCaseImageSource(payload, id) {
+        const imageName = payload.testCase.image || `${id}.png`;
+        resetForNewImage();
+        if (state.localImageUrl) {
+            URL.revokeObjectURL(state.localImageUrl);
+        }
+        if (isFitsFile({name: imageName, type: payload.testCase.imageMimeType || ""})) {
+            const imageResponse = await fetch(payload.imageUrl);
+            if (!imageResponse.ok) {
+                throw new Error("failed to load test case FITS image");
+            }
+            const sourceBlob = await imageResponse.blob();
+            const sourceFile = {
+                name: imageName,
+                type: sourceBlob.type || payload.testCase.imageMimeType || "application/fits",
+                arrayBuffer: () => sourceBlob.arrayBuffer(),
+            };
+            const buffer = await sourceFile.arrayBuffer();
+            const display = await displayBlobForImage(sourceFile, buffer);
+            const fitsSubmitDataUrl = await blobDataUrl(new Blob([buffer], {type: "application/fits"}));
+            state.localImageUrl = URL.createObjectURL(display.blob);
+            loadImageSource(state.localImageUrl, display.displayName, () => {
+                state.testCaseImageDataUrl = fitsSubmitDataUrl;
+                state.testCaseImageName = imageName;
+                restoreTestCaseState(payload.testCase);
+            }, false, payload.testCase, imageName, display.floatPixels || null);
+            return;
+        }
+        loadImageSource(payload.imageUrl, imageName, () => {
+            restoreTestCaseState(payload.testCase);
+        }, false, null, imageName);
     }
 
     function exportFunctionText(language = selectedExportLanguage()) {
@@ -9935,6 +9983,8 @@ end
         state.baseOptpar = null;
         state.activeOptmod = Number(controls.optmod.value) || 2;
         state.loadedTestCaseId = "";
+        state.testCaseImageDataUrl = null;
+        state.testCaseImageName = "";
         state.flipX = false;
         state.flipY = false;
         state.imageFlipX = false;
@@ -10369,8 +10419,15 @@ end
             const buffer = await file.arrayBuffer();
             const display = await displayBlobForImage(file, buffer);
             const metadata = mergeMetadata(await readImageMetadata(file, buffer), display.metadata);
+            const fitsSubmitDataUrl = isFitsFile(file) ?
+                await blobDataUrl(new Blob([buffer], {type: "application/fits"})) :
+                null;
             state.localImageUrl = URL.createObjectURL(display.blob);
             loadImageSource(state.localImageUrl, display.displayName, img => {
+                if (fitsSubmitDataUrl) {
+                    state.testCaseImageDataUrl = fitsSubmitDataUrl;
+                    state.testCaseImageName = file.name;
+                }
                 if (display.message) {
                     state.fitMessage = state.fitMessage ? `${state.fitMessage}; ${display.message}` : display.message;
                 }

@@ -16,6 +16,9 @@ const ALLOWED_IMAGE_TYPES = new Map([
     ["image/jpeg", {ext: ".jpg", signatures: [Buffer.from([0xff, 0xd8, 0xff])]}],
     ["image/heic", {ext: ".heic", signatures: []}],
     ["image/heif", {ext: ".heif", signatures: []}],
+    ["image/fits", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
+    ["application/fits", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
+    ["application/fits-image", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
 ]);
 
 function parseArgs(argv) {
@@ -77,6 +80,9 @@ function contentType(filename) {
         ".jpeg": "image/jpeg",
         ".heic": "image/heic",
         ".heif": "image/heif",
+        ".fits": "application/fits",
+        ".fit": "application/fits",
+        ".fts": "application/fits",
         ".svg": "image/svg+xml; charset=utf-8",
     }[ext] || "application/octet-stream";
 }
@@ -130,9 +136,9 @@ function assertStoragePath(testCaseDir, target) {
 }
 
 function imageInfoFromDataUrl(dataUrl) {
-    const match = String(dataUrl || "").match(/^data:(image\/(?:png|jpeg|heic|heif));base64,([A-Za-z0-9+/=\s]+)$/i);
+    const match = String(dataUrl || "").match(/^data:((?:image\/(?:png|jpeg|heic|heif|fits))|(?:application\/(?:fits|fits-image)));base64,([A-Za-z0-9+/=\s]+)$/i);
     if (!match) {
-        throw new Error("missing imageDataUrl; allowed types are PNG, JPEG, HEIC, and HEIF");
+        throw new Error("missing imageDataUrl; allowed types are PNG, JPEG, HEIC, HEIF, and FITS");
     }
     const mime = match[1].toLowerCase();
     const allowed = ALLOWED_IMAGE_TYPES.get(mime);
@@ -367,6 +373,7 @@ module.exports = {
     ALLOWED_IMAGE_TYPES,
     DEFAULT_TEST_CASE_DIR,
     MAX_IMAGE_BYTES,
+    contentType,
     imageInfoFromDataUrl,
     parseArgs,
     safeCaseId,
