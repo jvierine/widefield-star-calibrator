@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.3";
+    const APP_VERSION = "v0.3.4";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -151,6 +151,8 @@
         texture: null,
         imagePixels: null,
         imageFloatPixels: null,
+        baseDisplayPixels: null,
+        baseDisplayCacheKey: "",
         displayPixels: null,
         highPassCacheKey: "",
         imageName: "",
@@ -4646,8 +4648,7 @@ end
             return;
         }
         const values = [];
-        state.displayPixels = null;
-        state.highPassCacheKey = "";
+        invalidateDisplayPixelCaches();
         const stretchPixels = displayImagePixels() || state.imagePixels;
         const data = stretchPixels.data;
         const width = state.image.width;
@@ -5895,8 +5896,28 @@ end
         return out;
     }
 
-    function baseDisplayImageData() {
-        return state.imageFloatPixels ? floatPixelsToDisplayImageData(state.imageFloatPixels) : state.imagePixels;
+    function displayClipCacheValue() {
+        return Number(displayClipMax()).toPrecision(12);
+    }
+
+    function invalidateDisplayPixelCaches() {
+        state.baseDisplayPixels = null;
+        state.baseDisplayCacheKey = "";
+        state.displayPixels = null;
+        state.highPassCacheKey = "";
+    }
+
+    function baseDisplayImageData(clipKey = displayClipCacheValue()) {
+        if (!state.imageFloatPixels) {
+            return state.imagePixels;
+        }
+        const cacheKey = `${state.imageName}:${state.maskRegions.length}:${clipKey}`;
+        if (state.baseDisplayPixels && state.baseDisplayCacheKey === cacheKey) {
+            return state.baseDisplayPixels;
+        }
+        state.baseDisplayPixels = floatPixelsToDisplayImageData(state.imageFloatPixels);
+        state.baseDisplayCacheKey = cacheKey;
+        return state.baseDisplayPixels;
     }
 
     function highPassImageData(imageData, widthPx) {
@@ -5920,18 +5941,16 @@ end
 
     function displayImagePixels() {
         if (!state.imagePixels) {
-            state.displayPixels = null;
-            state.highPassCacheKey = "";
+            invalidateDisplayPixelCaches();
             return state.imagePixels;
         }
-        const basePixels = baseDisplayImageData();
+        const clipKey = displayClipCacheValue();
+        const basePixels = baseDisplayImageData(clipKey);
         if (!controls.highPassImage.checked) {
-            state.displayPixels = null;
-            state.highPassCacheKey = "";
             return basePixels;
         }
         const widthPx = Math.max(10, Math.min(300, Number(controls.highPassWidth.value) || 100));
-        const cacheKey = `${state.imageName}:${state.maskRegions.length}:${widthPx}:${displayClipMax()}`;
+        const cacheKey = `${state.imageName}:${state.maskRegions.length}:${widthPx}:${clipKey}`;
         if (state.displayPixels && state.highPassCacheKey === cacheKey) {
             return state.displayPixels;
         }
@@ -9841,8 +9860,7 @@ end
     }
 
     function refreshDisplayImage() {
-        state.displayPixels = null;
-        state.highPassCacheKey = "";
+        invalidateDisplayPixelCaches();
         uploadImagePixelsToTexture();
         render();
     }
@@ -10111,8 +10129,7 @@ end
                 // used by the image pixel buffer and the AIDA calibration model.
                 gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
                 if (state.imagePixels) {
-                    state.displayPixels = null;
-                    state.highPassCacheKey = "";
+                    invalidateDisplayPixelCaches();
                     uploadImagePixelsToTexture();
                 } else {
                     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
