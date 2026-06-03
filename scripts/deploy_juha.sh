@@ -10,6 +10,8 @@ service=${AIDA_DEPLOY_SERVICE:-wisc-aida-api.service}
 api_url=${AIDA_DEPLOY_API_URL:-https://juha.no/api/test-cases}
 app_url=${AIDA_DEPLOY_APP_URL:-https://juha.no/aida/js/app.js}
 api_port=${AIDA_DEPLOY_API_PORT:-8790}
+json_body_limit=${AIDA_DEPLOY_JSON_BODY_LIMIT:-134217728}
+image_body_limit=${AIDA_DEPLOY_IMAGE_BODY_LIMIT:-67108864}
 
 rsync_excludes=(
     --exclude=.git
@@ -32,6 +34,8 @@ Environment overrides:
   AIDA_DEPLOY_API_URL      default: $api_url
   AIDA_DEPLOY_APP_URL      default: $app_url
   AIDA_DEPLOY_API_PORT     default: $api_port
+  AIDA_DEPLOY_JSON_BODY_LIMIT default: $json_body_limit
+  AIDA_DEPLOY_IMAGE_BODY_LIMIT default: $image_body_limit
 EOF
 }
 
@@ -104,6 +108,13 @@ if [ "$skip_restart" -eq 0 ]; then
     echo "Restarting $service on $remote..."
     ssh -o BatchMode=yes "$remote" \
         "set -eu
+         dropin_dir='/etc/systemd/system/${service}.d'
+         sudo -n mkdir -p \"\$dropin_dir\"
+         printf '%s\n' '[Service]' \
+             'Environment=AIDA_MAX_JSON_BODY_BYTES=${json_body_limit}' \
+             'Environment=AIDA_MAX_IMAGE_BYTES=${image_body_limit}' |
+             sudo -n tee \"\$dropin_dir/aida-limits.conf\" >/dev/null
+         sudo -n systemctl daemon-reload
          sudo -n systemctl stop '$service' || true
          pkill -f 'node .*${live_dir}/tools/serve_calibrator\\.js.*--port ${api_port}' || true
          sleep 1

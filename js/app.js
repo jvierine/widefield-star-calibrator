@@ -159,6 +159,7 @@
         imageName: "",
         localImageUrl: null,
         testCaseImageDataUrl: null,
+        testCaseImageFile: null,
         testCaseImageName: "",
         baseOptpar: null,
         modelOptpar: null,
@@ -1565,11 +1566,47 @@
         });
     }
 
+    function arrayBufferDataUrl(buffer, mime) {
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 0x8000;
+        let binary = "";
+        for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+            const chunk = bytes.subarray(offset, Math.min(bytes.length, offset + chunkSize));
+            binary += String.fromCharCode(...chunk);
+        }
+        return `data:${mime};base64,${btoa(binary)}`;
+    }
+
     function submissionImageDataUrl() {
         if (state.testCaseImageDataUrl) {
             return Promise.resolve(state.testCaseImageDataUrl);
         }
         return imagePixelsPngDataUrl();
+    }
+
+    async function submitTestCaseMultipart(testCase, imageFile, submitPassKey) {
+        const form = new FormData();
+        form.append("testCase", JSON.stringify(testCase));
+        form.append("image", imageFile, state.testCaseImageName || imageFile.name || testCase.image);
+        return fetch("/api/test-cases", {
+            method: "POST",
+            headers: {
+                "x-aida-submit-passkey": submitPassKey,
+            },
+            body: form,
+        });
+    }
+
+    async function submitTestCaseJson(testCase, submitPassKey) {
+        const imageDataUrl = await submissionImageDataUrl();
+        return fetch("/api/test-cases", {
+            method: "POST",
+            headers: {
+                "content-type": "application/json",
+                "x-aida-submit-passkey": submitPassKey,
+            },
+            body: JSON.stringify({testCase, imageDataUrl}),
+        });
     }
 
     async function submitCurrentTestCase() {
@@ -1592,16 +1629,10 @@
         controls.submitTestCase.disabled = true;
         try {
             const testCase = currentTestCaseObject();
-            const imageDataUrl = await submissionImageDataUrl();
             const submitPassKey = controls.submitPassKey ? controls.submitPassKey.value.trim() : "";
-            const response = await fetch("/api/test-cases", {
-                method: "POST",
-                headers: {
-                    "content-type": "application/json",
-                    "x-aida-submit-passkey": submitPassKey,
-                },
-                body: JSON.stringify({testCase, imageDataUrl}),
-            });
+            const response = state.testCaseImageFile ?
+                await submitTestCaseMultipart(testCase, state.testCaseImageFile, submitPassKey) :
+                await submitTestCaseJson(testCase, submitPassKey);
             const result = await response.json();
             if (!response.ok) {
                 throw new Error(result.error || "server rejected test case");
@@ -1793,10 +1824,16 @@
             };
             const buffer = await sourceFile.arrayBuffer();
             const display = await displayBlobForImage(sourceFile, buffer);
-            const fitsSubmitDataUrl = await blobDataUrl(new Blob([buffer], {type: "application/fits"}));
+            const fitsSubmitDataUrl = arrayBufferDataUrl(buffer, "application/fits");
+            const fitsSubmitFile = new File(
+                [sourceBlob],
+                imageName,
+                {type: sourceBlob.type || payload.testCase.imageMimeType || "application/fits"}
+            );
             state.localImageUrl = URL.createObjectURL(display.blob);
             loadImageSource(state.localImageUrl, display.displayName, () => {
                 state.testCaseImageDataUrl = fitsSubmitDataUrl;
+                state.testCaseImageFile = fitsSubmitFile;
                 state.testCaseImageName = imageName;
                 restoreTestCaseState(payload.testCase);
             }, false, payload.testCase, imageName, display.floatPixels || null);
@@ -9984,6 +10021,7 @@ end
         state.activeOptmod = Number(controls.optmod.value) || 2;
         state.loadedTestCaseId = "";
         state.testCaseImageDataUrl = null;
+        state.testCaseImageFile = null;
         state.testCaseImageName = "";
         state.flipX = false;
         state.flipY = false;
@@ -10299,7 +10337,9 @@ end
         const name = String(file.name || "").toLowerCase();
         const type = String(file.type || "").toLowerCase();
         return name.endsWith(".fits") || name.endsWith(".fit") || name.endsWith(".fts") ||
-            type === "image/fits" || type === "application/fits" || type === "application/fits-image";
+            type === "image/fits" || type === "image/x-fits" ||
+            type === "application/fits" || type === "application/x-fits" ||
+            type === "application/fits-image";
     }
 
     function mergeMetadata(primary, secondary) {
@@ -10420,12 +10460,13 @@ end
             const display = await displayBlobForImage(file, buffer);
             const metadata = mergeMetadata(await readImageMetadata(file, buffer), display.metadata);
             const fitsSubmitDataUrl = isFitsFile(file) ?
-                await blobDataUrl(new Blob([buffer], {type: "application/fits"})) :
+                arrayBufferDataUrl(buffer, "application/fits") :
                 null;
             state.localImageUrl = URL.createObjectURL(display.blob);
             loadImageSource(state.localImageUrl, display.displayName, img => {
                 if (fitsSubmitDataUrl) {
                     state.testCaseImageDataUrl = fitsSubmitDataUrl;
+                    state.testCaseImageFile = file;
                     state.testCaseImageName = file.name;
                 }
                 if (display.message) {

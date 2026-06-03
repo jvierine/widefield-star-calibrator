@@ -8,17 +8,21 @@ const {URL} = require("url");
 
 const ROOT = path.join(__dirname, "..");
 const DEFAULT_TEST_CASE_DIR = "/mnt/shovel/aida";
-const MAX_JSON_BODY_BYTES = Number(process.env.AIDA_MAX_JSON_BODY_BYTES || 80 * 1024 * 1024);
+const MAX_JSON_BODY_BYTES = Number(process.env.AIDA_MAX_JSON_BODY_BYTES || 128 * 1024 * 1024);
 const MAX_IMAGE_BYTES = Number(process.env.AIDA_MAX_IMAGE_BYTES || 64 * 1024 * 1024);
 const MAX_METADATA_BYTES = Number(process.env.AIDA_MAX_METADATA_BYTES || 2 * 1024 * 1024);
+const MAX_MULTIPART_BODY_BYTES = Number(process.env.AIDA_MAX_MULTIPART_BODY_BYTES || MAX_IMAGE_BYTES + MAX_METADATA_BYTES + 1024 * 1024);
 const ALLOWED_IMAGE_TYPES = new Map([
     ["image/png", {ext: ".png", signatures: [Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])]}],
     ["image/jpeg", {ext: ".jpg", signatures: [Buffer.from([0xff, 0xd8, 0xff])]}],
     ["image/heic", {ext: ".heic", signatures: []}],
     ["image/heif", {ext: ".heif", signatures: []}],
     ["image/fits", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
+    ["image/x-fits", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
     ["application/fits", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
+    ["application/x-fits", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
     ["application/fits-image", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
+    ["application/octet-stream", {ext: ".fits", signatures: [Buffer.from("SIMPLE  ", "ascii")]}],
 ]);
 
 function parseArgs(argv) {
@@ -99,22 +103,54 @@ function readJsonBody(req) {
     return new Promise((resolve, reject) => {
         let body = "";
         let bytes = 0;
+        let tooLarge = false;
         req.setEncoding("utf8");
         req.on("data", chunk => {
             bytes += Buffer.byteLength(chunk, "utf8");
             if (bytes > MAX_JSON_BODY_BYTES) {
-                reject(new Error(`request body too large; limit is ${MAX_JSON_BODY_BYTES} bytes`));
-                req.destroy();
+                tooLarge = true;
                 return;
             }
-            body += chunk;
+            if (!tooLarge) {
+                body += chunk;
+            }
         });
         req.on("end", () => {
+            if (tooLarge) {
+                reject(new Error(`request body too large; limit is ${MAX_JSON_BODY_BYTES} bytes`));
+                return;
+            }
             try {
                 resolve(body ? JSON.parse(body) : {});
             } catch (error) {
                 reject(error);
             }
+        });
+        req.on("error", reject);
+    });
+}
+
+function readRawBody(req, limitBytes = MAX_MULTIPART_BODY_BYTES) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        let bytes = 0;
+        let tooLarge = false;
+        req.on("data", chunk => {
+            bytes += chunk.length;
+            if (bytes > limitBytes) {
+                tooLarge = true;
+                return;
+            }
+            if (!tooLarge) {
+                chunks.push(chunk);
+            }
+        });
+        req.on("end", () => {
+            if (tooLarge) {
+                reject(new Error(`request body too large; limit is ${limitBytes} bytes`));
+                return;
+            }
+            resolve(Buffer.concat(chunks));
         });
         req.on("error", reject);
     });
@@ -136,7 +172,7 @@ function assertStoragePath(testCaseDir, target) {
 }
 
 function imageInfoFromDataUrl(dataUrl) {
-    const match = String(dataUrl || "").match(/^data:((?:image\/(?:png|jpeg|heic|heif|fits))|(?:application\/(?:fits|fits-image)));base64,([A-Za-z0-9+/=\s]+)$/i);
+    const match = String(dataUrl || "").match(/^data:((?:image\/(?:png|jpeg|heic|heif|x-fits|fits))|(?:application\/(?:x-fits|fits|fits-image|octet-stream)));base64,([A-Za-z0-9+/=\s]+)$/i);
     if (!match) {
         throw new Error("missing imageDataUrl; allowed types are PNG, JPEG, HEIC, HEIF, and FITS");
     }
@@ -161,6 +197,108 @@ function imageInfoFromDataUrl(dataUrl) {
         throw new Error(`image content does not look like ${mime}`);
     }
     return {mime, ext: allowed.ext, buffer};
+}
+
+function imageInfoFromUpload(part) {
+    const filename = path.basename(String(part && part.filename || ""));
+    let mime = String(part && part.mime || "").toLowerCase();
+    const buffer = part && part.buffer;
+    if (!Buffer.isBuffer(buffer) || buffer.length === 0) {
+        throw new Error("empty image");
+    }
+    if (buffer.length > MAX_IMAGE_BYTES) {
+        throw new Error(`image too large; limit is ${MAX_IMAGE_BYTES} bytes`);
+    }
+    const ext = path.extname(filename).toLowerCase();
+    if (!ALLOWED_IMAGE_TYPES.has(mime) || mime === "application/octet-stream") {
+        if (ext === ".fits" || ext === ".fit" || ext === ".fts") {
+            mime = "application/fits";
+        }
+    }
+    const allowed = ALLOWED_IMAGE_TYPES.get(mime);
+    if (!allowed) {
+        throw new Error("unsupported image type");
+    }
+    if (!imageBufferMatchesMime(buffer, mime)) {
+        throw new Error(`image content does not look like ${mime}`);
+    }
+    return {mime, ext: allowed.ext, buffer};
+}
+
+function parseContentDisposition(value) {
+    const out = {};
+    for (const item of String(value || "").split(";")) {
+        const trimmed = item.trim();
+        const eq = trimmed.indexOf("=");
+        if (eq < 0) {
+            out.type = trimmed.toLowerCase();
+            continue;
+        }
+        const key = trimmed.slice(0, eq).trim().toLowerCase();
+        let val = trimmed.slice(eq + 1).trim();
+        if (val.startsWith("\"") && val.endsWith("\"")) {
+            val = val.slice(1, -1).replace(/\\"/g, "\"");
+        }
+        out[key] = val;
+    }
+    return out;
+}
+
+function parseMultipartPayload(contentTypeHeader, body) {
+    const boundaryMatch = String(contentTypeHeader || "").match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+    if (!boundaryMatch) {
+        throw new Error("missing multipart boundary");
+    }
+    const boundary = Buffer.from(`--${boundaryMatch[1] || boundaryMatch[2]}`);
+    const payload = {};
+    let offset = 0;
+    for (;;) {
+        const start = body.indexOf(boundary, offset);
+        if (start < 0) {
+            break;
+        }
+        let partStart = start + boundary.length;
+        if (body.subarray(partStart, partStart + 2).toString("ascii") === "--") {
+            break;
+        }
+        if (body.subarray(partStart, partStart + 2).toString("ascii") === "\r\n") {
+            partStart += 2;
+        }
+        const next = body.indexOf(boundary, partStart);
+        if (next < 0) {
+            break;
+        }
+        let part = body.subarray(partStart, next);
+        if (part.length >= 2 && part.subarray(part.length - 2).toString("ascii") === "\r\n") {
+            part = part.subarray(0, part.length - 2);
+        }
+        const headerEnd = part.indexOf(Buffer.from("\r\n\r\n"));
+        if (headerEnd < 0) {
+            offset = next;
+            continue;
+        }
+        const headerText = part.subarray(0, headerEnd).toString("utf8");
+        const content = part.subarray(headerEnd + 4);
+        const headers = {};
+        for (const line of headerText.split("\r\n")) {
+            const colon = line.indexOf(":");
+            if (colon > 0) {
+                headers[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
+            }
+        }
+        const disposition = parseContentDisposition(headers["content-disposition"]);
+        if (disposition.name === "testCase") {
+            payload.testCase = JSON.parse(content.toString("utf8"));
+        } else if (disposition.name === "image") {
+            payload.imageUpload = {
+                filename: disposition.filename || "",
+                mime: headers["content-type"] || "",
+                buffer: content,
+            };
+        }
+        offset = next;
+    }
+    return payload;
 }
 
 function imageBufferMatchesMime(buffer, mime) {
@@ -244,7 +382,9 @@ function saveTestCase(testCaseDir, payload) {
         throw new Error("unreasonable image dimensions");
     }
     const id = safeCaseId(testCase.id || testCase.image);
-    const image = imageInfoFromDataUrl(payload.imageDataUrl);
+    const image = payload.imageUpload ?
+        imageInfoFromUpload(payload.imageUpload) :
+        imageInfoFromDataUrl(payload.imageDataUrl);
     fs.mkdirSync(testCaseDir, {recursive: true});
     const caseDir = path.join(testCaseDir, id);
     assertStoragePath(testCaseDir, caseDir);
@@ -310,7 +450,11 @@ async function handle(req, res, options) {
         }
         if (req.method === "POST" && url.pathname === "/api/test-cases") {
             requireSubmitPassKey(req, options);
-            sendJson(res, 200, saveTestCase(options.testCaseDir, await readJsonBody(req)));
+            const contentTypeHeader = String(req.headers["content-type"] || "");
+            const payload = /^multipart\/form-data/i.test(contentTypeHeader) ?
+                parseMultipartPayload(contentTypeHeader, await readRawBody(req)) :
+                await readJsonBody(req);
+            sendJson(res, 200, saveTestCase(options.testCaseDir, payload));
             return;
         }
         const caseMatch = url.pathname.match(/^\/api\/test-cases\/([^/]+)$/);
@@ -372,9 +516,13 @@ if (require.main === module) {
 module.exports = {
     ALLOWED_IMAGE_TYPES,
     DEFAULT_TEST_CASE_DIR,
+    MAX_JSON_BODY_BYTES,
     MAX_IMAGE_BYTES,
+    MAX_MULTIPART_BODY_BYTES,
     contentType,
     imageInfoFromDataUrl,
+    imageInfoFromUpload,
+    parseMultipartPayload,
     parseArgs,
     safeCaseId,
 };
