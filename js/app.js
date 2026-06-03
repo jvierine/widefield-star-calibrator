@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.5";
+    const APP_VERSION = "v0.3.6";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -4584,7 +4584,8 @@ end
     }
 
     function imageGrayInterpolated(x, y) {
-        if (!state.imagePixels) {
+        const pixels = processingImagePixels();
+        if (!pixels || !state.image) {
             return 0;
         }
         const gx = Math.max(0, Math.min(state.image.width - 1, x));
@@ -6064,7 +6065,7 @@ end
     }
 
     function gaussianCentroid(clickX, clickY) {
-        if (!state.imagePixels) {
+        if (!processingImagePixels()) {
             return {x: clickX, y: clickY, method: "click"};
         }
         const searchRadius = 8;
@@ -6157,7 +6158,8 @@ end
     }
 
     function kdeCentroid(clickX, clickY) {
-        if (!state.imagePixels) {
+        const pixels = processingImagePixels();
+        if (!pixels) {
             return {x: clickX, y: clickY, sigma: 0, method: "click"};
         }
         const result = AidaCentroid.estimateCentroid(clickX, clickY, imageGrayInterpolated, {
@@ -6165,7 +6167,13 @@ end
             patchRadiusWidthFraction: MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION,
         });
         state.centroidDensity = result.density;
-        return {x: result.x, y: result.y, sigma: result.sigma, method: result.method};
+        const usesFloat = pixels.data && pixels.data.constructor && pixels.data.constructor.name === "Float32Array";
+        return {
+            x: result.x,
+            y: result.y,
+            sigma: result.sigma,
+            method: usesFloat ? `${result.method} float32` : result.method,
+        };
     }
 
     function nearestProjectedStar(event, options = {}) {
