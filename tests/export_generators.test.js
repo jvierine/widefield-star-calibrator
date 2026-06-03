@@ -50,8 +50,11 @@ function pythonCommand() {
     if (process.env.PYTHON) {
         return process.env.PYTHON;
     }
-    const localConda = "/opt/miniconda3/bin/python";
-    return fs.existsSync(localConda) ? localConda : "python3";
+    const localCondaCandidates = [
+        "/opt/miniconda3/bin/python",
+        "/opt/anaconda3/bin/python",
+    ];
+    return localCondaCandidates.find(candidate => fs.existsSync(candidate)) || "python3";
 }
 
 function contextForOptmod(optmod) {
