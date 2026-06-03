@@ -1672,8 +1672,13 @@
         controls.contrast.value = Number.isFinite(Number(display.contrast)) ?
             String(Number(display.contrast)) : controls.contrast.value;
         if (controls.displayClipMax) {
-            controls.displayClipMax.value = Number.isFinite(Number(display.displayClipMax)) ?
-                String(Number(display.displayClipMax)) : "";
+            const value = Number(display.displayClipMax);
+            if (Number.isFinite(value)) {
+                controls.displayClipMax.value = String(Math.max(
+                    Number(controls.displayClipMax.min) || 0,
+                    Math.min(Number(controls.displayClipMax.max) || value, value)
+                ));
+            }
         }
         state.matches = Array.isArray(testCase.matches) ? testCase.matches.map((match, index) => ({
             id: Number.isFinite(Number(match.id)) ? Number(match.id) : index + 1,
@@ -4381,7 +4386,7 @@ end
         controls.brightnessValue.textContent = Number(controls.brightness.value).toFixed(2);
         controls.contrastValue.textContent = Number(controls.contrast.value).toFixed(2);
         if (controls.displayClipMaxValue) {
-            controls.displayClipMaxValue.textContent = controls.displayClipMax && controls.displayClipMax.value ?
+            controls.displayClipMaxValue.textContent = controls.displayClipMax ?
                 Number(controls.displayClipMax.value).toPrecision(5) :
                 "auto";
         }
@@ -4411,7 +4416,7 @@ end
             `site: lat ${controls.latDeg.value} deg, lon ${controls.lonDeg.value} deg, alt ${controls.altM.value} m\n` +
             `optpar: [${optparWithModel}]\n` +
             `image high-pass: ${controls.highPassImage.checked ? `${controls.highPassWidth.value} px Gaussian` : "off"}\n` +
-            `display clip max: ${controls.displayClipMax && controls.displayClipMax.value ? controls.displayClipMax.value : "auto"}\n` +
+            `display clip max: ${controls.displayClipMax ? controls.displayClipMax.value : "auto"}\n` +
             `star catalogue: ${activeStarCatalogName()} (${state.catalogStatus})\n` +
             `Yale asterism index: ${state.yaleAsterismIndexStatus}\n` +
             `catalog stars <= mag ${controls.maxMag.value}: ` +
@@ -5822,7 +5827,7 @@ end
 
     function displayClipMax() {
         const explicit = controls.displayClipMax ? Number(controls.displayClipMax.value) : NaN;
-        if (Number.isFinite(explicit) && explicit > 0) {
+        if (Number.isFinite(explicit)) {
             return explicit;
         }
         const range = state.imageFloatPixels && state.imageFloatPixels.dataRange;
@@ -5849,7 +5854,9 @@ end
             }
         }
         const clipHigh = displayClipMax();
-        const hi = Number.isFinite(clipHigh) && clipHigh > low ? clipHigh : high;
+        const hi = Number.isFinite(clipHigh) ?
+            Math.max(clipHigh, low + Math.max(1e-6, Math.abs(low) * 1e-6)) :
+            high;
         const span = Number.isFinite(hi) && hi > low ? hi - low : Math.max(1, Math.abs(low) * 1e-6);
         const scale = 255 / span;
         const out = new ImageData(width, height);
@@ -9903,7 +9910,10 @@ end
         controls.highPassImage.checked = true;
         controls.highPassWidth.value = "100";
         if (controls.displayClipMax) {
-            controls.displayClipMax.value = "";
+            controls.displayClipMax.min = "0";
+            controls.displayClipMax.max = "255";
+            controls.displayClipMax.step = "1";
+            controls.displayClipMax.value = "255";
         }
         controls.maxMag.value = "4";
         controls.flipX.classList.remove("toggle-on");
@@ -9996,14 +10006,24 @@ end
         return state.imageFloatPixels || state.imagePixels;
     }
 
+    function displayClipSliderStep(span) {
+        if (!Number.isFinite(span) || span <= 0) {
+            return 1;
+        }
+        return Math.max(1e-6, span / 2048);
+    }
+
     function setDisplayClipMaxFromCurrentImage() {
         if (!controls.displayClipMax) {
             return;
         }
-        const high = state.imageFloatPixels &&
-            state.imageFloatPixels.dataRange &&
-            state.imageFloatPixels.dataRange.high;
-        controls.displayClipMax.value = Number.isFinite(high) ? Number(high).toPrecision(8) : "";
+        const range = state.imageFloatPixels && state.imageFloatPixels.dataRange || {};
+        const low = Number.isFinite(range.low) ? Number(range.low) : 0;
+        const high = Number.isFinite(range.high) && Number(range.high) > low ? Number(range.high) : low + 1;
+        controls.displayClipMax.min = String(low);
+        controls.displayClipMax.max = String(high);
+        controls.displayClipMax.step = String(displayClipSliderStep(high - low));
+        controls.displayClipMax.value = String(high);
     }
 
     function loadImageSource(
