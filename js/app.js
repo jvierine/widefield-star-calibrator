@@ -1,12 +1,13 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.8";
+    const APP_VERSION = "v0.3.9";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
     const NOT_STAR_TILE_SIZE = 128;
     const MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION = 8 / 4032;
+    const MANUAL_CENTROID_PATCH_RADIUS_EXTRA_PX = 1;
     const FISHEYE_AUTO_MIN_ELEVATION_DEG = 10;
     const canvas = document.getElementById("glCanvas");
     const rotationCanvas = document.getElementById("rotationCanvas");
@@ -6181,8 +6182,8 @@ end
             return {x: clickX, y: clickY, sigma: 0, method: "click"};
         }
         const result = AidaCentroid.estimateCentroid(clickX, clickY, imageGrayInterpolated, {
-            imageWidth: state.image ? state.image.width : 4032,
-            patchRadiusWidthFraction: MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION,
+            patchRadius: Math.max(2, Math.round((state.image ? state.image.width : 4032) *
+                MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION) + MANUAL_CENTROID_PATCH_RADIUS_EXTRA_PX),
         });
         state.centroidDensity = result.density;
         const usesFloat = pixels.data && pixels.data.constructor && pixels.data.constructor.name === "Float32Array";
