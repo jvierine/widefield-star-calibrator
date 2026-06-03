@@ -1471,8 +1471,7 @@
                 highPassWidthPx: Number(controls.highPassWidth.value) || 0,
                 brightness: Number(controls.brightness.value) || 0,
                 contrast: Number(controls.contrast.value) || 1,
-                displayClipMax: Number.isFinite(Number(controls.displayClipMax && controls.displayClipMax.value)) ?
-                    Number(controls.displayClipMax.value) : null,
+                displayClipMax: displayClipMax(),
             },
             badStarFinderDetections: state.badStarFinderDetections.map((detection, index) => ({
                 id: index + 1,
@@ -1674,10 +1673,7 @@
         if (controls.displayClipMax) {
             const value = Number(display.displayClipMax);
             if (Number.isFinite(value)) {
-                controls.displayClipMax.value = String(Math.max(
-                    Number(controls.displayClipMax.min) || 0,
-                    Math.min(Number(controls.displayClipMax.max) || value, value)
-                ));
+                setDisplayClipMaxValue(value);
             }
         }
         state.matches = Array.isArray(testCase.matches) ? testCase.matches.map((match, index) => ({
@@ -4387,7 +4383,7 @@ end
         controls.contrastValue.textContent = Number(controls.contrast.value).toFixed(2);
         if (controls.displayClipMaxValue) {
             controls.displayClipMaxValue.textContent = controls.displayClipMax ?
-                Number(controls.displayClipMax.value).toPrecision(5) :
+                displayClipMax().toPrecision(5) :
                 "auto";
         }
         controls.highPassWidthValue.textContent = Number(controls.highPassWidth.value).toFixed(0);
@@ -4416,7 +4412,7 @@ end
             `site: lat ${controls.latDeg.value} deg, lon ${controls.lonDeg.value} deg, alt ${controls.altM.value} m\n` +
             `optpar: [${optparWithModel}]\n` +
             `image high-pass: ${controls.highPassImage.checked ? `${controls.highPassWidth.value} px Gaussian` : "off"}\n` +
-            `display clip max: ${controls.displayClipMax ? controls.displayClipMax.value : "auto"}\n` +
+            `display clip max: ${controls.displayClipMax ? displayClipMax().toPrecision(8) : "auto"}\n` +
             `star catalogue: ${activeStarCatalogName()} (${state.catalogStatus})\n` +
             `Yale asterism index: ${state.yaleAsterismIndexStatus}\n` +
             `catalog stars <= mag ${controls.maxMag.value}: ` +
@@ -5825,13 +5821,40 @@ end
         return a * (1 - ty) + b * ty;
     }
 
-    function displayClipMax() {
-        const explicit = controls.displayClipMax ? Number(controls.displayClipMax.value) : NaN;
-        if (Number.isFinite(explicit)) {
-            return explicit;
-        }
+    function displayClipRange() {
         const range = state.imageFloatPixels && state.imageFloatPixels.dataRange;
-        return Number.isFinite(range && range.high) ? range.high : 255;
+        const low = Number.isFinite(range && range.low) ? Number(range.low) : 0;
+        const high = Number.isFinite(range && range.high) && Number(range.high) > low ?
+            Number(range.high) :
+            low + 1;
+        const span = high - low;
+        const floorSpan = Math.max(span / 65536, 1e-6, Math.abs(high) * 1e-9);
+        return {low, high, minClip: low + floorSpan};
+    }
+
+    function displayClipMax() {
+        if (!controls.displayClipMax) {
+            return displayClipRange().high;
+        }
+        const {low, high, minClip} = displayClipRange();
+        const t = Math.max(0, Math.min(1, (Number(controls.displayClipMax.value) || 0) / 1000));
+        const logMin = Math.log(Math.max(minClip - low, 1e-12));
+        const logMax = Math.log(Math.max(high - low, Math.exp(logMin)));
+        return low + Math.exp(logMin + t * (logMax - logMin));
+    }
+
+    function setDisplayClipMaxValue(value) {
+        if (!controls.displayClipMax) {
+            return;
+        }
+        const {low, high, minClip} = displayClipRange();
+        const clipped = Math.max(minClip, Math.min(high, Number(value)));
+        const logMin = Math.log(Math.max(minClip - low, 1e-12));
+        const logMax = Math.log(Math.max(high - low, Math.exp(logMin)));
+        const t = logMax > logMin ?
+            (Math.log(Math.max(clipped - low, Math.exp(logMin))) - logMin) / (logMax - logMin) :
+            1;
+        controls.displayClipMax.value = String(Math.round(1000 * Math.max(0, Math.min(1, t))));
     }
 
     function floatPixelsToDisplayImageData(floatPixels) {
@@ -9911,9 +9934,9 @@ end
         controls.highPassWidth.value = "100";
         if (controls.displayClipMax) {
             controls.displayClipMax.min = "0";
-            controls.displayClipMax.max = "255";
+            controls.displayClipMax.max = "1000";
             controls.displayClipMax.step = "1";
-            controls.displayClipMax.value = "255";
+            controls.displayClipMax.value = "1000";
         }
         controls.maxMag.value = "4";
         controls.flipX.classList.remove("toggle-on");
@@ -10006,24 +10029,14 @@ end
         return state.imageFloatPixels || state.imagePixels;
     }
 
-    function displayClipSliderStep(span) {
-        if (!Number.isFinite(span) || span <= 0) {
-            return 1;
-        }
-        return Math.max(1e-6, span / 2048);
-    }
-
     function setDisplayClipMaxFromCurrentImage() {
         if (!controls.displayClipMax) {
             return;
         }
-        const range = state.imageFloatPixels && state.imageFloatPixels.dataRange || {};
-        const low = Number.isFinite(range.low) ? Number(range.low) : 0;
-        const high = Number.isFinite(range.high) && Number(range.high) > low ? Number(range.high) : low + 1;
-        controls.displayClipMax.min = String(low);
-        controls.displayClipMax.max = String(high);
-        controls.displayClipMax.step = String(displayClipSliderStep(high - low));
-        controls.displayClipMax.value = String(high);
+        controls.displayClipMax.min = "0";
+        controls.displayClipMax.max = "1000";
+        controls.displayClipMax.step = "1";
+        controls.displayClipMax.value = "1000";
     }
 
     function loadImageSource(
