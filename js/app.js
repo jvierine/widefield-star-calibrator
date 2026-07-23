@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.47";
+    const APP_VERSION = "v0.3.48";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -4159,6 +4159,189 @@ end
         return bytes;
     }
 
+    function resultsHdf5Filename(prefix) {
+        return `${safeCaseId(prefix || "wisc")}_calibration.h5`;
+    }
+
+    function selectedStarDataRows() {
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const residualById = new Map(
+            residualRowsForMatches(state.matches).map(row => [row.match.id, row])
+        );
+        return state.matches.map((match, index) => {
+            const azze = AidaTools.radecToAzZe(
+                match.catalog.raHours,
+                match.catalog.decDeg,
+                date,
+                lat,
+                lon,
+            );
+            const residual = residualById.get(match.id);
+            return {
+                index: index + 1,
+                id: String(match.id ?? index + 1),
+                name: match.catalog.name || match.catalog.key || "",
+                altitudeDeg: 90 - azze.ze * AidaTools.RAD,
+                azimuthDeg: azze.az * AidaTools.RAD,
+                starRowPx: match.image.y + 1,
+                starColPx: match.image.x + 1,
+                raHoursJ2000: match.catalog.raHours,
+                decDegJ2000: match.catalog.decDeg,
+                magnitude: match.catalog.mag,
+                modelRowPx: residual ? residual.model.y + 1 : NaN,
+                modelColPx: residual ? residual.model.x + 1 : NaN,
+                residualRowPx: residual ? residual.dy : NaN,
+                residualColPx: residual ? residual.dx : NaN,
+                residualNormPx: residual ? residual.r : NaN,
+            };
+        });
+    }
+
+    function writeResultsHdf5Bytes(
+        h5wasm,
+        FS,
+        filename,
+        prefix,
+        metadata,
+        miracleProduct,
+        starRows,
+    ) {
+        try {
+            FS.unlink(filename);
+        } catch (_error) {
+            // It is normal for the in-memory file not to exist yet.
+        }
+        const miracle = miracleProduct.calibration;
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value) || 2;
+        const starColumns = [
+            "index",
+            "altitude_deg",
+            "azimuth_deg",
+            "star_row_px_1based",
+            "star_col_px_1based",
+            "ra_hours_j2000",
+            "dec_deg_j2000",
+            "magnitude",
+            "model_row_px_1based",
+            "model_col_px_1based",
+            "residual_row_px",
+            "residual_col_px",
+            "residual_norm_px",
+        ];
+        const stars = new Float64Array(starRows.length * starColumns.length);
+        const residuals = new Float64Array(starRows.length * 3);
+        starRows.forEach((row, index) => {
+            const values = [
+                row.index,
+                row.altitudeDeg,
+                row.azimuthDeg,
+                row.starRowPx,
+                row.starColPx,
+                row.raHoursJ2000,
+                row.decDegJ2000,
+                row.magnitude,
+                row.modelRowPx,
+                row.modelColPx,
+                row.residualRowPx,
+                row.residualColPx,
+                row.residualNormPx,
+            ];
+            stars.set(values, index * starColumns.length);
+            residuals.set(
+                [row.residualRowPx, row.residualColPx, row.residualNormPx],
+                index * 3,
+            );
+        });
+
+        const file = new h5wasm.File(filename, "w");
+        file.create_dataset({
+            name: "miracle_parameters",
+            data: new Float64Array([
+                miracle.glatDeg,
+                miracle.glonDeg,
+                miracle.xcPx,
+                miracle.ycPx,
+                miracle.kPxPerDeg,
+                miracle.rotationRad,
+            ]),
+            shape: [6],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "wisc_optpar",
+            data: new Float64Array(optpar),
+            shape: [optpar.length],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "wisc_optpar_with_optmod",
+            data: new Float64Array([optmod, ...optpar]),
+            shape: [optpar.length + 1],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "selected_stars",
+            data: stars,
+            shape: [starRows.length, starColumns.length],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "residuals_px",
+            data: residuals,
+            shape: [starRows.length, 3],
+            dtype: "<d",
+        });
+
+        file.create_attribute("creator", `WISC ${APP_VERSION}`);
+        file.create_attribute("description",
+            "Compact WISC camera calibration product. The large per-corner azimuth/elevation grid " +
+            "is available from the separate Download az/el HDF5 button.");
+        file.create_attribute("generated_utc", metadata.generatedUtc);
+        file.create_attribute("image_prefix", prefix);
+        file.create_attribute("image_name", metadata.imageName);
+        file.create_attribute("image_width", new Int32Array([metadata.imageWidth]));
+        file.create_attribute("image_height", new Int32Array([metadata.imageHeight]));
+        file.create_attribute("timestamp_utc", metadata.timestampUtc);
+        file.create_attribute("site_lat_deg", new Float64Array([metadata.site.latDeg]));
+        file.create_attribute("site_lon_deg", new Float64Array([metadata.site.lonDeg]));
+        file.create_attribute("site_alt_m", new Float64Array([metadata.site.altM]));
+        file.create_attribute("optmod", new Int32Array([optmod]));
+        file.create_attribute("miracle_parameter_names",
+            "Glat_deg Glon_deg Xc_zenithRow_px_1based Yc_zenithCol_px_1based k_px_per_degree rotAngle_rad");
+        file.create_attribute("miracle_fit_source", miracle.fitSource);
+        file.create_attribute("miracle_fit_sample_count", new Int32Array([miracle.sampleCount]));
+        if (miracleProduct.pixelErrorSummary) {
+            file.create_attribute("miracle_pixel_error_rms_deg",
+                new Float64Array([miracleProduct.pixelErrorSummary.rmsAngularDeg]));
+            file.create_attribute("miracle_pixel_error_max_deg",
+                new Float64Array([miracleProduct.pixelErrorSummary.maxAngularDeg]));
+            file.create_attribute("miracle_pixel_error_grid_shape",
+                new Int32Array([
+                    miracleProduct.pixelErrorSummary.gridHeight,
+                    miracleProduct.pixelErrorSummary.gridWidth,
+                ]));
+        }
+        file.create_attribute("selected_star_columns", starColumns.join(" "));
+        file.create_attribute("selected_star_ids", JSON.stringify(starRows.map(row => row.id)));
+        file.create_attribute("selected_star_names", JSON.stringify(starRows.map(row => row.name)));
+        file.create_attribute("selected_star_count", new Int32Array([starRows.length]));
+        file.create_attribute("residual_columns",
+            "model_minus_selected_row_px model_minus_selected_col_px norm_px");
+        file.create_attribute("image_coordinate_convention",
+            "Rows/columns are 1-based with (1,1) at the upper-left; row is vertical and column is horizontal.");
+        file.close();
+        const bytes = FS.readFile(filename).slice();
+        try {
+            FS.unlink(filename);
+        } catch (_error) {
+            // Best-effort cleanup of the h5wasm in-memory filesystem.
+        }
+        return bytes;
+    }
+
     async function downloadAzElHdf5() {
         if (!state.image) {
             state.fitMessage = "az/el HDF5 export: load an image first";
@@ -4254,6 +4437,7 @@ end
             miracle: miracleProduct ? {
                 ...miracleProduct.calibration,
                 errorSummary: miracleProduct.summary,
+                pixelErrorSummary: miracleProduct.pixelErrorSummary || null,
             } : null,
         };
     }
@@ -4289,17 +4473,15 @@ end
             return null;
         }
         const [rawX, rawY] = rawImagePixelFromModelImagePixel(xy.x, xy.y);
-        return Number.isFinite(rawX) && Number.isFinite(rawY) ? {rawX, rawY} : null;
+        return Number.isFinite(rawX) && Number.isFinite(rawY) ? {
+            rawX,
+            rawY,
+            rowPx: rawY + 1,
+            colPx: rawX + 1,
+        } : null;
     }
 
-    function miracleCalibrationProduct() {
-        if (!state.image || !window.AidaMiracleExport) {
-            throw new Error("MIRACLE export support is unavailable");
-        }
-        const zenith = rawPixelForAzimuthZenith(0, 0);
-        if (!zenith) {
-            throw new Error("native lens model did not produce a finite zenith position");
-        }
+    function nativeMiracleReferenceSamples() {
         const samples = [];
         for (let zenithDeg = 5; zenithDeg <= 90; zenithDeg += 5) {
             const zenithRad = zenithDeg * AidaTools.DEG;
@@ -4313,54 +4495,19 @@ end
                 }
                 samples.push({
                     ...pixel,
-                    azRad,
-                    zenithRad,
                     azimuthDeg,
                     zenithDeg,
                 });
             }
         }
-        const calibration = window.AidaMiracleExport.fitCalibration(samples, {
-            glatDeg: Number(controls.latDeg.value) || 0,
-            glonDeg: Number(controls.lonDeg.value) || 0,
-            zenithRawX: zenith.rawX,
-            zenithRawY: zenith.rawY,
-        });
-        const errors = window.AidaMiracleExport.approximationErrors(samples, calibration);
-        return {
-            calibration,
-            errors,
-            summary: window.AidaMiracleExport.errorSummary(errors),
-        };
+        return samples;
     }
 
-    function selectedStarsTsv() {
+    function selectedStarMiracleSamples() {
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
-        const residualById = new Map(
-            residualRowsForMatches(state.matches).map(row => [row.match.id, row])
-        );
-        const cleanCell = value => String(value ?? "").replace(/[\t\r\n]+/g, " ");
-        const numberCell = value => Number.isFinite(Number(value)) ?
-            Number(value).toPrecision(15) :
-            "";
-        const header = [
-            "id",
-            "star",
-            "image_x_px",
-            "image_y_px",
-            "ra_hours_j2000",
-            "dec_deg_j2000",
-            "azimuth_deg",
-            "altitude_deg",
-            "magnitude",
-            "model_x_px",
-            "model_y_px",
-            "residual_px",
-        ];
-        const lines = [header.join("\t")];
-        for (const match of state.matches) {
+        return state.matches.map(match => {
             const azze = AidaTools.radecToAzZe(
                 match.catalog.raHours,
                 match.catalog.decDeg,
@@ -4368,26 +4515,101 @@ end
                 lat,
                 lon,
             );
-            const residual = residualById.get(match.id);
+            return {
+                rowPx: match.image.y + 1,
+                colPx: match.image.x + 1,
+                azimuthDeg: azze.az * AidaTools.RAD,
+                zenithDeg: azze.ze * AidaTools.RAD,
+                matchId: match.id,
+            };
+        }).filter(sample =>
+            Number.isFinite(sample.rowPx) &&
+            Number.isFinite(sample.colPx) &&
+            Number.isFinite(sample.azimuthDeg) &&
+            Number.isFinite(sample.zenithDeg)
+        );
+    }
+
+    function miracleCalibrationProduct() {
+        if (!state.image || !window.AidaMiracleExport) {
+            throw new Error("MIRACLE export support is unavailable");
+        }
+        const referenceSamples = nativeMiracleReferenceSamples();
+        const selectedSamples = selectedStarMiracleSamples();
+        let fitSamples = selectedSamples;
+        let fitSource = "selected WISC stars";
+        if (fitSamples.length < 2) {
+            fitSamples = referenceSamples;
+            fitSource = "native WISC lens model fallback (fewer than two selected stars)";
+        }
+        let calibration;
+        try {
+            calibration = window.AidaMiracleExport.fitCalibration(fitSamples, {
+                glatDeg: Number(controls.latDeg.value) || 0,
+                glonDeg: Number(controls.lonDeg.value) || 0,
+                fitSource,
+            });
+        } catch (error) {
+            if (fitSamples === referenceSamples) {
+                throw error;
+            }
+            fitSamples = referenceSamples;
+            fitSource = "native WISC lens model fallback (selected-star geometry was singular)";
+            calibration = window.AidaMiracleExport.fitCalibration(fitSamples, {
+                glatDeg: Number(controls.latDeg.value) || 0,
+                glonDeg: Number(controls.lonDeg.value) || 0,
+                fitSource,
+            });
+        }
+        const errors = window.AidaMiracleExport.approximationErrors(referenceSamples, calibration);
+        return {
+            calibration,
+            errors,
+            summary: window.AidaMiracleExport.errorSummary(errors),
+            selectedSampleCount: selectedSamples.length,
+        };
+    }
+
+    function selectedStarsTsv() {
+        const cleanCell = value => String(value ?? "").replace(/[\t\r\n]+/g, " ");
+        const numberCell = value => Number.isFinite(Number(value)) ?
+            Number(value).toPrecision(15) :
+            "";
+        const header = [
+            "id",
+            "star",
+            "altitude_deg",
+            "azimuth_deg",
+            "star_row_px_1based",
+            "star_col_px_1based",
+            "ra_hours_j2000",
+            "dec_deg_j2000",
+            "magnitude",
+            "model_row_px_1based",
+            "model_col_px_1based",
+            "residual_px",
+        ];
+        const lines = [header.join("\t")];
+        for (const row of selectedStarDataRows()) {
             lines.push([
-                cleanCell(match.id),
-                cleanCell(match.catalog.name || match.catalog.key || ""),
-                numberCell(match.image.x),
-                numberCell(match.image.y),
-                numberCell(match.catalog.raHours),
-                numberCell(match.catalog.decDeg),
-                numberCell(azze.az * AidaTools.RAD),
-                numberCell(90 - azze.ze * AidaTools.RAD),
-                numberCell(match.catalog.mag),
-                numberCell(residual && residual.model.x),
-                numberCell(residual && residual.model.y),
-                numberCell(residual && residual.r),
+                cleanCell(row.id),
+                cleanCell(row.name),
+                numberCell(row.altitudeDeg),
+                numberCell(row.azimuthDeg),
+                numberCell(row.starRowPx),
+                numberCell(row.starColPx),
+                numberCell(row.raHoursJ2000),
+                numberCell(row.decDegJ2000),
+                numberCell(row.magnitude),
+                numberCell(row.modelRowPx),
+                numberCell(row.modelColPx),
+                numberCell(row.residualNormPx),
             ].join("\t"));
         }
         return lines.join("\n") + "\n";
     }
 
-    function miracleErrorColor(errorDeg, maxErrorDeg) {
+    function miracleErrorRgb(errorDeg, maxErrorDeg) {
         const t = Math.max(0, Math.min(1, errorDeg / Math.max(maxErrorDeg, 1e-9)));
         const stops = [
             [0.00, [37, 99, 235]],
@@ -4405,89 +4627,218 @@ end
             }
         }
         const f = (t - lo[0]) / Math.max(hi[0] - lo[0], 1e-9);
-        const rgb = lo[1].map((value, index) => Math.round(value + (hi[1][index] - value) * f));
-        return `rgb(${rgb.join(",")})`;
+        return lo[1].map((value, index) => Math.round(value + (hi[1][index] - value) * f));
     }
 
-    function miracleApproximationErrorSvg(product) {
-        const width = 1100;
-        const height = 660;
-        const map = {x: 76, y: 84, w: 510, h: 430};
-        const scatter = {x: 665, y: 84, w: 365, h: 430};
+    function miracleErrorColor(errorDeg, maxErrorDeg) {
+        return `rgb(${miracleErrorRgb(errorDeg, maxErrorDeg).join(",")})`;
+    }
+
+    async function miracleApproximationErrorPngBlob(product) {
+        const sourceWidth = state.image.width;
+        const sourceHeight = state.image.height;
+        const gridScale = Math.min(1, 512 / Math.max(sourceWidth, sourceHeight));
+        const imageWidth = Math.max(1, Math.round(sourceWidth * gridScale));
+        const imageHeight = Math.max(1, Math.round(sourceHeight * gridScale));
         const errors = product.errors;
         const sortedErrors = errors.map(row => row.angularErrorDeg).sort((a, b) => a - b);
-        const p98Index = Math.max(0, Math.min(sortedErrors.length - 1, Math.floor(sortedErrors.length * 0.98)));
+        const p98Index = Math.max(
+            0,
+            Math.min(sortedErrors.length - 1, Math.floor(sortedErrors.length * 0.98)),
+        );
         const colorMax = Math.max(0.1, sortedErrors[p98Index] || 0.1);
-        const maxDistance = Math.max(1, ...errors.map(row => row.distancePx));
-        const imageAspect = state.image.width / state.image.height;
-        let mapW = map.w;
-        let mapH = map.h;
-        if (mapW / mapH > imageAspect) {
-            mapW = mapH * imageAspect;
-        } else {
-            mapH = mapW / imageAspect;
+        const heatmap = document.createElement("canvas");
+        heatmap.width = imageWidth;
+        heatmap.height = imageHeight;
+        const heatmapContext = heatmap.getContext("2d");
+        const imageData = heatmapContext.createImageData(imageWidth, imageHeight);
+        const pixels = imageData.data;
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value) || 2;
+        const rot = AidaTools.cameraRot(optpar[2], optpar[3], optpar[4]);
+        const calibration = product.calibration;
+        let validCount = 0;
+        let sumSquaredError = 0;
+        let maxErrorDeg = 0;
+        const yieldEveryRows = Math.max(1, Math.floor(imageHeight / 80));
+
+        for (let gridY = 0; gridY < imageHeight; gridY += 1) {
+            const rawY = (gridY + 0.5) * sourceHeight / imageHeight - 0.5;
+            for (let gridX = 0; gridX < imageWidth; gridX += 1) {
+                const rawX = (gridX + 0.5) * sourceWidth / imageWidth - 0.5;
+                const displayedX = state.imageFlipX ? sourceWidth - 1 - rawX : rawX;
+                const displayedY = state.imageFlipY ? sourceHeight - 1 - rawY : rawY;
+                const modelX = state.flipX ? sourceWidth - 1 - displayedX : displayedX;
+                const modelY = state.flipY ? sourceHeight - 1 - displayedY : displayedY;
+                const s = cameraVectorFromModelImagePixel(modelX, modelY, optpar, optmod);
+                const pixelIndex = (gridY * imageWidth + gridX) * 4;
+                if (!s) {
+                    pixels[pixelIndex] = 203;
+                    pixels[pixelIndex + 1] = 213;
+                    pixels[pixelIndex + 2] = 225;
+                    pixels[pixelIndex + 3] = 255;
+                    continue;
+                }
+                const internalEast = s.s1 * rot[0] + s.s2 * rot[1] + s.s3 * rot[2];
+                const internalNorth = s.s1 * rot[3] + s.s2 * rot[4] + s.s3 * rot[5];
+                const internalUp = s.s1 * rot[6] + s.s2 * rot[7] + s.s3 * rot[8];
+                const internalNorm = Math.hypot(internalEast, internalNorth, internalUp);
+                if (!Number.isFinite(internalNorm) || internalNorm <= 1e-12) {
+                    pixels[pixelIndex] = 203;
+                    pixels[pixelIndex + 1] = 213;
+                    pixels[pixelIndex + 2] = 225;
+                    pixels[pixelIndex + 3] = 255;
+                    continue;
+                }
+
+                const miracleDirection =
+                    window.AidaMiracleExport.approximateUnitVectorAtPixel(
+                        rawY + 1,
+                        rawX + 1,
+                        calibration,
+                    );
+                const dot = (
+                    internalEast / internalNorm * miracleDirection.east +
+                    internalNorth / internalNorm * miracleDirection.north +
+                    internalUp / internalNorm * miracleDirection.up
+                );
+                const errorDeg = Math.acos(Math.max(-1, Math.min(1, dot))) * AidaTools.RAD;
+                if (!Number.isFinite(errorDeg)) {
+                    pixels[pixelIndex] = 203;
+                    pixels[pixelIndex + 1] = 213;
+                    pixels[pixelIndex + 2] = 225;
+                    pixels[pixelIndex + 3] = 255;
+                    continue;
+                }
+                const rgb = miracleErrorRgb(errorDeg, colorMax);
+                pixels[pixelIndex] = rgb[0];
+                pixels[pixelIndex + 1] = rgb[1];
+                pixels[pixelIndex + 2] = rgb[2];
+                pixels[pixelIndex + 3] = 255;
+                validCount += 1;
+                sumSquaredError += errorDeg * errorDeg;
+                maxErrorDeg = Math.max(maxErrorDeg, errorDeg);
+            }
+            if (gridY % yieldEveryRows === 0) {
+                setLoadingProgress(
+                    28 + 42 * gridY / Math.max(1, imageHeight - 1),
+                    `Computing per-pixel MIRACLE error map: ${Math.round(
+                        100 * gridY / Math.max(1, imageHeight - 1)
+                    )}%`,
+                );
+                await new Promise(resolve => window.setTimeout(resolve, 0));
+            }
         }
-        const mapX = map.x + (map.w - mapW) / 2;
-        const mapY = map.y + (map.h - mapH) / 2;
-        const mx = x => mapX + x / Math.max(1, state.image.width - 1) * mapW;
-        const my = y => mapY + y / Math.max(1, state.image.height - 1) * mapH;
-        const sx = distance => scatter.x + distance / maxDistance * scatter.w;
-        const sy = error => scatter.y + scatter.h -
-            Math.min(error, colorMax) / colorMax * scatter.h;
-        const mapPoints = errors.map(row =>
-            `<circle cx="${mx(row.rawX).toFixed(2)}" cy="${my(row.rawY).toFixed(2)}" r="3.2" ` +
-            `fill="${miracleErrorColor(row.angularErrorDeg, colorMax)}" fill-opacity="0.86">` +
-            `<title>x ${row.rawX.toFixed(1)}, y ${row.rawY.toFixed(1)} px; ` +
-            `error ${row.angularErrorDeg.toFixed(3)} deg</title></circle>`
-        ).join("\n");
-        const scatterPoints = errors.map(row =>
-            `<circle cx="${sx(row.distancePx).toFixed(2)}" cy="${sy(row.angularErrorDeg).toFixed(2)}" ` +
-            `r="2.1" fill="${miracleErrorColor(row.angularErrorDeg, colorMax)}" fill-opacity="0.62"/>`
-        ).join("\n");
-        const xTicks = [0, 0.25, 0.5, 0.75, 1].map(fraction => {
-            const x = scatter.x + fraction * scatter.w;
-            return `<line x1="${x}" y1="${scatter.y}" x2="${x}" y2="${scatter.y + scatter.h}" stroke="#e2e8f0"/>` +
-                `<text x="${x}" y="${scatter.y + scatter.h + 24}" text-anchor="middle" font-size="13">` +
-                `${(fraction * maxDistance).toFixed(0)}</text>`;
-        }).join("\n");
-        const yTicks = [0, 0.25, 0.5, 0.75, 1].map(fraction => {
-            const y = scatter.y + scatter.h - fraction * scatter.h;
-            return `<line x1="${scatter.x}" y1="${y}" x2="${scatter.x + scatter.w}" y2="${y}" stroke="#e2e8f0"/>` +
-                `<text x="${scatter.x - 12}" y="${y + 4}" text-anchor="end" font-size="13">` +
-                `${(fraction * colorMax).toFixed(2)}</text>`;
-        }).join("\n");
-        const colorBar = Array.from({length: 100}, (_, index) => {
-            const x = mapX + index / 100 * mapW;
-            return `<rect x="${x.toFixed(2)}" y="${(mapY + mapH + 18).toFixed(2)}" ` +
-                `width="${(mapW / 100 + 0.5).toFixed(2)}" height="12" ` +
-                `fill="${miracleErrorColor(index / 99 * colorMax, colorMax)}"/>`;
-        }).join("");
-        const summary = product.summary;
-        return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
-<rect width="100%" height="100%" fill="#ffffff"/>
-<g font-family="Arial, sans-serif" fill="#334155">
-<text x="${width / 2}" y="30" text-anchor="middle" font-size="20" font-weight="700">MIRACLE d = kz approximation error</text>
-<text x="${width / 2}" y="55" text-anchor="middle" font-size="14">Angular separation from the native WISC lens model; RMS ${summary.rmsAngularDeg.toFixed(3)} deg, max ${summary.maxAngularDeg.toFixed(3)} deg</text>
-<text x="${map.x + map.w / 2}" y="75" text-anchor="middle" font-size="15" font-weight="700">Error by raw image coordinate</text>
-<rect x="${mapX}" y="${mapY}" width="${mapW}" height="${mapH}" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
-${mapPoints}
-${colorBar}
-<text x="${mapX}" y="${mapY + mapH + 48}" text-anchor="start" font-size="12">0 deg</text>
-<text x="${mapX + mapW}" y="${mapY + mapH + 48}" text-anchor="end" font-size="12">&gt;=${colorMax.toFixed(2)} deg (98th percentile)</text>
-<text x="${mapX + mapW / 2}" y="${mapY + mapH + 66}" text-anchor="middle" font-size="13">Horizontal image coordinate Y (column, px)</text>
-<text x="${mapX - 48}" y="${mapY + mapH / 2}" text-anchor="middle" font-size="13" transform="rotate(-90 ${mapX - 48} ${mapY + mapH / 2})">Vertical image coordinate X (row, px)</text>
-<text x="${scatter.x + scatter.w / 2}" y="75" text-anchor="middle" font-size="15" font-weight="700">Error versus distance from zenith</text>
-${xTicks}
-${yTicks}
-<rect x="${scatter.x}" y="${scatter.y}" width="${scatter.w}" height="${scatter.h}" fill="none" stroke="#334155" stroke-width="2"/>
-${scatterPoints}
-<text x="${scatter.x + scatter.w / 2}" y="${scatter.y + scatter.h + 52}" text-anchor="middle" font-size="14">d (pixels)</text>
-<text x="${scatter.x - 54}" y="${scatter.y + scatter.h / 2}" text-anchor="middle" font-size="14" transform="rotate(-90 ${scatter.x - 54} ${scatter.y + scatter.h / 2})">Angular error (degrees)</text>
-<text x="${width / 2}" y="${height - 16}" text-anchor="middle" font-size="12">Fit uses ${product.calibration.sampleCount} visible sky-direction samples; k = ${product.calibration.kPxPerRad.toFixed(6)} px/rad, rotation = ${product.calibration.rotationDeg.toFixed(6)} deg.</text>
-</g>
-</svg>
-`;
+        heatmapContext.putImageData(imageData, 0, 0);
+
+        const padding = {left: 120, top: 120, right: 80, bottom: 210};
+        const output = document.createElement("canvas");
+        output.width = imageWidth + padding.left + padding.right;
+        output.height = imageHeight + padding.top + padding.bottom;
+        const context = output.getContext("2d");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, output.width, output.height);
+        context.imageSmoothingEnabled = false;
+        context.drawImage(heatmap, padding.left, padding.top);
+        context.strokeStyle = "#334155";
+        context.lineWidth = Math.max(2, Math.round(Math.min(imageWidth, imageHeight) / 800));
+        context.strokeRect(padding.left, padding.top, imageWidth, imageHeight);
+        const fontScale = Math.max(1, Math.min(2, Math.min(imageWidth, imageHeight) / 900));
+        context.lineWidth = 1;
+        context.font = `${Math.round(12 * fontScale)}px Arial, sans-serif`;
+        context.fillStyle = "#334155";
+        for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+            const x = padding.left + fraction * imageWidth;
+            const column = Math.round(1 + fraction * (sourceWidth - 1));
+            context.beginPath();
+            context.moveTo(x, padding.top + imageHeight);
+            context.lineTo(x, padding.top + imageHeight + 7);
+            context.stroke();
+            context.textAlign = "center";
+            context.fillText(
+                String(column),
+                x,
+                padding.top + imageHeight + Math.round(22 * fontScale),
+            );
+
+            const y = padding.top + fraction * imageHeight;
+            const row = Math.round(1 + fraction * (sourceHeight - 1));
+            context.beginPath();
+            context.moveTo(padding.left - 7, y);
+            context.lineTo(padding.left, y);
+            context.stroke();
+            context.textAlign = "right";
+            context.textBaseline = "middle";
+            context.fillText(String(row), padding.left - 12, y);
+        }
+        context.textBaseline = "alphabetic";
+        context.fillStyle = "#0f172a";
+        context.textAlign = "center";
+        context.font = `700 ${Math.round(22 * fontScale)}px Arial, sans-serif`;
+        context.fillText(
+            "Absolute angular error: native WISC model vs MIRACLE d = kz",
+            output.width / 2,
+            Math.round(43 * fontScale),
+        );
+        context.font = `${Math.round(14 * fontScale)}px Arial, sans-serif`;
+        const rmsErrorDeg = validCount > 0 ? Math.sqrt(sumSquaredError / validCount) : NaN;
+        context.fillText(
+            `${imageWidth} × ${imageHeight} image-aligned heatmap sampled from ` +
+            `${sourceWidth} × ${sourceHeight} pixels; RMS ${rmsErrorDeg.toFixed(3)} deg, ` +
+            `max ${maxErrorDeg.toFixed(3)} deg`,
+            output.width / 2,
+            Math.round(72 * fontScale),
+        );
+
+        const barX = padding.left;
+        const barY = padding.top + imageHeight + Math.round(52 * fontScale);
+        const barWidth = imageWidth;
+        const barHeight = Math.max(18, Math.round(22 * fontScale));
+        for (let x = 0; x < barWidth; x += 1) {
+            const rgb = miracleErrorRgb(x / Math.max(1, barWidth - 1) * colorMax, colorMax);
+            context.fillStyle = `rgb(${rgb.join(",")})`;
+            context.fillRect(barX + x, barY, 1, barHeight);
+        }
+        context.strokeStyle = "#334155";
+        context.lineWidth = 1;
+        context.strokeRect(barX, barY, barWidth, barHeight);
+        context.fillStyle = "#334155";
+        context.textAlign = "left";
+        context.font = `${Math.round(13 * fontScale)}px Arial, sans-serif`;
+        context.fillText("0 deg", barX, barY + barHeight + Math.round(24 * fontScale));
+        context.textAlign = "right";
+        context.fillText(
+            `≥ ${colorMax.toFixed(3)} deg (98th percentile sample color limit)`,
+            barX + barWidth,
+            barY + barHeight + Math.round(24 * fontScale),
+        );
+        context.textAlign = "center";
+        context.fillText(
+            `Horizontal image coordinate Y (column; source width ${sourceWidth} px)`,
+            padding.left + imageWidth / 2,
+            output.height - Math.round(34 * fontScale),
+        );
+        context.save();
+        context.translate(Math.round(38 * fontScale), padding.top + imageHeight / 2);
+        context.rotate(-Math.PI / 2);
+        context.fillText(
+            `Vertical image coordinate X (row; source height ${sourceHeight} px)`,
+            0,
+            0,
+        );
+        context.restore();
+
+        product.pixelErrorSummary = {
+            count: validCount,
+            rmsAngularDeg: rmsErrorDeg,
+            maxAngularDeg: maxErrorDeg,
+            colorMaxDeg: colorMax,
+            gridWidth: imageWidth,
+            gridHeight: imageHeight,
+            sourceWidth,
+            sourceHeight,
+        };
+        return canvasToPngBlob(output);
     }
 
     function residualScatterSvg(rows) {
@@ -4928,8 +5279,9 @@ print(f"wrote {OUT} with {count} stars")
 
 Files:
 - report.tex: LaTeX source for the lens model fitting report.
-- ${prefix}.miracle: MIRACLE-compatible plain ASCII calibration. It contains exactly one whitespace-delimited row in the order Glat Glon Xc Yc k rotation.
-- selected_stars.tsv: every star selected in WISC, including image position, J2000 RA/Dec, azimuth/altitude at the image time, magnitude, modeled position, and fit residual.
+- ${prefix}.miracle: MIRACLE-compatible plain ASCII calibration. The first line is a % comment with parameter names and units; the second line contains Glat Glon Xc Yc k rotAngle.
+- ${prefix}_calibration.h5: compact HDF5 calibration product containing MIRACLE parameters, native WISC optpar, selected-star coordinates, and fit residuals.
+- selected_stars.tsv: every star selected in WISC, including starAlt, starAz, 1-based starRow/starCol, J2000 RA/Dec, magnitude, modeled position, and fit residual.
 - overlay_lens_model.py: bare Python script with optpar inside the code; maps Yale star az/el to pixels with the lens model and writes overlay_lens_model.png.
 - create_az_el_table.py: optional script that creates calibration_az_el.h5 in this folder.
 - overlay_hdf5.py: bare Python script that reads calibration_az_el.h5 after create_az_el_table.py has made it, then writes overlay_hdf5.png.
@@ -4938,27 +5290,34 @@ Files:
 - figures/residual_overlay.png: WISC residual-vector overlay view.
 - figures/residual_scatter.png: residual scatter plot used by report.tex.
 - figures/residual_scatter.svg: editable residual scatter plot source.
-- figures/miracle_approximation_error.png: error of the six-parameter MIRACLE approximation against the native WISC lens model over the image.
-- figures/miracle_approximation_error.svg: editable source for the MIRACLE approximation-error plot.
+- figures/miracle_absolute_angular_error.png: image-aligned pcolormesh-style bitmap of absolute sky-angle error between the native WISC model and MIRACLE approximation. The heatmap preserves image aspect ratio and is capped at 512 pixels on its longest side.
 
 MIRACLE convention:
 - Glat and Glon are station geographic latitude and longitude in degrees.
-- Xc is the vertical image coordinate (row) of zenith in pixels.
-- Yc is the horizontal image coordinate (column) of zenith in pixels.
-- k is pixels per radian in d = k z, fitted over visible sky directions.
-- rotation is in degrees; counter-clockwise rotation of the image is positive.
-- Image coordinates are zero-based with (0, 0) at the upper-left corner.
+- Xc is the 1-based vertical image coordinate (zenithRow).
+- Yc is the 1-based horizontal image coordinate (zenithCol).
+- k is pixels per degree in d = k z.
+- rotAngle is in radians. A positive value means rotating the image clockwise aligns north upward, equivalently the uncorrected image is rotated counter-clockwise.
+- Image coordinates are 1-based with (1, 1) at the upper-left corner.
+- WISC fits these four camera parameters from the selected stars using the same unmirrored east-left projection as the supplied MATLAB starcalibration function.
 
 Run python overlay_lens_model.py to annotate Yale stars with the optpar embedded in that script.
 Run python create_az_el_table.py only if you want the optional HDF5 az/el table.
 Run python overlay_hdf5.py after creating calibration_az_el.h5.
 Compile report.tex with pdflatex or latexmk from this directory after unzipping.
+
+Compact HDF5 layout:
+- /miracle_parameters: Glat, Glon, Xc, Yc, k, rotAngle in the units documented by its root attribute.
+- /wisc_optpar and /wisc_optpar_with_optmod: the native fitted WISC camera model.
+- /selected_stars: numeric selected-star catalog, observed/model image positions, and residuals; column names are in the selected_star_columns root attribute.
+- /residuals_px: model-minus-selected row, column, and norm residuals.
 `;
     }
 
     function latexReportText(metadata, rows) {
         const optpar = currentOptpar();
         const optmod = Number(controls.optmod.value) || 2;
+        const prefix = window.AidaMiracleExport.imagePrefix(metadata.imageName || "wisc");
         const summary = metadata.residualSummary || {};
         const rms = Number.isFinite(summary.rmsPx) ? summary.rmsPx.toFixed(3) : "n/a";
         const median = Number.isFinite(summary.medianPx) ? summary.medianPx.toFixed(3) : "n/a";
@@ -4970,14 +5329,15 @@ Compile report.tex with pdflatex or latexmk from this directory after unzipping.
             miracle.glonDeg,
             miracle.xcPx,
             miracle.ycPx,
-            miracle.kPxPerRad,
-            miracle.rotationDeg,
+            miracle.kPxPerDeg,
+            miracle.rotationRad,
         ].map(value => Number(value).toPrecision(12)).join(" ") : "n/a";
-        const miracleRms = miracle && Number.isFinite(miracle.errorSummary.rmsAngularDeg) ?
-            miracle.errorSummary.rmsAngularDeg.toFixed(3) :
+        const miraclePixelSummary = miracle && miracle.pixelErrorSummary;
+        const miracleRms = miraclePixelSummary && Number.isFinite(miraclePixelSummary.rmsAngularDeg) ?
+            miraclePixelSummary.rmsAngularDeg.toFixed(3) :
             "n/a";
-        const miracleMax = miracle && Number.isFinite(miracle.errorSummary.maxAngularDeg) ?
-            miracle.errorSummary.maxAngularDeg.toFixed(3) :
+        const miracleMax = miraclePixelSummary && Number.isFinite(miraclePixelSummary.maxAngularDeg) ?
+            miraclePixelSummary.maxAngularDeg.toFixed(3) :
             "n/a";
         return `\\documentclass[11pt]{article}
 \\usepackage[margin=1in]{geometry}
@@ -5018,24 +5378,29 @@ ${lensEquationLatex(optpar, optmod)}
 
 \\section{MIRACLE Approximation}
 The MIRACLE-compatible calibration uses the historical parameter order
-\\texttt{Glat Glon Xc Yc k rotation}:
+\\texttt{Glat Glon Xc Yc k rotAngle}:
 \\begin{verbatim}
 ${miracleText}
 \\end{verbatim}
 Here \\texttt{Xc} is the vertical image coordinate (row), \\texttt{Yc} is the
-horizontal image coordinate (column), and $(0,0)$ is the upper-left pixel.
-The scale \\texttt{k} is in pixels per radian for $d=kz$. Rotation is in
-degrees and is positive for a counter-clockwise rotation of the image. The
-scale and rotation are least-squares/circular fits over visible sky directions;
-the native WISC model remains the authoritative calibration.
+horizontal image coordinate (column), and $(1,1)$ is the upper-left pixel.
+The scale \\texttt{k} is in pixels per degree for $d=kz$, and
+\\texttt{rotAngle} is in radians. A positive angle means that rotating the
+image clockwise aligns north upward. The fit uses the unmirrored convention
+where east is left. Calibration source: \\texttt{${escapeTex(miracle && miracle.fitSource || "n/a")}}.
+The native WISC model remains the authoritative calibration.
 
-The six-parameter approximation has an RMS angular error of
-${miracleRms} degrees and a maximum sampled error of ${miracleMax} degrees
-relative to the native WISC lens model.
+Across all image pixels where the native model is defined, the six-parameter
+approximation has an RMS absolute angular error of ${miracleRms} degrees and a
+maximum error of ${miracleMax} degrees relative to the native WISC lens model.
 \\begin{figure}[h]
 \\centering
-\\includegraphics[width=0.98\\linewidth]{figures/miracle_approximation_error.png}
-\\caption{Angular error of the MIRACLE $d=kz$ approximation as a function of raw image coordinate and radial distance from zenith. The comparison uses the native WISC lens model as reference.}
+\\includegraphics[width=0.98\\linewidth]{figures/miracle_absolute_angular_error.png}
+\\caption{Pcolormesh-style absolute angular error of the MIRACLE $d=kz$
+approximation against the native WISC lens model. The image-aligned heatmap
+preserves the source aspect ratio and is capped at 512 pixels on its longest
+side; colors are in degrees. Gray cells are outside the domain of the native
+lens-model inverse.}
 \\end{figure}
 
 \\section{Fit Residuals}
@@ -5059,14 +5424,22 @@ relative to the native WISC lens model.
 \\end{figure}
 
 \\section{Generated Data Products}
-The results ZIP contains a plain ASCII \\texttt{.miracle} file with exactly
-six whitespace-delimited numbers and no JSON syntax. It also contains
-\\texttt{selected\\_stars.tsv}, which gives the selected stars' raw image
-coordinates, J2000 RA/Dec, and WISC-computed azimuth and altitude for the
-observation time and station.
+The results ZIP contains a plain ASCII \\texttt{.miracle} file. Its first line
+is a \\texttt{\\%} comment containing parameter names and units; its second line
+contains six whitespace-delimited numbers and no JSON syntax. It also contains
+\\texttt{selected\\_stars.tsv}, whose \\texttt{altitude\\_deg},
+\\texttt{azimuth\\_deg}, \\texttt{star\\_row\\_px\\_1based}, and
+\\texttt{star\\_col\\_px\\_1based} columns can be passed directly as
+\\texttt{starAlt}, \\texttt{starAz}, \\texttt{starRow}, and \\texttt{starCol}.
 
-The results ZIP contains one image copy: \\texttt{base\\_image.png}. The HDF5
-az/el table is not included because it is large. If you want it, run
+The compact \\texttt{${escapeTex(prefix)}\\_calibration.h5} file contains
+\\texttt{/miracle\\_parameters}, \\texttt{/wisc\\_optpar},
+\\texttt{/wisc\\_optpar\\_with\\_optmod}, \\texttt{/selected\\_stars}, and
+\\texttt{/residuals\\_px}. Dataset column names, units, image metadata, site,
+time, and coordinate conventions are recorded as root attributes.
+
+The results ZIP contains one image copy: \\texttt{base\\_image.png}. The large
+per-corner HDF5 az/el table is not included. If you want it, run
 \\texttt{create\\_az\\_el\\_table.py}; that script creates
 \\texttt{calibration\\_az\\_el.h5} in the report directory.
 
@@ -5184,7 +5557,7 @@ image.
             const rows = matchResidualRows();
             const prefix = window.AidaMiracleExport.imagePrefix(state.imageName || "wisc");
             const miracleProduct = miracleCalibrationProduct();
-            const metadata = reportMetadata(rows, miracleProduct);
+            const starRows = selectedStarDataRows();
             const zipName = `${prefix}_results.zip`;
             setLoadingProgress(12, "Capturing overlay figures...");
             const baseImagePng = await rawImagePixelsPngBlob();
@@ -5192,16 +5565,14 @@ image.
             const residualOverlayPng = await captureReportCanvasPng(true);
             const residualSvg = residualScatterSvg(rows);
             const residualPng = await svgToPngBlob(residualSvg, 720, 520, "residual scatter");
-            const miracleErrorSvg = miracleApproximationErrorSvg(miracleProduct);
-            const miracleErrorPng = await svgToPngBlob(
-                miracleErrorSvg,
-                1100,
-                660,
-                "MIRACLE approximation error",
-            );
+            const miracleErrorPng = await miracleApproximationErrorPngBlob(miracleProduct);
+            const metadata = reportMetadata(rows, miracleProduct);
             const yaleMag5 = yaleBrightCatalog(5.0);
             setLoadingProgress(72, "Loading results writer...");
-            const JSZip = await loadJsZip();
+            const [JSZip, hdf5Writer] = await Promise.all([
+                loadJsZip(),
+                loadH5Wasm(),
+            ]);
             setLoadingProgress(82, "Assembling results ZIP...");
             const zip = new JSZip();
             zip.file("README.md", reportReadmeText(prefix));
@@ -5210,14 +5581,24 @@ image.
                 `${prefix}.miracle`,
                 window.AidaMiracleExport.formatMiracleAscii(miracleProduct.calibration),
             );
+            const calibrationHdf5Name = resultsHdf5Filename(prefix);
+            const calibrationHdf5 = writeResultsHdf5Bytes(
+                hdf5Writer.h5wasm,
+                hdf5Writer.FS,
+                calibrationHdf5Name,
+                prefix,
+                metadata,
+                miracleProduct,
+                starRows,
+            );
+            zip.file(calibrationHdf5Name, calibrationHdf5);
             zip.file("selected_stars.tsv", selectedStarsTsv());
             zip.file("base_image.png", baseImagePng);
             zip.file("figures/star_overlay.png", overlayPng);
             zip.file("figures/residual_overlay.png", residualOverlayPng);
             zip.file("figures/residual_scatter.png", residualPng);
             zip.file("figures/residual_scatter.svg", residualSvg);
-            zip.file("figures/miracle_approximation_error.png", miracleErrorPng);
-            zip.file("figures/miracle_approximation_error.svg", miracleErrorSvg);
+            zip.file("figures/miracle_absolute_angular_error.png", miracleErrorPng);
             zip.file("overlay_lens_model.py", bareLensOverlayPythonScript(yaleMag5));
             zip.file("create_az_el_table.py", bareCreateAzElTablePythonScript());
             zip.file("overlay_hdf5.py", bareHdf5OverlayPythonScript(yaleMag5));

@@ -274,29 +274,41 @@ the export.
 The `Download results` button packages `report.tex`, star-overlay and residual
 figures, a single root-level `base_image.png`, and Yale Bright Star Catalogue
 rows embedded directly in root-level Python examples. The ZIP is named
-`<image-prefix>_results.zip`.
+`<image-prefix>_results.zip`. It also includes
+`<image-prefix>_calibration.h5`, a compact HDF5 calibration product with the
+MIRACLE parameters, native WISC `optpar`, selected-star coordinates, modeled
+positions, and row/column/norm residuals. Dataset column names, units, site,
+time, image metadata, and coordinate conventions are stored as root
+attributes.
 
-The results ZIP also contains `<image-prefix>.miracle`, a plain ASCII file with
-one whitespace-delimited row in the order
-`Glat Glon Xc Yc k rotation`. `Glat` and `Glon` are station geographic
-coordinates in degrees. MIRACLE's historical image axes are intentionally
-twisted: `Xc` is the vertical coordinate (row) of zenith and `Yc` is the
-horizontal coordinate (column), with `(0, 0)` at the upper-left. `k` is fitted
-in pixels per radian for `d = k z`; rotation is in degrees and a
-counter-clockwise image rotation is positive. The file contains numbers only,
-not JSON.
+The results ZIP also contains `<image-prefix>.miracle`, a plain ASCII file.
+Its first line is a `%` comment containing parameter names and units. The
+second line contains `Glat Glon Xc Yc k rotAngle`. `Glat` and `Glon` are station
+geographic coordinates in degrees. MIRACLE's historical image axes are
+intentionally twisted: `Xc` is the 1-based vertical coordinate
+(`zenithRow`) and `Yc` is the 1-based horizontal coordinate (`zenithCol`),
+with `(1, 1)` at the upper-left. `k` is in pixels per degree for `d = k z`,
+and `rotAngle` is in radians. A positive angle means rotating the image
+clockwise aligns north upward, equivalently the uncorrected image is rotated
+counter-clockwise. The numeric row contains no JSON.
 
-`selected_stars.tsv` provides every star selected in WISC with its image
-position, J2000 RA/Dec, azimuth and altitude for the observation time/site,
-magnitude, modeled position, and residual. The report includes
-`figures/miracle_approximation_error.png` and its SVG source, comparing the
-six-parameter MIRACLE approximation with the native WISC lens model across raw
-image coordinates and versus radial distance from zenith.
+WISC fits the MIRACLE camera parameters directly from selected-star
+row/column positions using the unmirrored east-left projection in the MIRACLE
+`starcalibration` function. `selected_stars.tsv` provides every selected star
+with `altitude_deg`, `azimuth_deg`, `star_row_px_1based`, and
+`star_col_px_1based` columns that map directly to MATLAB `starAlt`, `starAz`,
+`starRow`, and `starCol`, plus J2000 RA/Dec, magnitude, modeled position, and
+residual. The report includes
+`figures/miracle_absolute_angular_error.png`, a pcolormesh-style bitmap of the
+absolute sky-angle difference in degrees between the native WISC model and the
+six-parameter MIRACLE approximation. The image-aligned heatmap preserves the
+source aspect ratio and is capped at 512 pixels on its longest side.
 
 `overlay_lens_model.py` has the optpar, site/time, image size, and star rows in
 the code. `create_az_el_table.py` optionally creates `calibration_az_el.h5`
 locally; `overlay_hdf5.py` reads that file after it has been created. The HDF5
-file is not bundled in the ZIP. The examples use Astropy for RA/Dec to
+az/el corner grid is not bundled in the ZIP because it can be much larger than
+the compact calibration HDF5. The examples use Astropy for RA/Dec to
 azimuth/elevation, draw hollow yellow circles on `base_image.png`, and write a
 PNG in the same folder. The examples do not read JSON metadata, residual, or
 catalog files. Compile `report.tex` after unzipping with `pdflatex` or
