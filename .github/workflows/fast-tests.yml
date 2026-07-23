@@ -21,8 +21,18 @@ jobs:
         with:
           node-version: 22
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python test dependencies
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6
+
       - name: Install dependencies
         run: npm ci
 
       - name: Run fast JavaScript tests
+        env:
+          PYTHON: python
         run: npm test
