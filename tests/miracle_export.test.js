@@ -116,4 +116,8 @@ test("results download includes MIRACLE, compact HDF5, selected-star, and error 
     assert.match(app, /fraction of \[0, 0\.25, 0\.5, 0\.75, 1\]/);
     assert.doesNotMatch(app, /98th percentile sample color limit/);
     assert.doesNotMatch(app, /figures\/miracle_approximation_error\.svg/);
+    const miracleSection = app.lastIndexOf("\\\\section{MIRACLE Approximation}");
+    const endDocument = app.lastIndexOf("\\\\end{document}");
+    assert.ok(miracleSection > app.lastIndexOf("\\\\section{How To Use The Lens Model}"));
+    assert.ok(miracleSection < endDocument);
 });

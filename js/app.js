@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.49";
+    const APP_VERSION = "v0.3.50";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -5382,33 +5382,6 @@ The exported parameter vector is:
 The browser lens equation shown at export time was:
 ${lensEquationLatex(optpar, optmod)}
 
-\\section{MIRACLE Approximation}
-The MIRACLE-compatible calibration uses the historical parameter order
-\\texttt{Glat Glon Xc Yc k rotAngle}:
-\\begin{verbatim}
-${miracleText}
-\\end{verbatim}
-Here \\texttt{Xc} is the vertical image coordinate (row), \\texttt{Yc} is the
-horizontal image coordinate (column), and $(1,1)$ is the upper-left pixel.
-The scale \\texttt{k} is in pixels per degree for $d=kz$, and
-\\texttt{rotAngle} is in radians. A positive angle means that rotating the
-image clockwise aligns north upward. The fit uses the unmirrored convention
-where east is left. Calibration source: \\texttt{${escapeTex(miracle && miracle.fitSource || "n/a")}}.
-The native WISC model remains the authoritative calibration.
-
-Across all image pixels where the native model is defined, the six-parameter
-approximation has an RMS absolute angular error of ${miracleRms} degrees and a
-maximum error of ${miracleMax} degrees relative to the native WISC lens model.
-\\begin{figure}[h]
-\\centering
-\\includegraphics[width=0.98\\linewidth]{figures/miracle_absolute_angular_error.png}
-\\caption{Pcolormesh-style absolute angular error of the MIRACLE $d=kz$
-approximation against the native WISC lens model. The image-aligned heatmap
-preserves the source aspect ratio and is capped at 512 pixels on its longest
-side; colors are in degrees. Gray cells are outside the domain of the native
-lens-model inverse.}
-\\end{figure}
-
 \\section{Fit Residuals}
 \\begin{figure}[h]
 \\centering
@@ -5493,6 +5466,33 @@ nearest pixels.
 Use \\texttt{overlay\\_lens\\_model.py} when you want a compact portable formula.
 Use \\texttt{overlay\\_hdf5.py} when you want a lookup table tied exactly to this
 image.
+
+\\section{MIRACLE Approximation}
+The MIRACLE-compatible calibration uses the historical parameter order
+\\texttt{Glat Glon Xc Yc k rotAngle}:
+\\begin{verbatim}
+${miracleText}
+\\end{verbatim}
+Here \\texttt{Xc} is the vertical image coordinate (row), \\texttt{Yc} is the
+horizontal image coordinate (column), and $(1,1)$ is the upper-left pixel.
+The scale \\texttt{k} is in pixels per degree for $d=kz$, and
+\\texttt{rotAngle} is in radians. A positive angle means that rotating the
+image clockwise aligns north upward. The fit uses the unmirrored convention
+where east is left. Calibration source: \\texttt{${escapeTex(miracle && miracle.fitSource || "n/a")}}.
+The native WISC model remains the authoritative calibration.
+
+Across all image pixels where the native model is defined, the six-parameter
+approximation has an RMS absolute angular error of ${miracleRms} degrees and a
+maximum error of ${miracleMax} degrees relative to the native WISC lens model.
+\\begin{figure}[h]
+\\centering
+\\includegraphics[width=0.98\\linewidth]{figures/miracle_absolute_angular_error.png}
+\\caption{Pcolormesh-style absolute angular error of the MIRACLE $d=kz$
+approximation against the native WISC lens model. The image-aligned heatmap
+preserves the source aspect ratio and is capped at 512 pixels on its longest
+side; colors are in degrees. Gray cells are outside the domain of the native
+lens-model inverse.}
+\\end{figure}
 
 \\end{document}
 `;
