@@ -46,6 +46,17 @@ code widefield-star-calibrator
 # open index.html
 ```
 
+Hosted test cases can also have short quick links. Create or update one with:
+
+```bash
+npm run quicklink -- tc01 Sunniva_Alomar_23-03-2023_21-30UT
+```
+
+This writes `quick_links.json` and a small `tc01/index.html` redirect. After
+deployment, `https://juha.no/aida/tc01` opens the browser GUI and loads the
+mapped saved test case. If a short name is not listed in `quick_links.json`,
+WISC tries to load a saved test case with that exact id.
+
 DDR data policy disclaimer: all data goes directly to STASI main archives. Just
 kidding. Most calibration work is purely client-side JavaScript. Images are not
 uploaded during ordinary viewing, star picking, fitting, or code export. If you
@@ -81,7 +92,13 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
   estimate and pair them with catalog stars.
 - Fits the model-specific `optpar` vector: eight parameters for AIDA radial
   models, and twelve for Brown-Conrady with `k1`, `k2`, `k3`, `p1`, and `p2`.
-- Exports the fitted `optpar` and mapper code as Python, Julia, C, or MATLAB.
+- Exports and imports the fitted `optpar`, exports mapper code as Python,
+  Julia, C, or MATLAB, and can download an HDF5 azimuth/elevation map for
+  every image pixel.
+- Generates a ZIP report bundle with LaTeX source, star-overlay figures,
+  residual plots, one base image, bare Python overlay scripts, and an optional
+  script that creates the HDF5 az/el grid locally.
+- Shows RGB images in color when the high-pass image display option is off.
 - Provides residual inspection, including 20x exaggerated on-image residual
   vectors so subpixel offsets are visible.
 - Includes pure image and pure Stellarium views for visual checking.
@@ -120,8 +137,8 @@ pairings after an automatic run.
 4. Select the optical model to fit: an AIDA radial model (`optmod 1`, `2`,
    `3`, `4`, `5`, or `12`) or Brown-Conrady.
 5. Roughly align the star field: left-drag to move the zenith point,
-   right-drag to rotate the field, and use the mouse wheel to scale `f1` and
-   `f2` together.
+   Shift-left-drag or right-drag to rotate the field, and use the mouse wheel
+   to scale `f1` and `f2` together.
 6. Click `I'm feeling lucky...` or press `L` to run the automatic detector,
    asterism matcher, and staged lens fit. Re-running it respects any masked
    image tiles.
@@ -137,11 +154,12 @@ pairings after an automatic run.
 ## Field Of View Adjustment
 
 The first alignment step is meant to be visual and approximate. Drag with the
-left mouse button until the catalog zenith is near the image zenith. Drag with
-the right mouse button to rotate the star field so bright catalog stars line up
-with the image orientation. Use the mouse wheel if the projected catalog field
-is too wide or too narrow. After the field is close, use `S` to create accurate
-star pairs and let the lens optimizer refine the selected model parameters.
+left mouse button until the catalog zenith is near the image zenith. Shift-drag
+with the left mouse button, or drag with the right mouse button, to rotate the
+star field so bright catalog stars line up with the image orientation. Use the
+mouse wheel if the projected catalog field is too wide or too narrow. After the
+field is close, use `S` to create accurate star pairs and let the lens optimizer
+refine the selected model parameters.
 
 ## Star Picking Details
 
@@ -231,14 +249,58 @@ Brown-Conrady (`optmod 20`), it contains
 `[20, f1, f2, alpha, beta, gamma, du, dv, k1, k2, k3, p1, p2]`.
 
 The export language selector can copy the array and mapper code as Python,
-Julia, C, or MATLAB. The generated mapper code reads the model number from the
-first element before applying the parameter vector. The Python mapper is a
-small calibration module with the current `optpar`, image width, image height,
-the lens-model implementation, and a ready-to-use `WiscCamera` instance already
+Julia, C, or MATLAB. `Paste optpar` accepts copied exports such as
+`optpar = [...]`, C brace arrays, MATLAB bracket arrays, or plain numeric
+vectors. The generated mapper code reads the model number from the first
+element before applying the parameter vector. The Python mapper is a small
+calibration module with the current `optpar`, image width, image height, the
+lens-model implementation, and a ready-to-use `WiscCamera` instance already
 filled in. It is complete as copied; no extra WISC Python file is needed. The
 Julia, C, and MATLAB exports provide the same forward `az_el_to_image`
 projection so they can be embedded in analysis code and inverted numerically
 when needed.
+
+The `Download az/el HDF5` button writes a browser-generated HDF5 file with
+`/azimuth_deg` and `/elevation_deg` Float32 datasets shaped
+`[image_height + 1, image_width + 1]` and indexed as
+`[corner_y, corner_x]`. Values describe pixel corners from `(-0.5, -0.5)` to
+`(image_width - 0.5, image_height - 0.5)`, making the arrays directly
+compatible with `pcolormesh` image data. The root attributes store the image
+name, image and coordinate-grid sizes, UTC timestamp, site
+latitude/longitude/altitude, selected optical model, `optpar`,
+`[optmod, ...optpar]`, corner origin/step, and overlay/image flip flags used for
+the export.
+
+The `Download results` button packages `report.tex`, star-overlay and residual
+figures, a single root-level `base_image.png`, and Yale Bright Star Catalogue
+rows embedded directly in root-level Python examples. The ZIP is named
+`<image-prefix>_results.zip`.
+
+The results ZIP also contains `<image-prefix>.miracle`, a plain ASCII file with
+one whitespace-delimited row in the order
+`Glat Glon Xc Yc k rotation`. `Glat` and `Glon` are station geographic
+coordinates in degrees. MIRACLE's historical image axes are intentionally
+twisted: `Xc` is the vertical coordinate (row) of zenith and `Yc` is the
+horizontal coordinate (column), with `(0, 0)` at the upper-left. `k` is fitted
+in pixels per radian for `d = k z`; rotation is in degrees and a
+counter-clockwise image rotation is positive. The file contains numbers only,
+not JSON.
+
+`selected_stars.tsv` provides every star selected in WISC with its image
+position, J2000 RA/Dec, azimuth and altitude for the observation time/site,
+magnitude, modeled position, and residual. The report includes
+`figures/miracle_approximation_error.png` and its SVG source, comparing the
+six-parameter MIRACLE approximation with the native WISC lens model across raw
+image coordinates and versus radial distance from zenith.
+
+`overlay_lens_model.py` has the optpar, site/time, image size, and star rows in
+the code. `create_az_el_table.py` optionally creates `calibration_az_el.h5`
+locally; `overlay_hdf5.py` reads that file after it has been created. The HDF5
+file is not bundled in the ZIP. The examples use Astropy for RA/Dec to
+azimuth/elevation, draw hollow yellow circles on `base_image.png`, and write a
+PNG in the same folder. The examples do not read JSON metadata, residual, or
+catalog files. Compile `report.tex` after unzipping with `pdflatex` or
+`latexmk`.
 
 ## Python Lens Module
 

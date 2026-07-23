@@ -439,6 +439,21 @@ test("compact station filename parser handles Ramfjordmoen timestamps and coordi
     assert.equal(station.altM, 0);
 });
 
+test("Sunniva Alomar filename parser handles UT timestamp and station coordinates", () => {
+    const date = AidaTools.guessTimestampFromImageName("Sunniva_Alomar_23.03.2023_21.30UT.");
+    assert.equal(date.toISOString(), "2023-03-23T21:30:00.000Z");
+
+    const withExtension = AidaTools.guessTimestampFromImageName("Sunniva_Alomar_23.03.2023_21.30UT.jpg");
+    assert.equal(withExtension.toISOString(), "2023-03-23T21:30:00.000Z");
+
+    const station = AidaTools.guessStationMetadataFromName("Sunniva_Alomar_23.03.2023_21.30UT.");
+    assert.equal(station.code, "ALOMAR");
+    assert.equal(station.name, "ALOMAR");
+    assertNear(station.latDeg, 69.2736, 1e-12);
+    assertNear(station.lonDeg, 16.0352, 1e-12);
+    assert.equal(station.altM, 150);
+});
+
 test("default focal ratios follow image width and height", () => {
     const square = AidaTools.defaultOptparForImageSize(2832, 2832, 2);
     assert.equal(square[0], 1.0);

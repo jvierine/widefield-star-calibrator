@@ -762,6 +762,23 @@ h2 {
     transition: width 120ms ease;
 }
 
+.loading-overlay.indeterminate .loading-bar {
+    width: 42%;
+    animation: loading-slide 1s ease-in-out infinite;
+}
+
+@keyframes loading-slide {
+    0% {
+        transform: translateX(-110%);
+    }
+    50% {
+        transform: translateX(70%);
+    }
+    100% {
+        transform: translateX(240%);
+    }
+}
+
 .controls {
     display: flex;
     flex-direction: column;
@@ -797,6 +814,21 @@ button {
 }
 
 input[type="range"] {
+    padding: 0;
+}
+
+.checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 7px;
+    cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
     padding: 0;
 }
 
@@ -849,6 +881,25 @@ button.secondary-action:hover {
     border-color: #fca5a5;
     background: #fee2e2;
     color: #7f1d1d;
+}
+
+.quick-link-box {
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    background: #eff6ff;
+}
+
+.quick-link-box label {
+    margin: 0 0 6px;
+}
+
+.quick-link-box input[readonly] {
+    color: #1e3a8a;
+    background: #ffffff;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
 }
 
 .file-button {

@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.13";
+    const APP_VERSION = "v0.3.47";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -130,11 +130,17 @@
         undoFit: document.getElementById("undoFit"),
         exportLanguage: document.getElementById("exportLanguage"),
         copyOptpar: document.getElementById("copyOptpar"),
+        pasteOptpar: document.getElementById("pasteOptpar"),
         copyPythonMapper: document.getElementById("copyPythonMapper"),
+        downloadAzElHdf5: document.getElementById("downloadAzElHdf5"),
+        downloadFitReport: document.getElementById("downloadFitReport"),
         localTestCaseTools: document.getElementById("localTestCaseTools"),
         submitPassKey: document.getElementById("submitPassKey"),
         submitTestCase: document.getElementById("submitTestCase"),
         saveFeedback: document.getElementById("saveFeedback"),
+        testCaseQuickLink: document.getElementById("testCaseQuickLink"),
+        testCaseQuickLinkInput: document.getElementById("testCaseQuickLinkInput"),
+        copyTestCaseQuickLink: document.getElementById("copyTestCaseQuickLink"),
         testCaseSelect: document.getElementById("testCaseSelect"),
         loadTestCase: document.getElementById("loadTestCase"),
         toggleFitResiduals: document.getElementById("toggleFitResiduals"),
@@ -152,8 +158,15 @@
         texture: null,
         imagePixels: null,
         imageFloatPixels: null,
+        displayUsesFloatPixels: false,
+        displayIntensityHistogram: null,
+        unclippedDisplayPixels: null,
+        unclippedDisplayCacheKey: "",
         baseDisplayPixels: null,
         baseDisplayCacheKey: "",
+        highPassFloatPixels: null,
+        highPassFloatCacheKey: "",
+        highPassIntensityHistogram: null,
         displayPixels: null,
         highPassCacheKey: "",
         imageName: "",
@@ -174,10 +187,10 @@
         previousAnnotatedDisplayMode: "pairing",
         ambientMusic: null,
         maxMagByMode: {stellarium: 6.0, pairing: 4.0, pureImage: 6.0, pureStellarium: 6.0},
-        starNamesByMode: {stellarium: false, pairing: true},
+        starNamesByMode: {stellarium: false, pairing: false},
         showRaDecGrid: false,
         showAzElGrid: true,
-        showStarNames: true,
+        showStarNames: false,
         dragging: false,
         lensDragMode: "none",
         lastMouse: [0, 0],
@@ -205,9 +218,10 @@
         },
         catalogStatus: "Tycho-2 catalogue loading...",
         yaleAsterismIndex: null,
-        yaleAsterismIndexStatus: "Yale asterism index loading...",
+        yaleAsterismIndexStatus: "Yale asterism index loads on demand",
         lucky2YaleAsterismIndex: null,
-        lucky2YaleAsterismIndexStatus: "Lucky2 Yale asterism index loading...",
+        lucky2YaleAsterismIndexStatus: "Lucky2 Yale asterism index loads on demand",
+        quickLinks: null,
         fisheyeDetection: null,
         showAutoDetectionMarkers: true,
         deletedDetectionIds: new Set(),
@@ -876,7 +890,7 @@
 
     function detectAndApplyFisheyeInitialGuess(name, exifMetadata = null) {
         state.fisheyeDetection = null;
-        const pixels = processingImagePixels();
+        const pixels = analysisImagePixels();
         if (!pixels || metadataLooksLikeIphone(exifMetadata) ||
                 typeof AidaTools.detectFisheyeAnnulus !== "function") {
             return null;
@@ -1380,6 +1394,17 @@
         return `optpar = [${[optmod, ...optpar].map(pythonFloat).join(", ")}]`;
     }
 
+    function pythonString(value) {
+        return JSON.stringify(String(value || ""));
+    }
+
+    function pythonStarTuples(stars) {
+        return stars.map(star => {
+            const name = pythonString(star.name || star.id || "");
+            return `    (${name}, ${pythonFloat(star.raHours)}, ${pythonFloat(star.decDeg)}, ${pythonFloat(star.mag)})`;
+        }).join(",\n");
+    }
+
     function selectedExportLanguage() {
         return controls.exportLanguage ? controls.exportLanguage.value : "python";
     }
@@ -1388,11 +1413,188 @@
         return window.AidaExportGenerators.optparArrayText(exportContext(), language);
     }
 
+    function parseOptparText(text) {
+        const raw = String(text || "").trim();
+        if (!raw) {
+            return null;
+        }
+        const braceMatch = raw.match(/\{([\s\S]*?)\}/);
+        const squareMatches = Array.from(raw.matchAll(/\[([^\[\]]*)\]/g));
+        const squareMatch = squareMatches.length ? squareMatches[squareMatches.length - 1] : null;
+        const body = braceMatch ? braceMatch[1] : squareMatch ? squareMatch[1] : raw;
+        const values = body
+            .replace(/;/g, " ")
+            .split(/[,\s]+/)
+            .map(value => value.trim())
+            .filter(Boolean)
+            .map(Number);
+        if (values.length < 9 || values.some(value => !Number.isFinite(value))) {
+            return null;
+        }
+        const optmod = Math.round(values[0]);
+        if (![1, 2, 3, 4, 5, 12, BROWN_CONRADY_OPTMOD].includes(optmod)) {
+            return null;
+        }
+        const required = requiredOptparLength(optmod);
+        if (values.length - 1 < required) {
+            return null;
+        }
+        return {optmod, optpar: values.slice(1, 1 + required)};
+    }
+
+    async function readOptparImportText() {
+        if (navigator.clipboard && window.isSecureContext) {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text && text.trim()) {
+                    return text;
+                }
+            } catch (_error) {
+                // Fall through to manual paste prompt.
+            }
+        }
+        return window.prompt("Paste optpar array, including optmod as the first value:", optparArrayText("python")) || "";
+    }
+
+    async function pasteOptparIntoGui() {
+        const text = await readOptparImportText();
+        const parsed = parseOptparText(text);
+        if (!parsed) {
+            state.fitMessage = "paste optpar: could not parse [optmod, ...optpar]";
+            render();
+            return;
+        }
+        rememberFitState("pasted optpar");
+        controls.optmod.value = String(parsed.optmod);
+        updateOptmodUi();
+        applyOptpar(parsed.optpar);
+        state.lastFitVector = null;
+        state.lastAcceptedFitVector = null;
+        state.fitMessage = `paste optpar: applied optmod ${parsed.optmod}`;
+        recomputeAndRender();
+    }
+
     function safeCaseId(value) {
         return String(value || "aida_case")
             .replace(/\.[^.]*$/, "")
             .replace(/[^A-Za-z0-9_-]+/g, "-")
             .replace(/^-+|-+$/g, "") || "aida_case";
+    }
+
+    function quickLinkTokenFromLocation() {
+        const url = new URL(window.location.href);
+        const queryToken = url.searchParams.get("tc") ||
+            url.searchParams.get("testCase") ||
+            url.searchParams.get("case");
+        if (queryToken && queryToken.trim()) {
+            return queryToken.trim();
+        }
+        if (url.hash && url.hash.length > 1) {
+            const hashParams = new URLSearchParams(url.hash.slice(1));
+            const hashToken = hashParams.get("tc") ||
+                hashParams.get("testCase") ||
+                hashParams.get("case");
+            if (hashToken && hashToken.trim()) {
+                return hashToken.trim();
+            }
+        }
+        return "";
+    }
+
+    async function loadQuickLinks() {
+        if (state.quickLinks) {
+            return state.quickLinks;
+        }
+        try {
+            const response = await fetch("quick_links.json", {cache: "no-store"});
+            if (response.ok) {
+                const links = await response.json();
+                state.quickLinks = links && typeof links === "object" ? links : {};
+                return state.quickLinks;
+            }
+        } catch (_error) {
+            // Missing quick_links.json is fine; fall back to direct test-case ids.
+        }
+        state.quickLinks = {};
+        return state.quickLinks;
+    }
+
+    async function resolveQuickLinkToken(token) {
+        const alias = safeCaseId(token);
+        if (!alias || alias !== token) {
+            throw new Error(`invalid quick-link test case id: ${token}`);
+        }
+        const links = await loadQuickLinks();
+        const target = links && links[alias];
+        if (typeof target === "string" && target.trim()) {
+            const safeTarget = safeCaseId(target.trim());
+            if (safeTarget && safeTarget === target.trim()) {
+                return safeTarget;
+            }
+        }
+        return alias;
+    }
+
+    function appBaseUrl() {
+        const url = new URL(window.location.href);
+        url.search = "";
+        url.hash = "";
+        if (!url.pathname.endsWith("/")) {
+            url.pathname = url.pathname.replace(/\/[^/]*$/, "/");
+        }
+        return url;
+    }
+
+    function quickLinkUrlForAlias(alias) {
+        return new URL(`${encodeURIComponent(alias)}/`, appBaseUrl()).href;
+    }
+
+    function directTestCaseUrl(id) {
+        const url = appBaseUrl();
+        url.searchParams.set("tc", id);
+        return url.href;
+    }
+
+    function quickLinkAliasForTestCase(id, preferredToken = "") {
+        const links = state.quickLinks || {};
+        if (preferredToken && links[preferredToken] === id) {
+            return preferredToken;
+        }
+        const aliases = Object.keys(links)
+            .filter(alias => links[alias] === id)
+            .sort((a, b) => a.localeCompare(b));
+        return aliases[0] || "";
+    }
+
+    async function updateTestCaseQuickLink(preferredToken = "") {
+        if (!controls.testCaseQuickLink || !controls.testCaseQuickLinkInput) {
+            return;
+        }
+        const id = state.loadedTestCaseId;
+        if (!id) {
+            controls.testCaseQuickLink.hidden = true;
+            controls.testCaseQuickLinkInput.value = "";
+            return;
+        }
+        await loadQuickLinks();
+        const alias = quickLinkAliasForTestCase(id, preferredToken);
+        controls.testCaseQuickLinkInput.value = alias ? quickLinkUrlForAlias(alias) : directTestCaseUrl(id);
+        controls.testCaseQuickLink.hidden = false;
+    }
+
+    function copyCurrentTestCaseQuickLink() {
+        if (!controls.testCaseQuickLinkInput || !controls.testCaseQuickLinkInput.value) {
+            setSaveFeedback("No test-case quick link available yet.", true);
+            return;
+        }
+        copyTextToClipboard(controls.testCaseQuickLinkInput.value, "test-case quick link");
+    }
+
+    function safeZipFilename(value, fallback = "image.png") {
+        return String(value || fallback)
+            .replace(/[\\/]+/g, "_")
+            .replace(/[\x00-\x1f\x7f]+/g, "")
+            .trim() || fallback;
     }
 
     function residualRowsForMatches(matches) {
@@ -1477,7 +1679,7 @@
                 highPassWidthPx: Number(controls.highPassWidth.value) || 0,
                 brightness: Number(controls.brightness.value) || 0,
                 contrast: Number(controls.contrast.value) || 1,
-                displayClipMax: displayClipMax(),
+                displayClipPercent: displayClipPercent(),
             },
             badStarFinderDetections: state.badStarFinderDetections.map((detection, index) => ({
                 id: index + 1,
@@ -1664,6 +1866,7 @@
                 `with ${testCase.matches.length} star pairings and ` +
                 `${testCase.badStarFinderDetections.length} bad star finder detections; ` +
                 `metadata ${result.metadata}; image ${result.image}`;
+            await updateTestCaseQuickLink();
             await refreshTestCaseList(result.caseId);
         } catch (error) {
             setSaveFeedback(`Save failed: ${error.message || error}`, true);
@@ -1744,10 +1947,8 @@
         controls.contrast.value = Number.isFinite(Number(display.contrast)) ?
             String(Number(display.contrast)) : controls.contrast.value;
         if (controls.displayClipMax) {
-            const value = Number(display.displayClipMax);
-            if (Number.isFinite(value)) {
-                setDisplayClipMaxValue(value);
-            }
+            const value = Number(display.displayClipPercent);
+            setDisplayClipPercentValue(Number.isFinite(value) ? value : 5);
         }
         state.matches = Array.isArray(testCase.matches) ? testCase.matches.map((match, index) => ({
             id: Number.isFinite(Number(match.id)) ? Number(match.id) : index + 1,
@@ -1788,41 +1989,85 @@
         state.junkStarFinderPreview = null;
         state.junkStarFinderPaintActive = false;
         state.lastJunkStarFinderPoint = null;
+        state.displayMode = "pairing";
+        state.previousAnnotatedDisplayMode = "pairing";
+        state.showAzElGrid = true;
         state.showPickedMatchMarkers = true;
-        state.showFitResiduals = true;
+        state.showFitResiduals = false;
+        state.starPickingLegendVisible = false;
+        hideZoomCanvas();
+        clearDensityEstimate();
         updateDetectionCircleButton();
         updateStarNameButton();
         updateFitResidualButton();
+        controls.toggleAzElGrid.textContent = "Hide az/el grid";
+        controls.toggleAzElGrid.classList.add("toggle-on");
         updateAutoMatches();
         refreshDisplayImage();
         state.fitMessage = `loaded test case ${testCase.id || ""} with ${state.matches.length} star pairings`;
         setSaveFeedback(`Loaded ${testCase.id || "test case"}`, false);
+        updateTestCaseQuickLink();
     }
 
-    async function loadSelectedTestCase() {
+    async function loadTestCaseById(id, label = id, preferredQuickLinkToken = "") {
         if (!TEST_CASES_ENABLED) {
             return;
         }
-        const id = controls.testCaseSelect && controls.testCaseSelect.value;
         if (!id) {
             setSaveFeedback("Select a saved test case first.", true);
             return;
         }
-        controls.loadTestCase.disabled = true;
+        if (controls.testCaseSelect) {
+            controls.testCaseSelect.value = id;
+        }
+        if (controls.loadTestCase) {
+            controls.loadTestCase.disabled = true;
+        }
         try {
+            setLoadingProgress(3, `Loading test case ${id}...`, true);
             const response = await fetch(`/api/test-cases/${encodeURIComponent(id)}`);
             const payload = await response.json();
             if (!response.ok) {
                 throw new Error(payload.error || "failed to load test case");
             }
             await loadTestCaseImageSource(payload, id);
+            await updateTestCaseQuickLink(preferredQuickLinkToken);
+            if (label && label !== id) {
+                setSaveFeedback(`Loaded ${label} (${id})`, false);
+            }
         } catch (error) {
             setSaveFeedback(`Load failed: ${error.message || error}`, true);
             state.fitMessage = `load test case failed: ${error.message || error}`;
+            hideLoadingProgress();
             render();
         } finally {
-            controls.loadTestCase.disabled = false;
+            if (controls.loadTestCase) {
+                controls.loadTestCase.disabled = false;
+            }
             focusImageWindowSoon();
+        }
+    }
+
+    async function loadSelectedTestCase() {
+        const id = controls.testCaseSelect && controls.testCaseSelect.value;
+        await loadTestCaseById(id);
+    }
+
+    async function loadQuickLinkTestCase() {
+        if (!TEST_CASES_ENABLED) {
+            return;
+        }
+        const token = quickLinkTokenFromLocation();
+        if (!token) {
+            return;
+        }
+        try {
+            const id = await resolveQuickLinkToken(token);
+            await loadTestCaseById(id, token, token);
+        } catch (error) {
+            setSaveFeedback(`Quick link failed: ${error.message || error}`, true);
+            state.fitMessage = `quick link failed: ${error.message || error}`;
+            render();
         }
     }
 
@@ -1833,11 +2078,7 @@
             URL.revokeObjectURL(state.localImageUrl);
         }
         if (isFitsFile({name: imageName, type: payload.testCase.imageMimeType || ""})) {
-            const imageResponse = await fetch(payload.imageUrl);
-            if (!imageResponse.ok) {
-                throw new Error("failed to load test case FITS image");
-            }
-            const sourceBlob = await imageResponse.blob();
+            const sourceBlob = await fetchBlobWithProgress(payload.imageUrl, imageName, 8, 30);
             const sourceFile = {
                 name: imageName,
                 type: sourceBlob.type || payload.testCase.imageMimeType || "application/fits",
@@ -2466,14 +2707,19 @@ end
     }
 
     async function loadTycho2Catalog() {
+        if (state.catalogs.tycho2) {
+            return;
+        }
         if (!window.WiscCatalogs || typeof window.WiscCatalogs.loadWiscatFloat32Catalog !== "function") {
             state.catalogStatus = "Tycho-2 catalogue unavailable: catalogue loader missing";
             return;
         }
+        state.catalogStatus = "Tycho-2 catalogue loading...";
+        render();
         try {
             const rows = await window.WiscCatalogs.loadWiscatFloat32Catalog(
                 "data/tycho2_mag8.bin.gz?v=20260527-merged-j2000",
-                {cache: "no-cache"},
+                {cache: "force-cache"},
             );
             state.catalogs.tycho2 = annotateTycho2StarNames(rows);
             state.catalogStatus = `Tycho-2 catalogue: ${rows.length} stars with VT < 8 loaded`;
@@ -3487,16 +3733,77 @@ end
     }
 
     function addGridPolyline(points, segments) {
+        const distances = [];
+        let prior = null;
+        for (const point of points) {
+            if (point && prior) {
+                const distance = Math.hypot(point[0] - prior[0], point[1] - prior[1]);
+                if (Number.isFinite(distance) && distance > 0) {
+                    distances.push(distance);
+                }
+            }
+            prior = point;
+        }
+        const sortedDistances = distances.slice().sort((a, b) => a - b);
+        const medianDistance = sortedDistances.length ?
+            sortedDistances[Math.floor(sortedDistances.length / 2)] : 0;
+        const diagonal = Math.hypot(canvas.width, canvas.height);
+        const maxSegment = Math.max(
+            24 * (window.devicePixelRatio || 1),
+            Math.min(diagonal * 0.12, Math.max(medianDistance * 8, 80))
+        );
         let previous = null;
         for (const point of points) {
-            if (point && previous) {
+            if (point && previous &&
+                    Math.hypot(point[0] - previous[0], point[1] - previous[1]) <= maxSegment) {
                 segments.push(previous[0], previous[1], point[0], point[1]);
             }
             previous = point;
         }
     }
 
+    function cameraFrameDirectionForAzEl(azDeg, elDeg, optpar) {
+        const ze = (90 - elDeg) * AidaTools.DEG;
+        const az = azDeg * AidaTools.DEG;
+        const rot = AidaTools.cameraRot(optpar[2], optpar[3], optpar[4]);
+        const sinze = Math.sin(ze);
+        const es1 = sinze * Math.sin(az);
+        const es2 = sinze * Math.cos(az);
+        const es3 = Math.cos(ze);
+        return {
+            x: es1 * rot[0] + es2 * rot[3] + es3 * rot[6],
+            y: es1 * rot[1] + es2 * rot[4] + es3 * rot[7],
+            z: es1 * rot[2] + es2 * rot[5] + es3 * rot[8],
+        };
+    }
+
+    function brownConradyGridBranchIsValid(azDeg, elDeg, optpar) {
+        const s = cameraFrameDirectionForAzEl(azDeg, elDeg, optpar);
+        if (!Number.isFinite(s.x) || !Number.isFinite(s.y) || !Number.isFinite(s.z) || s.z <= 1e-4) {
+            return false;
+        }
+        const xn = s.x / s.z;
+        const yn = s.y / s.z;
+        const r2 = xn * xn + yn * yn;
+        if (!Number.isFinite(r2)) {
+            return false;
+        }
+        const k1 = optpar[7] || 0;
+        const k2 = optpar[8] || 0;
+        const k3 = optpar[9] || 0;
+        const r4 = r2 * r2;
+        const r6 = r4 * r2;
+        const radialScale = 1.0 + k1 * r2 + k2 * r4 + k3 * r6;
+        const radialDerivative = 1.0 + 3.0 * k1 * r2 + 5.0 * k2 * r4 + 7.0 * k3 * r6;
+        return Number.isFinite(radialScale) && Number.isFinite(radialDerivative) &&
+            radialScale > 0 && radialDerivative > 0;
+    }
+
     function projectAzEl(azDeg, elDeg, optpar, optmod, clipToCanvas = true) {
+        if (clipToCanvas && optmod === BROWN_CONRADY_OPTMOD &&
+                !brownConradyGridBranchIsValid(azDeg, elDeg, optpar)) {
+            return null;
+        }
         const zeDeg = 90 - elDeg;
         const xy = AidaTools.cameraModel(
             azDeg * AidaTools.DEG,
@@ -3507,6 +3814,11 @@ end
             state.image.height
         );
         if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
+            return null;
+        }
+        if (clipToCanvas &&
+                (xy.x < 0 || xy.x > state.image.width - 1 ||
+                    xy.y < 0 || xy.y > state.image.height - 1)) {
             return null;
         }
         const [x, y] = canvasPixelFromImagePixel(xy.x, xy.y);
@@ -3734,6 +4046,1194 @@ end
         const lon = Number(controls.lonDeg.value) || 0;
         const radec = raDecOfDateFromAzEl(azel.az, azel.el, date, lat, lon);
         return {...azel, ...radec};
+    }
+
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.style.display = "none";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function hdf5SafeFilename(name) {
+        return `${safeCaseId(name || state.imageName || "wisc")}_az_el.h5`;
+    }
+
+    async function loadH5Wasm() {
+        const h5wasm = await import("https://cdn.jsdelivr.net/npm/h5wasm@0.10.3/dist/esm/hdf5_hl.js");
+        const Module = await h5wasm.default.ready;
+        return {h5wasm: h5wasm.default, FS: Module.FS};
+    }
+
+    async function loadJsZip() {
+        const module = await import("https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm");
+        return module.default;
+    }
+
+    async function azElArraysForCurrentImage() {
+        if (!state.image) {
+            throw new Error("load an image before exporting az/el HDF5");
+        }
+        const {imageWidth: width, imageHeight: height, gridWidth, gridHeight, count} =
+            window.AidaAzElGrid.cornerGridSpec(state.image.width, state.image.height);
+        const azimuth = new Float32Array(count);
+        const elevation = new Float32Array(count);
+        const yieldEveryRows = Math.max(1, Math.floor(gridHeight / 40));
+        for (let gridY = 0; gridY < gridHeight; gridY += 1) {
+            const rawY = window.AidaAzElGrid.rawPixelCorner(gridY);
+            const row = gridY * gridWidth;
+            for (let gridX = 0; gridX < gridWidth; gridX += 1) {
+                const rawX = window.AidaAzElGrid.rawPixelCorner(gridX);
+                const [modelX, modelY] = modelImagePixelFromRawImagePixel(rawX, rawY);
+                const azel = azElFromModelImagePixel(modelX, modelY);
+                const index = row + gridX;
+                azimuth[index] = azel && Number.isFinite(azel.az) ? azel.az : NaN;
+                elevation[index] = azel && Number.isFinite(azel.el) ? azel.el : NaN;
+            }
+            if (gridY % yieldEveryRows === 0) {
+                setLoadingProgress(12 + 58 * gridY / Math.max(1, gridHeight - 1),
+                    `Computing az/el corner grid: ${Math.round(100 * gridY / Math.max(1, gridHeight - 1))}%`);
+                await new Promise(resolve => window.setTimeout(resolve, 0));
+            }
+        }
+        return {azimuth, elevation, width, height, gridWidth, gridHeight};
+    }
+
+    function writeAzElHdf5Bytes(
+        h5wasm,
+        FS,
+        filename,
+        azimuth,
+        elevation,
+        width,
+        height,
+        gridWidth,
+        gridHeight,
+    ) {
+        try {
+            FS.unlink(filename);
+        } catch (_error) {
+            // It is normal for the in-memory file not to exist yet.
+        }
+        const file = new h5wasm.File(filename, "w");
+        file.create_dataset({name: "azimuth_deg", data: azimuth, shape: [gridHeight, gridWidth], dtype: "<f"});
+        file.create_dataset({name: "elevation_deg", data: elevation, shape: [gridHeight, gridWidth], dtype: "<f"});
+        file.create_attribute("creator", `WISC ${APP_VERSION}`);
+        file.create_attribute("image_name", state.imageName || "");
+        file.create_attribute("image_width", new Int32Array([width]));
+        file.create_attribute("image_height", new Int32Array([height]));
+        file.create_attribute("coordinate_grid_width", new Int32Array([gridWidth]));
+        file.create_attribute("coordinate_grid_height", new Int32Array([gridHeight]));
+        file.create_attribute("pixel_corner_x_start", new Float64Array([-0.5]));
+        file.create_attribute("pixel_corner_y_start", new Float64Array([-0.5]));
+        file.create_attribute("pixel_corner_step", new Float64Array([1]));
+        const optmod = Number(controls.optmod.value) || 2;
+        const optpar = currentOptpar();
+        file.create_attribute("timestamp_utc", AidaTools.datetimeLocalToDate(controls.timestampUtc.value).toISOString());
+        file.create_attribute("site_lat_deg", new Float64Array([Number(controls.latDeg.value) || 0]));
+        file.create_attribute("site_lon_deg", new Float64Array([Number(controls.lonDeg.value) || 0]));
+        file.create_attribute("site_alt_m", new Float64Array([Number(controls.altM.value) || 0]));
+        file.create_attribute("optmod", new Int32Array([optmod]));
+        file.create_attribute("optpar", new Float64Array(optpar));
+        file.create_attribute("optpar_with_optmod", new Float64Array([optmod, ...optpar]));
+        file.create_attribute("flip_overlay_x", new Uint8Array([state.flipX ? 1 : 0]));
+        file.create_attribute("flip_overlay_y", new Uint8Array([state.flipY ? 1 : 0]));
+        file.create_attribute("flip_image_x", new Uint8Array([state.imageFlipX ? 1 : 0]));
+        file.create_attribute("flip_image_y", new Uint8Array([state.imageFlipY ? 1 : 0]));
+        file.create_attribute("description",
+            "Azimuth and elevation at image pixel corners in degrees. Datasets are shaped " +
+            "[image_height + 1, image_width + 1], indexed as [corner_y, corner_x], and are compatible " +
+            "with pcolormesh data shaped [image_height, image_width].");
+        file.close();
+        const bytes = FS.readFile(filename).slice();
+        try {
+            FS.unlink(filename);
+        } catch (_error) {
+            // Best-effort cleanup of the h5wasm in-memory filesystem.
+        }
+        return bytes;
+    }
+
+    async function downloadAzElHdf5() {
+        if (!state.image) {
+            state.fitMessage = "az/el HDF5 export: load an image first";
+            render();
+            return;
+        }
+        const button = controls.downloadAzElHdf5;
+        if (button) {
+            button.disabled = true;
+        }
+        try {
+            playInteractionSound("click");
+            setLoadingProgress(8, "Preparing az/el HDF5 export...");
+            const {azimuth, elevation, width, height, gridWidth, gridHeight} = await azElArraysForCurrentImage();
+            setLoadingProgress(72, "Loading HDF5 writer...");
+            const {h5wasm, FS} = await loadH5Wasm();
+            const filename = hdf5SafeFilename(state.imageName);
+            setLoadingProgress(82, "Writing HDF5 datasets...");
+            const bytes = writeAzElHdf5Bytes(
+                h5wasm,
+                FS,
+                filename,
+                azimuth,
+                elevation,
+                width,
+                height,
+                gridWidth,
+                gridHeight,
+            );
+            setLoadingProgress(94, "Starting HDF5 download...");
+            downloadBlob(new Blob([bytes], {type: "application/x-hdf5"}), filename);
+            state.fitMessage = `az/el HDF5 export: downloaded ${filename}`;
+        } catch (error) {
+            state.fitMessage = `az/el HDF5 export failed: ${error && error.message ? error.message : error}`;
+        } finally {
+            hideLoadingProgress();
+            if (button) {
+                button.disabled = false;
+            }
+            render();
+        }
+    }
+
+    function escapeTex(value) {
+        return String(value ?? "")
+            .replace(/\\/g, "\\textbackslash{}")
+            .replace(/([#$%&_{}])/g, "\\$1")
+            .replace(/\^/g, "\\textasciicircum{}")
+            .replace(/~/g, "\\textasciitilde{}");
+    }
+
+    function escapeXml(value) {
+        return String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+
+    function reportMetadata(rows = matchResidualRows(), miracleProduct = null) {
+        const optmod = Number(controls.optmod.value) || 2;
+        const optpar = currentOptpar();
+        const boresight = boresightAzElFromCameraAngles(optpar[2], optpar[3]);
+        const summary = residualSummary(rows);
+        return {
+            generatedUtc: new Date().toISOString(),
+            appVersion: APP_VERSION,
+            imageName: state.imageName || "",
+            imageWidth: state.image ? state.image.width : null,
+            imageHeight: state.image ? state.image.height : null,
+            timestampUtc: AidaTools.datetimeLocalToDate(controls.timestampUtc.value).toISOString(),
+            site: {
+                latDeg: Number(controls.latDeg.value) || 0,
+                lonDeg: Number(controls.lonDeg.value) || 0,
+                altM: Number(controls.altM.value) || 0,
+            },
+            optmod,
+            optpar: [optmod, ...optpar],
+            boresightAzDeg: boresight.az,
+            boresightElDeg: boresight.el,
+            display: {
+                flipOverlayX: state.flipX,
+                flipOverlayY: state.flipY,
+                flipImageX: state.imageFlipX,
+                flipImageY: state.imageFlipY,
+                highPassImage: controls.highPassImage.checked,
+                displayClipPercent: displayClipPercent(),
+                brightness: Number(controls.brightness.value) || 0,
+                contrast: Number(controls.contrast.value) || 1,
+            },
+            residualSummary: summary,
+            matchedStars: state.matches.length,
+            miracle: miracleProduct ? {
+                ...miracleProduct.calibration,
+                errorSummary: miracleProduct.summary,
+            } : null,
+        };
+    }
+
+    function residualRowsJson(rows) {
+        return rows.map(row => ({
+            star: row.match.catalog.name || row.match.catalog.key || "",
+            imageX: row.match.image.x,
+            imageY: row.match.image.y,
+            modelX: row.model.x,
+            modelY: row.model.y,
+            dxPx: row.dx,
+            dyPx: row.dy,
+            residualPx: row.r,
+            catalogRaHours: row.match.catalog.raHours,
+            catalogDecDeg: row.match.catalog.decDeg,
+        }));
+    }
+
+    function rawPixelForAzimuthZenith(azRad, zenithRad) {
+        if (!state.image) {
+            return null;
+        }
+        const xy = AidaTools.cameraModel(
+            azRad,
+            zenithRad,
+            currentOptpar(),
+            Number(controls.optmod.value) || 2,
+            state.image.width,
+            state.image.height,
+        );
+        if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
+            return null;
+        }
+        const [rawX, rawY] = rawImagePixelFromModelImagePixel(xy.x, xy.y);
+        return Number.isFinite(rawX) && Number.isFinite(rawY) ? {rawX, rawY} : null;
+    }
+
+    function miracleCalibrationProduct() {
+        if (!state.image || !window.AidaMiracleExport) {
+            throw new Error("MIRACLE export support is unavailable");
+        }
+        const zenith = rawPixelForAzimuthZenith(0, 0);
+        if (!zenith) {
+            throw new Error("native lens model did not produce a finite zenith position");
+        }
+        const samples = [];
+        for (let zenithDeg = 5; zenithDeg <= 90; zenithDeg += 5) {
+            const zenithRad = zenithDeg * AidaTools.DEG;
+            for (let azimuthDeg = 0; azimuthDeg < 360; azimuthDeg += 5) {
+                const azRad = azimuthDeg * AidaTools.DEG;
+                const pixel = rawPixelForAzimuthZenith(azRad, zenithRad);
+                if (!pixel ||
+                        pixel.rawX < 0 || pixel.rawX > state.image.width - 1 ||
+                        pixel.rawY < 0 || pixel.rawY > state.image.height - 1) {
+                    continue;
+                }
+                samples.push({
+                    ...pixel,
+                    azRad,
+                    zenithRad,
+                    azimuthDeg,
+                    zenithDeg,
+                });
+            }
+        }
+        const calibration = window.AidaMiracleExport.fitCalibration(samples, {
+            glatDeg: Number(controls.latDeg.value) || 0,
+            glonDeg: Number(controls.lonDeg.value) || 0,
+            zenithRawX: zenith.rawX,
+            zenithRawY: zenith.rawY,
+        });
+        const errors = window.AidaMiracleExport.approximationErrors(samples, calibration);
+        return {
+            calibration,
+            errors,
+            summary: window.AidaMiracleExport.errorSummary(errors),
+        };
+    }
+
+    function selectedStarsTsv() {
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const residualById = new Map(
+            residualRowsForMatches(state.matches).map(row => [row.match.id, row])
+        );
+        const cleanCell = value => String(value ?? "").replace(/[\t\r\n]+/g, " ");
+        const numberCell = value => Number.isFinite(Number(value)) ?
+            Number(value).toPrecision(15) :
+            "";
+        const header = [
+            "id",
+            "star",
+            "image_x_px",
+            "image_y_px",
+            "ra_hours_j2000",
+            "dec_deg_j2000",
+            "azimuth_deg",
+            "altitude_deg",
+            "magnitude",
+            "model_x_px",
+            "model_y_px",
+            "residual_px",
+        ];
+        const lines = [header.join("\t")];
+        for (const match of state.matches) {
+            const azze = AidaTools.radecToAzZe(
+                match.catalog.raHours,
+                match.catalog.decDeg,
+                date,
+                lat,
+                lon,
+            );
+            const residual = residualById.get(match.id);
+            lines.push([
+                cleanCell(match.id),
+                cleanCell(match.catalog.name || match.catalog.key || ""),
+                numberCell(match.image.x),
+                numberCell(match.image.y),
+                numberCell(match.catalog.raHours),
+                numberCell(match.catalog.decDeg),
+                numberCell(azze.az * AidaTools.RAD),
+                numberCell(90 - azze.ze * AidaTools.RAD),
+                numberCell(match.catalog.mag),
+                numberCell(residual && residual.model.x),
+                numberCell(residual && residual.model.y),
+                numberCell(residual && residual.r),
+            ].join("\t"));
+        }
+        return lines.join("\n") + "\n";
+    }
+
+    function miracleErrorColor(errorDeg, maxErrorDeg) {
+        const t = Math.max(0, Math.min(1, errorDeg / Math.max(maxErrorDeg, 1e-9)));
+        const stops = [
+            [0.00, [37, 99, 235]],
+            [0.35, [6, 182, 212]],
+            [0.68, [250, 204, 21]],
+            [1.00, [220, 38, 38]],
+        ];
+        let lo = stops[0];
+        let hi = stops[stops.length - 1];
+        for (let i = 1; i < stops.length; i += 1) {
+            if (t <= stops[i][0]) {
+                lo = stops[i - 1];
+                hi = stops[i];
+                break;
+            }
+        }
+        const f = (t - lo[0]) / Math.max(hi[0] - lo[0], 1e-9);
+        const rgb = lo[1].map((value, index) => Math.round(value + (hi[1][index] - value) * f));
+        return `rgb(${rgb.join(",")})`;
+    }
+
+    function miracleApproximationErrorSvg(product) {
+        const width = 1100;
+        const height = 660;
+        const map = {x: 76, y: 84, w: 510, h: 430};
+        const scatter = {x: 665, y: 84, w: 365, h: 430};
+        const errors = product.errors;
+        const sortedErrors = errors.map(row => row.angularErrorDeg).sort((a, b) => a - b);
+        const p98Index = Math.max(0, Math.min(sortedErrors.length - 1, Math.floor(sortedErrors.length * 0.98)));
+        const colorMax = Math.max(0.1, sortedErrors[p98Index] || 0.1);
+        const maxDistance = Math.max(1, ...errors.map(row => row.distancePx));
+        const imageAspect = state.image.width / state.image.height;
+        let mapW = map.w;
+        let mapH = map.h;
+        if (mapW / mapH > imageAspect) {
+            mapW = mapH * imageAspect;
+        } else {
+            mapH = mapW / imageAspect;
+        }
+        const mapX = map.x + (map.w - mapW) / 2;
+        const mapY = map.y + (map.h - mapH) / 2;
+        const mx = x => mapX + x / Math.max(1, state.image.width - 1) * mapW;
+        const my = y => mapY + y / Math.max(1, state.image.height - 1) * mapH;
+        const sx = distance => scatter.x + distance / maxDistance * scatter.w;
+        const sy = error => scatter.y + scatter.h -
+            Math.min(error, colorMax) / colorMax * scatter.h;
+        const mapPoints = errors.map(row =>
+            `<circle cx="${mx(row.rawX).toFixed(2)}" cy="${my(row.rawY).toFixed(2)}" r="3.2" ` +
+            `fill="${miracleErrorColor(row.angularErrorDeg, colorMax)}" fill-opacity="0.86">` +
+            `<title>x ${row.rawX.toFixed(1)}, y ${row.rawY.toFixed(1)} px; ` +
+            `error ${row.angularErrorDeg.toFixed(3)} deg</title></circle>`
+        ).join("\n");
+        const scatterPoints = errors.map(row =>
+            `<circle cx="${sx(row.distancePx).toFixed(2)}" cy="${sy(row.angularErrorDeg).toFixed(2)}" ` +
+            `r="2.1" fill="${miracleErrorColor(row.angularErrorDeg, colorMax)}" fill-opacity="0.62"/>`
+        ).join("\n");
+        const xTicks = [0, 0.25, 0.5, 0.75, 1].map(fraction => {
+            const x = scatter.x + fraction * scatter.w;
+            return `<line x1="${x}" y1="${scatter.y}" x2="${x}" y2="${scatter.y + scatter.h}" stroke="#e2e8f0"/>` +
+                `<text x="${x}" y="${scatter.y + scatter.h + 24}" text-anchor="middle" font-size="13">` +
+                `${(fraction * maxDistance).toFixed(0)}</text>`;
+        }).join("\n");
+        const yTicks = [0, 0.25, 0.5, 0.75, 1].map(fraction => {
+            const y = scatter.y + scatter.h - fraction * scatter.h;
+            return `<line x1="${scatter.x}" y1="${y}" x2="${scatter.x + scatter.w}" y2="${y}" stroke="#e2e8f0"/>` +
+                `<text x="${scatter.x - 12}" y="${y + 4}" text-anchor="end" font-size="13">` +
+                `${(fraction * colorMax).toFixed(2)}</text>`;
+        }).join("\n");
+        const colorBar = Array.from({length: 100}, (_, index) => {
+            const x = mapX + index / 100 * mapW;
+            return `<rect x="${x.toFixed(2)}" y="${(mapY + mapH + 18).toFixed(2)}" ` +
+                `width="${(mapW / 100 + 0.5).toFixed(2)}" height="12" ` +
+                `fill="${miracleErrorColor(index / 99 * colorMax, colorMax)}"/>`;
+        }).join("");
+        const summary = product.summary;
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<g font-family="Arial, sans-serif" fill="#334155">
+<text x="${width / 2}" y="30" text-anchor="middle" font-size="20" font-weight="700">MIRACLE d = kz approximation error</text>
+<text x="${width / 2}" y="55" text-anchor="middle" font-size="14">Angular separation from the native WISC lens model; RMS ${summary.rmsAngularDeg.toFixed(3)} deg, max ${summary.maxAngularDeg.toFixed(3)} deg</text>
+<text x="${map.x + map.w / 2}" y="75" text-anchor="middle" font-size="15" font-weight="700">Error by raw image coordinate</text>
+<rect x="${mapX}" y="${mapY}" width="${mapW}" height="${mapH}" fill="#f8fafc" stroke="#334155" stroke-width="2"/>
+${mapPoints}
+${colorBar}
+<text x="${mapX}" y="${mapY + mapH + 48}" text-anchor="start" font-size="12">0 deg</text>
+<text x="${mapX + mapW}" y="${mapY + mapH + 48}" text-anchor="end" font-size="12">&gt;=${colorMax.toFixed(2)} deg (98th percentile)</text>
+<text x="${mapX + mapW / 2}" y="${mapY + mapH + 66}" text-anchor="middle" font-size="13">Horizontal image coordinate Y (column, px)</text>
+<text x="${mapX - 48}" y="${mapY + mapH / 2}" text-anchor="middle" font-size="13" transform="rotate(-90 ${mapX - 48} ${mapY + mapH / 2})">Vertical image coordinate X (row, px)</text>
+<text x="${scatter.x + scatter.w / 2}" y="75" text-anchor="middle" font-size="15" font-weight="700">Error versus distance from zenith</text>
+${xTicks}
+${yTicks}
+<rect x="${scatter.x}" y="${scatter.y}" width="${scatter.w}" height="${scatter.h}" fill="none" stroke="#334155" stroke-width="2"/>
+${scatterPoints}
+<text x="${scatter.x + scatter.w / 2}" y="${scatter.y + scatter.h + 52}" text-anchor="middle" font-size="14">d (pixels)</text>
+<text x="${scatter.x - 54}" y="${scatter.y + scatter.h / 2}" text-anchor="middle" font-size="14" transform="rotate(-90 ${scatter.x - 54} ${scatter.y + scatter.h / 2})">Angular error (degrees)</text>
+<text x="${width / 2}" y="${height - 16}" text-anchor="middle" font-size="12">Fit uses ${product.calibration.sampleCount} visible sky-direction samples; k = ${product.calibration.kPxPerRad.toFixed(6)} px/rad, rotation = ${product.calibration.rotationDeg.toFixed(6)} deg.</text>
+</g>
+</svg>
+`;
+    }
+
+    function residualScatterSvg(rows) {
+        const width = 720;
+        const height = 520;
+        const plot = {x0: 86, y0: 44, w: 560, h: 380};
+        const maxAbs = Math.max(1, ...rows.map(row => Math.max(Math.abs(row.dx), Math.abs(row.dy))));
+        const span = Math.ceil(maxAbs * 1.2);
+        const sx = value => plot.x0 + (value + span) / (2 * span) * plot.w;
+        const sy = value => plot.y0 + plot.h - (value + span) / (2 * span) * plot.h;
+        const circles = rows.map(row =>
+            `<circle cx="${sx(row.dx).toFixed(2)}" cy="${sy(row.dy).toFixed(2)}" r="4" fill="#dc2626">` +
+            `<title>${escapeXml(row.match.catalog.name || "star")}: dx ${row.dx.toFixed(3)} px, dy ${row.dy.toFixed(3)} px</title></circle>`
+        ).join("\n");
+        const ticks = [-span, -span / 2, 0, span / 2, span];
+        const tickLines = ticks.map(tick => {
+            const x = sx(tick);
+            const y = sy(tick);
+            return `<line x1="${x.toFixed(2)}" y1="${plot.y0}" x2="${x.toFixed(2)}" y2="${plot.y0 + plot.h}" stroke="#e2e8f0"/>` +
+                `<line x1="${plot.x0}" y1="${y.toFixed(2)}" x2="${plot.x0 + plot.w}" y2="${y.toFixed(2)}" stroke="#e2e8f0"/>` +
+                `<text x="${x.toFixed(2)}" y="${plot.y0 + plot.h + 24}" text-anchor="middle" font-size="13">${tick.toFixed(1)}</text>` +
+                `<text x="${plot.x0 - 14}" y="${(y + 4).toFixed(2)}" text-anchor="end" font-size="13">${tick.toFixed(1)}</text>`;
+        }).join("\n");
+        const rms = rows.length ? Math.sqrt(rows.reduce((acc, row) => acc + row.r * row.r, 0) / rows.length) : 0;
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="${width / 2}" y="24" text-anchor="middle" font-size="18" font-family="Arial, sans-serif" font-weight="700">Fit residual scatter (${rows.length} stars, RMS ${rms.toFixed(3)} px)</text>
+<g font-family="Arial, sans-serif" fill="#334155">
+${tickLines}
+<rect x="${plot.x0}" y="${plot.y0}" width="${plot.w}" height="${plot.h}" fill="none" stroke="#334155" stroke-width="2"/>
+<line x1="${sx(0).toFixed(2)}" y1="${plot.y0}" x2="${sx(0).toFixed(2)}" y2="${plot.y0 + plot.h}" stroke="#64748b" stroke-width="2"/>
+<line x1="${plot.x0}" y1="${sy(0).toFixed(2)}" x2="${plot.x0 + plot.w}" y2="${sy(0).toFixed(2)}" stroke="#64748b" stroke-width="2"/>
+${circles}
+<text x="${plot.x0 + plot.w / 2}" y="${height - 24}" text-anchor="middle" font-size="15">dx (pixels)</text>
+<text x="24" y="${plot.y0 + plot.h / 2}" text-anchor="middle" font-size="15" transform="rotate(-90 24 ${plot.y0 + plot.h / 2})">dy (pixels)</text>
+</g>
+</svg>
+`;
+    }
+
+    function yaleBrightCatalog(maxMag = 5.0) {
+        return (window.AIDA_STAR_CATALOG || [])
+            .filter(row => Number(row[2]) < maxMag)
+            .map(row => ({
+                raHours: Number(row[0]),
+                decDeg: Number(row[1]),
+                mag: Number(row[2]),
+                name: String(row[3] || ""),
+            }));
+    }
+
+    function projectedYaleBrightCatalog(maxMag = 5.0) {
+        if (!state.image) {
+            return [];
+        }
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const lat = Number(controls.latDeg.value) || 0;
+        const lon = Number(controls.lonDeg.value) || 0;
+        const optmod = Number(controls.optmod.value) || 2;
+        const optpar = currentOptpar();
+        const out = [];
+        for (const star of yaleBrightCatalog(maxMag)) {
+            const azze = AidaTools.radecToAzZe(star.raHours, star.decDeg, date, lat, lon);
+            if (!Number.isFinite(azze.az) || !Number.isFinite(azze.ze)) {
+                continue;
+            }
+            const xy = AidaTools.cameraModel(azze.az, azze.ze, optpar, optmod, state.image.width, state.image.height);
+            const [x, y] = rawImagePixelFromModelImagePixel(xy.x, xy.y);
+            if (Number.isFinite(x) && Number.isFinite(y) &&
+                    x >= 0 && x <= state.image.width - 1 &&
+                    y >= 0 && y <= state.image.height - 1) {
+                out.push({
+                    ...star,
+                    azDeg: azze.az * AidaTools.RAD,
+                    elDeg: 90 - azze.ze * AidaTools.RAD,
+                    x,
+                    y,
+                });
+            }
+        }
+        return out;
+    }
+
+    function mapperUsageText(language) {
+        if (language === "python") {
+            return `# Python usage
+from wisc_mapper import camera, az_el_to_pixel, pixel_to_az_el
+
+x, y = az_el_to_pixel(210.0, 45.0, camera.optpar, camera.width, camera.height)
+az, el, err_px = pixel_to_az_el(x, y, camera.optpar, camera.width, camera.height, return_error=True)
+print(x, y, az, el, err_px)
+`;
+        }
+        if (language === "c") {
+            return `/* C usage
+
+   Include or compile wisc_mapper.c, then call:
+
+       double x, y;
+       aida_az_el_to_image(210.0, 45.0, &x, &y);
+*/
+`;
+        }
+        return `% MATLAB usage
+% Put wisc_mapper.m on the MATLAB path, then run:
+% [x, y] = az_el_to_image(210.0, 45.0);
+`;
+    }
+
+    function bareLensOverlayPythonScript(stars) {
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value) || 2;
+        const width = state.image ? state.image.width : 1920;
+        const height = state.image ? state.image.height : 1080;
+        const timestampUtc = AidaTools.datetimeLocalToDate(controls.timestampUtc.value).toISOString();
+        const siteLat = Number(controls.latDeg.value) || 0;
+        const siteLon = Number(controls.lonDeg.value) || 0;
+        const siteAlt = Number(controls.altM.value) || 0;
+        return `#!/usr/bin/env python3
+import numpy as np
+from astropy import units as u
+from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+from astropy.time import Time
+from PIL import Image, ImageDraw
+
+IMAGE = "base_image.png"
+OUT = "overlay_lens_model.png"
+TIME_UTC = ${pythonString(timestampUtc)}
+LAT_DEG = ${pythonFloat(siteLat)}
+LON_DEG = ${pythonFloat(siteLon)}
+ALT_M = ${pythonFloat(siteAlt)}
+WIDTH = ${width}
+HEIGHT = ${height}
+OPTMOD = ${optmod}
+OPTPAR = np.array([${optpar.map(pythonFloat).join(", ")}], dtype=float)
+
+STARS = [
+${pythonStarTuples(stars)}
+]
+
+
+def rot(alpha, beta, gamma):
+    a, b, g = np.deg2rad([alpha, beta, gamma])
+    r1 = np.array([[np.cos(g), -np.sin(g), 0], [np.sin(g), np.cos(g), 0], [0, 0, 1]])
+    r2 = np.array([[np.cos(a), 0, np.sin(a)], [0, 1, 0], [-np.sin(a), 0, np.cos(a)]])
+    r3 = np.array([[1, 0, 0], [0, np.cos(b), np.sin(b)], [0, -np.sin(b), np.cos(b)]])
+    return r2 @ r3 @ r1
+
+
+def az_el_to_pixel(az_deg, el_deg):
+    f1, f2, alpha, beta, gamma, du, dv = OPTPAR[:7]
+    radial_alpha = OPTPAR[7] if len(OPTPAR) > 7 else 0.0
+    az = np.deg2rad(az_deg)
+    ze = np.deg2rad(90.0 - el_deg)
+    v = np.array([np.sin(ze) * np.sin(az), np.sin(ze) * np.cos(az), np.cos(ze)])
+    s1, s2, s3 = v @ rot(alpha, beta, gamma)
+    rho = np.hypot(s1, s2)
+    if rho <= 1e-12:
+        u = 0.5 + du
+        v = 0.5 + dv
+    elif OPTMOD == 20:
+        s3 = s3 if abs(s3) > 1e-12 else np.copysign(1e-12, s3 if s3 else 1.0)
+        x = s1 / s3
+        y = s2 / s3
+        r2 = x * x + y * y
+        k1, k2, k3, p1, p2 = OPTPAR[7:12]
+        scale = 1.0 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2
+        xd = x * scale + 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x)
+        yd = y * scale + p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y
+        u = f1 * xd + 0.5 + du
+        v = f2 * yd + 0.5 + dv
+    else:
+        theta = np.arctan2(rho, s3)
+        if OPTMOD == 1:
+            r = rho / (s3 if abs(s3) > 1e-12 else np.copysign(1e-12, s3 if s3 else 1.0))
+        elif OPTMOD == 2:
+            r = np.sin(radial_alpha * theta)
+        elif OPTMOD == 3:
+            s3 = max(s3, 1e-12)
+            u = f1 * (1.0 - radial_alpha) * s1 / s3 + f1 * radial_alpha * s1 / rho * theta + 0.5 + du
+            v = f2 * (1.0 - radial_alpha) * s2 / s3 + f2 * radial_alpha * s2 / rho * theta + 0.5 + dv
+            return u * WIDTH - 1.0, v * HEIGHT - 1.0
+        elif OPTMOD == 4:
+            r = abs(theta) ** radial_alpha
+        elif OPTMOD == 5:
+            r = np.tan(radial_alpha * theta)
+        elif OPTMOD == 12:
+            r = np.tan(radial_alpha * theta) / radial_alpha if radial_alpha > 0 else (np.sin(radial_alpha * theta) / radial_alpha if radial_alpha < 0 else abs(theta))
+        else:
+            raise ValueError(f"unsupported OPTMOD {OPTMOD}")
+        u = f1 * s1 / rho * r + 0.5 + du
+        v = f2 * s2 / rho * r + 0.5 + dv
+    return u * WIDTH - 1.0, v * HEIGHT - 1.0
+
+
+location = EarthLocation(lat=LAT_DEG * u.deg, lon=LON_DEG * u.deg, height=ALT_M * u.m)
+frame = AltAz(obstime=Time(TIME_UTC), location=location)
+coords = SkyCoord([s[1] for s in STARS] * u.hourangle, [s[2] for s in STARS] * u.deg)
+altaz = coords.transform_to(frame)
+
+img = Image.open(IMAGE).convert("RGB")
+draw = ImageDraw.Draw(img)
+count = 0
+for (name, ra, dec, mag), az, el in zip(STARS, altaz.az.deg, altaz.alt.deg):
+    if el < 0:
+        continue
+    x, y = az_el_to_pixel(float(az), float(el))
+    if 0 <= x < WIDTH and 0 <= y < HEIGHT:
+        r = max(4.0, 11.0 - 1.2 * mag)
+        draw.ellipse((x - r, y - r, x + r, y + r), outline=(255, 220, 0), width=3)
+        count += 1
+
+img.save(OUT)
+print(f"wrote {OUT} with {count} stars")
+`;
+    }
+
+    function bareCreateAzElTablePythonScript() {
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value) || 2;
+        const width = state.image ? state.image.width : 1920;
+        const height = state.image ? state.image.height : 1080;
+        const timestampUtc = AidaTools.datetimeLocalToDate(controls.timestampUtc.value).toISOString();
+        const siteLat = Number(controls.latDeg.value) || 0;
+        const siteLon = Number(controls.lonDeg.value) || 0;
+        const siteAlt = Number(controls.altM.value) || 0;
+        return `#!/usr/bin/env python3
+import h5py
+import numpy as np
+
+OUT = "calibration_az_el.h5"
+TIME_UTC = ${pythonString(timestampUtc)}
+LAT_DEG = ${pythonFloat(siteLat)}
+LON_DEG = ${pythonFloat(siteLon)}
+ALT_M = ${pythonFloat(siteAlt)}
+WIDTH = ${width}
+HEIGHT = ${height}
+OPTMOD = ${optmod}
+OPTPAR = np.array([${optpar.map(pythonFloat).join(", ")}], dtype=float)
+
+
+def rot(alpha, beta, gamma):
+    a, b, g = np.deg2rad([alpha, beta, gamma])
+    r1 = np.array([[np.cos(g), -np.sin(g), 0], [np.sin(g), np.cos(g), 0], [0, 0, 1]])
+    r2 = np.array([[np.cos(a), 0, np.sin(a)], [0, 1, 0], [-np.sin(a), 0, np.cos(a)]])
+    r3 = np.array([[1, 0, 0], [0, np.cos(b), np.sin(b)], [0, -np.sin(b), np.cos(b)]])
+    return r2 @ r3 @ r1
+
+
+def theta_from_radius(q, radial_alpha):
+    if OPTMOD == 2:
+        if abs(radial_alpha) < 1e-12 or abs(q) > 1:
+            return np.nan
+        return np.arcsin(q) / radial_alpha
+    if OPTMOD == 4:
+        if abs(radial_alpha) < 1e-12:
+            return np.nan
+        return q ** (1.0 / radial_alpha)
+    if OPTMOD == 5:
+        if abs(radial_alpha) < 1e-12:
+            return np.nan
+        return np.arctan(q) / radial_alpha
+    if OPTMOD == 12:
+        if radial_alpha > 0:
+            return np.arctan(q * radial_alpha) / radial_alpha
+        if radial_alpha < 0:
+            v = q * radial_alpha
+            if abs(v) > 1:
+                return np.nan
+            return np.arcsin(v) / radial_alpha
+        return q
+    return q
+
+
+def undistort_brown_conrady(xd, yd):
+    x, y = xd, yd
+    k1, k2, k3, p1, p2 = OPTPAR[7:12]
+    for _ in range(12):
+        r2 = x * x + y * y
+        scale = 1.0 + k1 * r2 + k2 * r2 * r2 + k3 * r2 * r2 * r2
+        xp = x * scale + 2.0 * p1 * x * y + p2 * (r2 + 2.0 * x * x)
+        yp = y * scale + p1 * (r2 + 2.0 * y * y) + 2.0 * p2 * x * y
+        x += xd - xp
+        y += yd - yp
+    return x, y
+
+
+def pixel_to_az_el(xpix, ypix):
+    f1, f2, alpha, beta, gamma, du, dv = OPTPAR[:7]
+    u = (xpix + 1.0) / WIDTH - 0.5 - du
+    v = (ypix + 1.0) / HEIGHT - 0.5 - dv
+    if abs(f1) < 1e-12 or abs(f2) < 1e-12:
+        return np.nan, np.nan
+
+    if OPTMOD == 1:
+        sx, sy = u / f1, v / f2
+        n = np.hypot(np.hypot(sx, sy), 1.0)
+        cam = np.array([sx / n, sy / n, 1.0 / n])
+    elif OPTMOD == 20:
+        xu, yu = undistort_brown_conrady(u / f1, v / f2)
+        n = np.hypot(np.hypot(xu, yu), 1.0)
+        cam = np.array([xu / n, yu / n, 1.0 / n])
+    else:
+        qx, qy = u / f1, v / f2
+        q = np.hypot(qx, qy)
+        if q <= 1e-12:
+            cam = np.array([0.0, 0.0, 1.0])
+        else:
+            theta = theta_from_radius(q, OPTPAR[7] if len(OPTPAR) > 7 else 0.0)
+            if not np.isfinite(theta):
+                return np.nan, np.nan
+            r = np.sin(theta)
+            cam = np.array([qx / q * r, qy / q * r, np.cos(theta)])
+
+    east, north, up = cam @ rot(alpha, beta, gamma).T
+    n = np.hypot(np.hypot(east, north), up)
+    if n <= 1e-12:
+        return np.nan, np.nan
+    east, north, up = east / n, north / n, up / n
+    az = (np.rad2deg(np.arctan2(east, north)) + 360.0) % 360.0
+    el = np.rad2deg(np.arcsin(np.clip(up, -1.0, 1.0)))
+    return az, el
+
+
+az = np.empty((HEIGHT, WIDTH), dtype=np.float32)
+el = np.empty((HEIGHT, WIDTH), dtype=np.float32)
+for y in range(HEIGHT):
+    if y % 100 == 0:
+        print(f"row {y}/{HEIGHT}")
+    for x in range(WIDTH):
+        az[y, x], el[y, x] = pixel_to_az_el(x, y)
+
+with h5py.File(OUT, "w") as h:
+    h.create_dataset("azimuth_deg", data=az, compression="gzip", compression_opts=4)
+    h.create_dataset("elevation_deg", data=el, compression="gzip", compression_opts=4)
+    h.attrs["timestamp_utc"] = TIME_UTC
+    h.attrs["site_lat_deg"] = LAT_DEG
+    h.attrs["site_lon_deg"] = LON_DEG
+    h.attrs["site_alt_m"] = ALT_M
+    h.attrs["image_width"] = WIDTH
+    h.attrs["image_height"] = HEIGHT
+    h.attrs["optmod"] = OPTMOD
+    h.attrs["optpar"] = OPTPAR
+    h.attrs["optpar_with_optmod"] = np.r_[OPTMOD, OPTPAR]
+
+print(f"wrote {OUT}")
+`;
+    }
+
+    function bareHdf5OverlayPythonScript(stars) {
+        return `#!/usr/bin/env python3
+import h5py
+import numpy as np
+from astropy import units as u
+from astropy.coordinates import AltAz, EarthLocation, SkyCoord
+from astropy.time import Time
+from PIL import Image, ImageDraw
+
+IMAGE = "base_image.png"
+H5 = "calibration_az_el.h5"
+OUT = "overlay_hdf5.png"
+MAX_ERROR_DEG = 0.5
+
+STARS = [
+${pythonStarTuples(stars)}
+]
+
+
+def attr(h, name):
+    v = h.attrs[name]
+    if isinstance(v, bytes):
+        return v.decode()
+    a = np.asarray(v)
+    if a.shape == ():
+        v = a.item()
+        return v.decode() if isinstance(v, bytes) else v
+    v = a.reshape(-1)[0]
+    return v.decode() if isinstance(v, bytes) else v
+
+
+def err2(az_grid, el_grid, az, el):
+    daz = ((az_grid - az + 180.0) % 360.0) - 180.0
+    daz *= np.cos(np.deg2rad(el))
+    dele = el_grid - el
+    return daz * daz + dele * dele
+
+
+def nearest_pixel(az_grid, el_grid, az, el):
+    ok = np.isfinite(az_grid) & np.isfinite(el_grid)
+    stride = max(1, min(az_grid.shape) // 350)
+    e = np.where(ok[::stride, ::stride], err2(az_grid[::stride, ::stride], el_grid[::stride, ::stride], az, el), np.inf)
+    cy, cx = np.unravel_index(np.argmin(e), e.shape)
+    y = int(cy * stride)
+    x = int(cx * stride)
+    r = max(8, 3 * stride)
+    y0, y1 = max(0, y - r), min(az_grid.shape[0], y + r + 1)
+    x0, x1 = max(0, x - r), min(az_grid.shape[1], x + r + 1)
+    e = np.where(ok[y0:y1, x0:x1], err2(az_grid[y0:y1, x0:x1], el_grid[y0:y1, x0:x1], az, el), np.inf)
+    yy, xx = np.unravel_index(np.argmin(e), e.shape)
+    return x0 + xx, y0 + yy, float(np.sqrt(e[yy, xx]))
+
+
+with h5py.File(H5, "r") as h:
+    az_grid = h["azimuth_deg"][:]
+    el_grid = h["elevation_deg"][:]
+    time_utc = str(attr(h, "timestamp_utc"))
+    lat = float(attr(h, "site_lat_deg"))
+    lon = float(attr(h, "site_lon_deg"))
+    alt = float(attr(h, "site_alt_m"))
+    print("optmod =", int(attr(h, "optmod")))
+    print("optpar =", np.asarray(h.attrs["optpar"], dtype=float).tolist())
+
+location = EarthLocation(lat=lat * u.deg, lon=lon * u.deg, height=alt * u.m)
+frame = AltAz(obstime=Time(time_utc), location=location)
+coords = SkyCoord([s[1] for s in STARS] * u.hourangle, [s[2] for s in STARS] * u.deg)
+altaz = coords.transform_to(frame)
+
+img = Image.open(IMAGE).convert("RGB")
+draw = ImageDraw.Draw(img)
+count = 0
+for (name, ra, dec, mag), az, el in zip(STARS, altaz.az.deg, altaz.alt.deg):
+    if el < 0:
+        continue
+    x, y, e = nearest_pixel(az_grid, el_grid, float(az), float(el))
+    if e <= MAX_ERROR_DEG:
+        r = max(4.0, 11.0 - 1.2 * mag)
+        draw.ellipse((x - r, y - r, x + r, y + r), outline=(255, 220, 0), width=3)
+        count += 1
+
+img.save(OUT)
+print(f"wrote {OUT} with {count} stars")
+`;
+    }
+
+    function reportReadmeText(prefix) {
+        return `WISC calibration results bundle
+
+Files:
+- report.tex: LaTeX source for the lens model fitting report.
+- ${prefix}.miracle: MIRACLE-compatible plain ASCII calibration. It contains exactly one whitespace-delimited row in the order Glat Glon Xc Yc k rotation.
+- selected_stars.tsv: every star selected in WISC, including image position, J2000 RA/Dec, azimuth/altitude at the image time, magnitude, modeled position, and fit residual.
+- overlay_lens_model.py: bare Python script with optpar inside the code; maps Yale star az/el to pixels with the lens model and writes overlay_lens_model.png.
+- create_az_el_table.py: optional script that creates calibration_az_el.h5 in this folder.
+- overlay_hdf5.py: bare Python script that reads calibration_az_el.h5 after create_az_el_table.py has made it, then writes overlay_hdf5.png.
+- base_image.png: image used by the two root-level overlay scripts.
+- figures/star_overlay.png: current WISC overlay view.
+- figures/residual_overlay.png: WISC residual-vector overlay view.
+- figures/residual_scatter.png: residual scatter plot used by report.tex.
+- figures/residual_scatter.svg: editable residual scatter plot source.
+- figures/miracle_approximation_error.png: error of the six-parameter MIRACLE approximation against the native WISC lens model over the image.
+- figures/miracle_approximation_error.svg: editable source for the MIRACLE approximation-error plot.
+
+MIRACLE convention:
+- Glat and Glon are station geographic latitude and longitude in degrees.
+- Xc is the vertical image coordinate (row) of zenith in pixels.
+- Yc is the horizontal image coordinate (column) of zenith in pixels.
+- k is pixels per radian in d = k z, fitted over visible sky directions.
+- rotation is in degrees; counter-clockwise rotation of the image is positive.
+- Image coordinates are zero-based with (0, 0) at the upper-left corner.
+
+Run python overlay_lens_model.py to annotate Yale stars with the optpar embedded in that script.
+Run python create_az_el_table.py only if you want the optional HDF5 az/el table.
+Run python overlay_hdf5.py after creating calibration_az_el.h5.
+Compile report.tex with pdflatex or latexmk from this directory after unzipping.
+`;
+    }
+
+    function latexReportText(metadata, rows) {
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value) || 2;
+        const summary = metadata.residualSummary || {};
+        const rms = Number.isFinite(summary.rmsPx) ? summary.rmsPx.toFixed(3) : "n/a";
+        const median = Number.isFinite(summary.medianPx) ? summary.medianPx.toFixed(3) : "n/a";
+        const max = Number.isFinite(summary.maxPx) ? summary.maxPx.toFixed(3) : "n/a";
+        const optparText = [optmod, ...optpar].map(value => Number(value).toPrecision(12)).join(", ");
+        const miracle = metadata.miracle;
+        const miracleText = miracle ? [
+            miracle.glatDeg,
+            miracle.glonDeg,
+            miracle.xcPx,
+            miracle.ycPx,
+            miracle.kPxPerRad,
+            miracle.rotationDeg,
+        ].map(value => Number(value).toPrecision(12)).join(" ") : "n/a";
+        const miracleRms = miracle && Number.isFinite(miracle.errorSummary.rmsAngularDeg) ?
+            miracle.errorSummary.rmsAngularDeg.toFixed(3) :
+            "n/a";
+        const miracleMax = miracle && Number.isFinite(miracle.errorSummary.maxAngularDeg) ?
+            miracle.errorSummary.maxAngularDeg.toFixed(3) :
+            "n/a";
+        return `\\documentclass[11pt]{article}
+\\usepackage[margin=1in]{geometry}
+\\usepackage{graphicx}
+\\usepackage{amsmath}
+\\usepackage{booktabs}
+\\usepackage{hyperref}
+\\title{WISC Lens Model Fitting Report}
+\\author{Widefield Star Calibrator}
+\\date{${escapeTex(metadata.generatedUtc)}}
+\\begin{document}
+\\maketitle
+
+\\section{Summary}
+\\begin{tabular}{ll}
+\\toprule
+Image & ${escapeTex(metadata.imageName)} \\\\
+Image size & ${metadata.imageWidth} $\\times$ ${metadata.imageHeight} px \\\\
+Image time & ${escapeTex(metadata.timestampUtc)} \\\\
+Site & lat ${metadata.site.latDeg.toFixed(6)}$^\\circ$, lon ${metadata.site.lonDeg.toFixed(6)}$^\\circ$, alt ${metadata.site.altM.toFixed(1)} m \\\\
+Optical model & optmod ${optmod} \\\\
+Boresight & az ${metadata.boresightAzDeg.toFixed(3)}$^\\circ$, el ${metadata.boresightElDeg.toFixed(3)}$^\\circ$ \\\\
+Matched stars & ${rows.length} \\\\
+Residual RMS & ${rms} px \\\\
+Residual median & ${median} px \\\\
+Residual max & ${max} px \\\\
+\\bottomrule
+\\end{tabular}
+
+\\section{Lens Model}
+The exported parameter vector is:
+\\begin{verbatim}
+[${optparText}]
+\\end{verbatim}
+
+The browser lens equation shown at export time was:
+${lensEquationLatex(optpar, optmod)}
+
+\\section{MIRACLE Approximation}
+The MIRACLE-compatible calibration uses the historical parameter order
+\\texttt{Glat Glon Xc Yc k rotation}:
+\\begin{verbatim}
+${miracleText}
+\\end{verbatim}
+Here \\texttt{Xc} is the vertical image coordinate (row), \\texttt{Yc} is the
+horizontal image coordinate (column), and $(0,0)$ is the upper-left pixel.
+The scale \\texttt{k} is in pixels per radian for $d=kz$. Rotation is in
+degrees and is positive for a counter-clockwise rotation of the image. The
+scale and rotation are least-squares/circular fits over visible sky directions;
+the native WISC model remains the authoritative calibration.
+
+The six-parameter approximation has an RMS angular error of
+${miracleRms} degrees and a maximum sampled error of ${miracleMax} degrees
+relative to the native WISC lens model.
+\\begin{figure}[h]
+\\centering
+\\includegraphics[width=0.98\\linewidth]{figures/miracle_approximation_error.png}
+\\caption{Angular error of the MIRACLE $d=kz$ approximation as a function of raw image coordinate and radial distance from zenith. The comparison uses the native WISC lens model as reference.}
+\\end{figure}
+
+\\section{Fit Residuals}
+\\begin{figure}[h]
+\\centering
+\\includegraphics[width=0.82\\linewidth]{figures/residual_scatter.png}
+\\caption{Residual scatter for the fitted star pairings. Values are in image pixels.}
+\\end{figure}
+
+\\begin{figure}[h]
+\\centering
+\\includegraphics[width=0.95\\linewidth]{figures/residual_overlay.png}
+\\caption{WISC residual overlay view. Red residual vectors are exaggerated in the GUI rendering for visibility.}
+\\end{figure}
+
+\\section{Star Overlay}
+\\begin{figure}[h]
+\\centering
+\\includegraphics[width=0.95\\linewidth]{figures/star_overlay.png}
+\\caption{WISC star overlay view at report generation time.}
+\\end{figure}
+
+\\section{Generated Data Products}
+The results ZIP contains a plain ASCII \\texttt{.miracle} file with exactly
+six whitespace-delimited numbers and no JSON syntax. It also contains
+\\texttt{selected\\_stars.tsv}, which gives the selected stars' raw image
+coordinates, J2000 RA/Dec, and WISC-computed azimuth and altitude for the
+observation time and station.
+
+The results ZIP contains one image copy: \\texttt{base\\_image.png}. The HDF5
+az/el table is not included because it is large. If you want it, run
+\\texttt{create\\_az\\_el\\_table.py}; that script creates
+\\texttt{calibration\\_az\\_el.h5} in the report directory.
+
+The optional HDF5 file contains \\texttt{/azimuth\\_deg} and
+\\texttt{/elevation\\_deg} datasets as Float32 arrays with shape
+\\texttt{[image\\_height, image\\_width]}. The datasets are indexed as
+\\texttt{[y, x]} in image-pixel order. Its root attributes include
+\\texttt{timestamp\\_utc}, \\texttt{site\\_lat\\_deg}, \\texttt{site\\_lon\\_deg},
+\\texttt{site\\_alt\\_m}, \\texttt{optmod}, \\texttt{optpar}, and
+\\texttt{optpar\\_with\\_optmod}.
+
+The Yale Bright Star Catalog rows are embedded directly inside the overlay
+scripts as plain Python tuples. No JSON file is needed to run the examples.
+
+\\section{How To Use The Lens Model}
+All commands below are run from the unzipped report directory. The two Python
+files are deliberately root-level scripts, so there is no package to install and
+no path setup.
+
+If you want to use the fitted lens model directly, use
+\\texttt{overlay\\_lens\\_model.py}. This file contains \\texttt{OPTMOD},
+\\texttt{OPTPAR}, image size, site, time, and the Yale star list directly in the
+code. The important function is \\texttt{az\\_el\\_to\\_pixel(az\\_deg,
+el\\_deg)}, which returns image pixel coordinates \\texttt{(x, y)}.
+\\begin{verbatim}
+python -m pip install astropy numpy pillow
+python overlay_lens_model.py
+\\end{verbatim}
+This writes \\texttt{overlay\\_lens\\_model.png}. To use the lens model in your
+own code, copy the constants and the \\texttt{az\\_el\\_to\\_pixel} function from
+\\texttt{overlay\\_lens\\_model.py}.
+
+If you prefer not to evaluate the lens model, use the HDF5 az/el table instead:
+\\begin{verbatim}
+python -m pip install astropy h5py numpy pillow
+python create_az_el_table.py
+python overlay_hdf5.py
+\\end{verbatim}
+\\texttt{create\\_az\\_el\\_table.py} creates \\texttt{calibration\\_az\\_el.h5}
+locally. \\texttt{overlay\\_hdf5.py} then reads that file and writes
+\\texttt{overlay\\_hdf5.png}. Stars whose nearest HDF5 grid pixel is more than
+$0.5^\\circ$ away are skipped so off-camera stars are not drawn at arbitrary
+nearest pixels.
+
+Use \\texttt{overlay\\_lens\\_model.py} when you want a compact portable formula.
+Use \\texttt{overlay\\_hdf5.py} when you want a lookup table tied exactly to this
+image.
+
+\\end{document}
+`;
+    }
+
+    async function captureReportCanvasPng(fitResiduals = false, displayMode = "pairing") {
+        const saved = {
+            showFitResiduals: state.showFitResiduals,
+            displayMode: state.displayMode,
+            showKdePositionDots: state.showKdePositionDots,
+        };
+        state.showFitResiduals = fitResiduals;
+        state.displayMode = displayMode;
+        state.showKdePositionDots = false;
+        render();
+        await new Promise(resolve => window.requestAnimationFrame(resolve));
+        const blob = await canvasToPngBlob(canvas);
+        state.showFitResiduals = saved.showFitResiduals;
+        state.displayMode = saved.displayMode;
+        state.showKdePositionDots = saved.showKdePositionDots;
+        render();
+        return blob;
+    }
+
+    function svgToPngBlob(svgText, width = 720, height = 520, label = "SVG") {
+        return new Promise((resolve, reject) => {
+            const blob = new Blob([svgText], {type: "image/svg+xml"});
+            const url = URL.createObjectURL(blob);
+            const image = new Image();
+            image.onload = () => {
+                const out = document.createElement("canvas");
+                out.width = width;
+                out.height = height;
+                const ctx = out.getContext("2d");
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(image, 0, 0, width, height);
+                URL.revokeObjectURL(url);
+                out.toBlob(png => {
+                    if (png) {
+                        resolve(png);
+                    } else {
+                        reject(new Error(`failed to render ${label} PNG`));
+                    }
+                }, "image/png");
+            };
+            image.onerror = () => {
+                URL.revokeObjectURL(url);
+                reject(new Error(`failed to load ${label} SVG`));
+            };
+            image.src = url;
+        });
+    }
+
+    async function downloadFitReportZip() {
+        if (!state.image) {
+            state.fitMessage = "results: load an image first";
+            render();
+            return;
+        }
+        const button = controls.downloadFitReport;
+        if (button) {
+            button.disabled = true;
+        }
+        try {
+            playInteractionSound("click");
+            setLoadingProgress(6, "Preparing results...");
+            const rows = matchResidualRows();
+            const prefix = window.AidaMiracleExport.imagePrefix(state.imageName || "wisc");
+            const miracleProduct = miracleCalibrationProduct();
+            const metadata = reportMetadata(rows, miracleProduct);
+            const zipName = `${prefix}_results.zip`;
+            setLoadingProgress(12, "Capturing overlay figures...");
+            const baseImagePng = await rawImagePixelsPngBlob();
+            const overlayPng = await captureReportCanvasPng(false);
+            const residualOverlayPng = await captureReportCanvasPng(true);
+            const residualSvg = residualScatterSvg(rows);
+            const residualPng = await svgToPngBlob(residualSvg, 720, 520, "residual scatter");
+            const miracleErrorSvg = miracleApproximationErrorSvg(miracleProduct);
+            const miracleErrorPng = await svgToPngBlob(
+                miracleErrorSvg,
+                1100,
+                660,
+                "MIRACLE approximation error",
+            );
+            const yaleMag5 = yaleBrightCatalog(5.0);
+            setLoadingProgress(72, "Loading results writer...");
+            const JSZip = await loadJsZip();
+            setLoadingProgress(82, "Assembling results ZIP...");
+            const zip = new JSZip();
+            zip.file("README.md", reportReadmeText(prefix));
+            zip.file("report.tex", latexReportText(metadata, rows));
+            zip.file(
+                `${prefix}.miracle`,
+                window.AidaMiracleExport.formatMiracleAscii(miracleProduct.calibration),
+            );
+            zip.file("selected_stars.tsv", selectedStarsTsv());
+            zip.file("base_image.png", baseImagePng);
+            zip.file("figures/star_overlay.png", overlayPng);
+            zip.file("figures/residual_overlay.png", residualOverlayPng);
+            zip.file("figures/residual_scatter.png", residualPng);
+            zip.file("figures/residual_scatter.svg", residualSvg);
+            zip.file("figures/miracle_approximation_error.png", miracleErrorPng);
+            zip.file("figures/miracle_approximation_error.svg", miracleErrorSvg);
+            zip.file("overlay_lens_model.py", bareLensOverlayPythonScript(yaleMag5));
+            zip.file("create_az_el_table.py", bareCreateAzElTablePythonScript());
+            zip.file("overlay_hdf5.py", bareHdf5OverlayPythonScript(yaleMag5));
+            const blob = await zip.generateAsync({type: "blob", compression: "DEFLATE"});
+            setLoadingProgress(96, "Starting results download...");
+            downloadBlob(blob, zipName);
+            state.fitMessage = `results: downloaded ${zipName}`;
+        } catch (error) {
+            state.fitMessage = `results failed: ${error && error.message ? error.message : error}`;
+        } finally {
+            hideLoadingProgress();
+            if (button) {
+                button.disabled = false;
+            }
+            render();
+        }
     }
 
     function horizonPointForAz(azDeg, optpar, optmod) {
@@ -4492,7 +5992,7 @@ end
         controls.contrastValue.textContent = Number(controls.contrast.value).toFixed(2);
         if (controls.displayClipMaxValue) {
             controls.displayClipMaxValue.textContent = controls.displayClipMax ?
-                displayClipMax().toPrecision(5) :
+                `${displayClipPercent().toFixed(0)}%` :
                 "auto";
         }
         controls.highPassWidthValue.textContent = Number(controls.highPassWidth.value).toFixed(0);
@@ -4521,7 +6021,8 @@ end
             `site: lat ${controls.latDeg.value} deg, lon ${controls.lonDeg.value} deg, alt ${controls.altM.value} m\n` +
             `optpar: [${optparWithModel}]\n` +
             `image high-pass: ${controls.highPassImage.checked ? `${controls.highPassWidth.value} px Gaussian` : "off"}\n` +
-            `display clip max: ${controls.displayClipMax ? displayClipMax().toPrecision(8) : "auto"}\n` +
+            `display clipping: ${controls.displayClipMax ? `${displayClipPercent().toFixed(1)}% ` +
+                `(${(displayClipPercent() / 2).toFixed(1)}% from each tail)` : "off"}\n` +
             `star catalogue: ${activeStarCatalogName()} (${state.catalogStatus})\n` +
             `Yale asterism index: ${state.yaleAsterismIndexStatus}\n` +
             `catalog stars <= mag ${controls.maxMag.value}: ` +
@@ -4610,7 +6111,7 @@ end
             if (state.showKdePositionDots) {
                 return "KDE dot inspection: all other markings are hidden. Press k to return to the normal overlay.";
             }
-            return "Star pairing view: left-drag moves the view. Right-drag rotates the view. Wheel edits f1/f2 together. Press c for Stellarium view, x for pure image/Stellarium views, s to pick an image star, h to show/hide detected stars, k for KDE sub-pixel dots, n to show/hide star names, d to delete a star pairing, hold m to mark bad yellow detections, or z to zoom.";
+            return "Star pairing view: left-drag moves the view. Shift-left-drag or right-drag rotates the view. Wheel edits f1/f2 together. Press c for Stellarium view, x for pure image/Stellarium views, s to pick an image star, h to show/hide detected stars, k for KDE sub-pixel dots, n to show/hide star names, d to delete a star pairing, hold m to mark bad yellow detections, or z to zoom.";
         }
         if (!state.pendingMatch) {
             return "Star pairing: hold s and click the image star. A KDE centroid fit will select the sub-pixel star position.";
@@ -4673,7 +6174,7 @@ end
     }
 
     function imageGray(x, y) {
-        const pixels = processingImagePixels();
+        const pixels = analysisImagePixels();
         if (!pixels) {
             return 0;
         }
@@ -4691,7 +6192,7 @@ end
     }
 
     function imageGrayInterpolated(x, y) {
-        const pixels = processingImagePixels();
+        const pixels = analysisImagePixels();
         if (!pixels || !state.image) {
             return 0;
         }
@@ -4719,7 +6220,7 @@ end
         if (isMaskedImagePixel(ix, iy)) {
             return 0;
         }
-        const pixels = processingImagePixels();
+        const pixels = analysisImagePixels();
         if (!pixels || !pixels.data) {
             return 0;
         }
@@ -4779,10 +6280,76 @@ end
         controls.brightness.value = brightness.toFixed(2);
     }
 
-    function setLoadingProgress(percent, text) {
+    let loadingHideTimeout = 0;
+    function setLoadingProgress(percent, text, indeterminate = false) {
+        if (loadingHideTimeout) {
+            window.clearTimeout(loadingHideTimeout);
+            loadingHideTimeout = 0;
+        }
         loadingOverlay.classList.add("visible");
-        loadingBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        loadingOverlay.classList.toggle("indeterminate", Boolean(indeterminate));
+        if (Number.isFinite(percent)) {
+            loadingBar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+        }
         loadingText.textContent = text;
+    }
+
+    function formatByteCount(bytes) {
+        const value = Number(bytes) || 0;
+        if (value >= 1024 * 1024) {
+            return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+        }
+        if (value >= 1024) {
+            return `${(value / 1024).toFixed(0)} kB`;
+        }
+        return `${Math.round(value)} B`;
+    }
+
+    function canFetchWithProgress(url) {
+        try {
+            const parsed = new URL(url, window.location.href);
+            return (parsed.protocol === "http:" || parsed.protocol === "https:") &&
+                typeof window.fetch === "function";
+        } catch (_error) {
+            return false;
+        }
+    }
+
+    async function fetchBlobWithProgress(url, name, startPercent = 8, endPercent = 28) {
+        const response = await fetch(url, {cache: "default"});
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const total = Number(response.headers.get("content-length")) || 0;
+        const reader = response.body && typeof response.body.getReader === "function" ?
+            response.body.getReader() : null;
+        if (!reader) {
+            setLoadingProgress(startPercent, `Downloading ${name}...`, true);
+            return await response.blob();
+        }
+        const chunks = [];
+        let loaded = 0;
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) {
+                break;
+            }
+            chunks.push(value);
+            loaded += value.byteLength;
+            if (total > 0) {
+                const fraction = Math.max(0, Math.min(1, loaded / total));
+                const percent = startPercent + fraction * (endPercent - startPercent);
+                setLoadingProgress(percent,
+                    `Downloading ${name}: ${formatByteCount(loaded)} / ${formatByteCount(total)}`);
+            } else {
+                setLoadingProgress(startPercent,
+                    `Downloading ${name}: ${formatByteCount(loaded)}`, true);
+            }
+        }
+        setLoadingProgress(endPercent, `Downloaded ${name}`);
+        return new Blob(chunks, {
+            type: response.headers.get("content-type") || "application/octet-stream",
+        });
     }
 
     function shouldUpdateFitProgress(iteration, maxIter, visualStride, minIntervalMs, lastUpdateTime) {
@@ -4798,7 +6365,12 @@ end
 
     function hideLoadingProgress() {
         loadingBar.style.width = "100%";
-        window.setTimeout(() => {
+        if (loadingHideTimeout) {
+            window.clearTimeout(loadingHideTimeout);
+        }
+        loadingHideTimeout = window.setTimeout(() => {
+            loadingHideTimeout = 0;
+            loadingOverlay.classList.remove("indeterminate");
             loadingOverlay.classList.remove("visible");
         }, 180);
     }
@@ -5228,7 +6800,7 @@ end
     async function tuneStarDetectorForImage(loadId = state.imageLoadId) {
         state.autoDetectorOptions = null;
         state.autoDetectorStatus = "detector tuning: not run";
-        const pixels = processingImagePixels();
+        const pixels = analysisImagePixels();
         if (!pixels || !state.image || !window.AidaStarDetector) {
             return null;
         }
@@ -5276,7 +6848,7 @@ end
         state.detectedStars = [];
         state.autoMatches = [];
         state.deletedDetectionIds = new Set();
-        const pixels = processingImagePixels();
+        const pixels = analysisImagePixels();
         if (!pixels || !state.image || !window.AidaStarDetector) {
             state.detectorCache = null;
             state.detectorStatus = "fast detector: image readback unavailable";
@@ -5855,18 +7427,6 @@ end
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, displayImagePixels());
     }
 
-    function gaussianKernel(sigma) {
-        const radius = Math.max(1, Math.ceil(3 * sigma));
-        const kernel = [];
-        let sum = 0;
-        for (let i = -radius; i <= radius; i++) {
-            const value = Math.exp(-0.5 * (i / sigma) * (i / sigma));
-            kernel.push(value);
-            sum += value;
-        }
-        return kernel.map(value => value / sum);
-    }
-
     function downsampleGrayImage(imageData, factor) {
         const width = imageData.width;
         const height = imageData.height;
@@ -5891,123 +7451,116 @@ end
         return {width: smallWidth, height: smallHeight, gray: sums};
     }
 
-    function convolveHorizontal(src, width, height, kernel) {
-        const radius = Math.floor(kernel.length / 2);
+    function boxSizesForGaussian(sigma, passes = 3) {
+        const ideal = Math.sqrt((12 * sigma * sigma / passes) + 1);
+        let lower = Math.floor(ideal);
+        if (lower % 2 === 0) {
+            lower -= 1;
+        }
+        const upper = lower + 2;
+        const mIdeal = (12 * sigma * sigma - passes * lower * lower - 4 * passes * lower - 3 * passes) /
+            (-4 * lower - 4);
+        const lowerCount = Math.round(mIdeal);
+        return Array.from({length: passes}, (_, i) => i < lowerCount ? lower : upper)
+            .map(size => Math.max(1, size));
+    }
+
+    function boxBlurHorizontal(src, width, height, radius) {
+        if (radius <= 0) {
+            return src.slice();
+        }
         const dst = new Float32Array(src.length);
+        const windowSize = 2 * radius + 1;
         for (let y = 0; y < height; y++) {
             const row = y * width;
+            let sum = src[row] * (radius + 1);
+            for (let i = 1; i <= radius; i++) {
+                sum += src[row + Math.min(width - 1, i)];
+            }
             for (let x = 0; x < width; x++) {
-                let sum = 0;
-                for (let k = -radius; k <= radius; k++) {
-                    const ix = Math.max(0, Math.min(width - 1, x + k));
-                    sum += src[row + ix] * kernel[k + radius];
-                }
-                dst[row + x] = sum;
+                dst[row + x] = sum / windowSize;
+                const removeX = Math.max(0, x - radius);
+                const addX = Math.min(width - 1, x + radius + 1);
+                sum += src[row + addX] - src[row + removeX];
             }
         }
         return dst;
     }
 
-    function convolveVertical(src, width, height, kernel) {
-        const radius = Math.floor(kernel.length / 2);
+    function boxBlurVertical(src, width, height, radius) {
+        if (radius <= 0) {
+            return src.slice();
+        }
         const dst = new Float32Array(src.length);
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                let sum = 0;
-                for (let k = -radius; k <= radius; k++) {
-                    const iy = Math.max(0, Math.min(height - 1, y + k));
-                    sum += src[iy * width + x] * kernel[k + radius];
-                }
-                dst[y * width + x] = sum;
+        const windowSize = 2 * radius + 1;
+        for (let x = 0; x < width; x++) {
+            let sum = src[x] * (radius + 1);
+            for (let i = 1; i <= radius; i++) {
+                sum += src[Math.min(height - 1, i) * width + x];
+            }
+            for (let y = 0; y < height; y++) {
+                dst[y * width + x] = sum / windowSize;
+                const removeY = Math.max(0, y - radius);
+                const addY = Math.min(height - 1, y + radius + 1);
+                sum += src[addY * width + x] - src[removeY * width + x];
             }
         }
         return dst;
+    }
+
+    function fastGaussianApprox(src, width, height, sigma) {
+        let out = src;
+        for (const size of boxSizesForGaussian(sigma)) {
+            const radius = Math.floor(size / 2);
+            out = boxBlurHorizontal(out, width, height, radius);
+            out = boxBlurVertical(out, width, height, radius);
+        }
+        return out;
     }
 
     function blurredGrayBackground(imageData, widthPx) {
-        const factor = Math.max(1, Math.min(12, Math.round(widthPx / 16)));
+        const factor = Math.max(2, Math.min(12, Math.round(widthPx / 16)));
         const small = downsampleGrayImage(imageData, factor);
         const sigma = Math.max(1, widthPx / factor);
-        const kernel = gaussianKernel(sigma);
-        const horizontal = convolveHorizontal(small.gray, small.width, small.height, kernel);
-        const blurred = convolveVertical(horizontal, small.width, small.height, kernel);
+        const blurred = fastGaussianApprox(small.gray, small.width, small.height, sigma);
         return {factor, width: small.width, height: small.height, blurred};
     }
 
-    function sampledBackground(bg, x, y) {
-        const gx = Math.max(0, Math.min(bg.width - 1, x / bg.factor));
-        const gy = Math.max(0, Math.min(bg.height - 1, y / bg.factor));
-        const x0 = Math.floor(gx);
-        const y0 = Math.floor(gy);
-        const x1 = Math.min(bg.width - 1, x0 + 1);
-        const y1 = Math.min(bg.height - 1, y0 + 1);
-        const tx = gx - x0;
-        const ty = gy - y0;
-        const a = bg.blurred[y0 * bg.width + x0] * (1 - tx) + bg.blurred[y0 * bg.width + x1] * tx;
-        const b = bg.blurred[y1 * bg.width + x0] * (1 - tx) + bg.blurred[y1 * bg.width + x1] * tx;
-        return a * (1 - ty) + b * ty;
+    function displayClipPercent() {
+        return controls.displayClipMax ?
+            window.AidaDisplayStretch.clippedPercent(controls.displayClipMax.value) :
+            0;
     }
 
-    function displayClipRange() {
-        const range = state.imageFloatPixels && state.imageFloatPixels.dataRange;
-        const low = Number.isFinite(range && range.low) ? Number(range.low) : 0;
-        const high = Number.isFinite(range && range.high) && Number(range.high) > low ?
-            Number(range.high) :
-            low + 1;
-        const span = high - low;
-        const floorSpan = Math.max(span / 65536, 1e-6, Math.abs(high) * 1e-9);
-        return {low, high, minClip: low + floorSpan};
-    }
-
-    function displayClipMax() {
-        if (!controls.displayClipMax) {
-            return displayClipRange().high;
+    function setDisplayClipPercentValue(value) {
+        if (controls.displayClipMax) {
+            controls.displayClipMax.value = String(window.AidaDisplayStretch.clippedPercent(value));
         }
-        const {low, high, minClip} = displayClipRange();
-        const t = Math.max(0, Math.min(1, (Number(controls.displayClipMax.value) || 0) / 1000));
-        const logMin = Math.log(Math.max(minClip - low, 1e-12));
-        const logMax = Math.log(Math.max(high - low, Math.exp(logMin)));
-        return low + Math.exp(logMin + t * (logMax - logMin));
     }
 
-    function setDisplayClipMaxValue(value) {
-        if (!controls.displayClipMax) {
-            return;
+    function currentDisplayIntensityHistogram() {
+        if (!state.displayIntensityHistogram) {
+            state.displayIntensityHistogram = window.AidaDisplayStretch.intensityHistogram(state.imageFloatPixels);
         }
-        const {low, high, minClip} = displayClipRange();
-        const clipped = Math.max(minClip, Math.min(high, Number(value)));
-        const logMin = Math.log(Math.max(minClip - low, 1e-12));
-        const logMax = Math.log(Math.max(high - low, Math.exp(logMin)));
-        const t = logMax > logMin ?
-            (Math.log(Math.max(clipped - low, Math.exp(logMin))) - logMin) / (logMax - logMin) :
-            1;
-        controls.displayClipMax.value = String(Math.round(1000 * Math.max(0, Math.min(1, t))));
+        return state.displayIntensityHistogram;
     }
 
-    function floatPixelsToDisplayImageData(floatPixels) {
+    function displayClipBounds() {
+        return window.AidaDisplayStretch.percentileBounds(
+            currentDisplayIntensityHistogram(),
+            displayClipPercent(),
+        );
+    }
+
+    function floatPixelsToDisplayImageData(floatPixels, bounds = displayClipBounds()) {
         const width = Number(floatPixels && floatPixels.width) || 0;
         const height = Number(floatPixels && floatPixels.height) || 0;
         const src = floatPixels && floatPixels.data;
         if (!width || !height || !src) {
             return state.imagePixels;
         }
-        const range = floatPixels.dataRange || {};
-        let low = Number.isFinite(range.low) ? Number(range.low) : Infinity;
-        let high = Number.isFinite(range.high) ? Number(range.high) : -Infinity;
-        if (!Number.isFinite(low) || !Number.isFinite(high)) {
-            for (let i = 0; i < src.length; i += 1) {
-                const value = src[i];
-                if (Number.isFinite(value)) {
-                    low = Math.min(low, value);
-                    high = Math.max(high, value);
-                }
-            }
-        }
-        const clipHigh = displayClipMax();
-        const hi = Number.isFinite(clipHigh) ?
-            Math.max(clipHigh, low + Math.max(1e-6, Math.abs(low) * 1e-6)) :
-            high;
-        const span = Number.isFinite(hi) && hi > low ? hi - low : Math.max(1, Math.abs(low) * 1e-6);
+        const low = bounds.low;
+        const span = bounds.high - low;
         const scale = 255 / span;
         const out = new ImageData(width, height);
         const dst = out.data;
@@ -6022,19 +7575,65 @@ end
         return out;
     }
 
+    function colorPixelsToDisplayImageData(imageData, bounds = displayClipBounds()) {
+        const width = Number(imageData && imageData.width) || 0;
+        const height = Number(imageData && imageData.height) || 0;
+        const src = imageData && imageData.data;
+        if (!width || !height || !src) {
+            return imageData;
+        }
+        const low = bounds.low;
+        const scale = 255 / (bounds.high - low);
+        const out = new ImageData(width, height);
+        const dst = out.data;
+        for (let k = 0; k < src.length; k += 4) {
+            dst[k] = Math.max(0, Math.min(255, Math.round((src[k] - low) * scale)));
+            dst[k + 1] = Math.max(0, Math.min(255, Math.round((src[k + 1] - low) * scale)));
+            dst[k + 2] = Math.max(0, Math.min(255, Math.round((src[k + 2] - low) * scale)));
+            dst[k + 3] = src[k + 3];
+        }
+        return out;
+    }
+
     function displayClipCacheValue() {
-        return Number(displayClipMax()).toPrecision(12);
+        return displayClipPercent().toFixed(3);
+    }
+
+    function invalidateDisplayStretchCaches() {
+        state.baseDisplayPixels = null;
+        state.baseDisplayCacheKey = "";
+        state.displayPixels = null;
+        state.highPassCacheKey = "";
     }
 
     function invalidateDisplayPixelCaches() {
-        state.baseDisplayPixels = null;
-        state.baseDisplayCacheKey = "";
+        state.displayIntensityHistogram = null;
+        state.unclippedDisplayPixels = null;
+        state.unclippedDisplayCacheKey = "";
+        invalidateDisplayStretchCaches();
         invalidateHighPassDisplayCache();
     }
 
     function invalidateHighPassDisplayCache() {
+        state.highPassFloatPixels = null;
+        state.highPassFloatCacheKey = "";
+        state.highPassIntensityHistogram = null;
         state.displayPixels = null;
         state.highPassCacheKey = "";
+    }
+
+    function unclippedDisplayImageData() {
+        if (!state.displayUsesFloatPixels || !state.imageFloatPixels) {
+            return state.imagePixels;
+        }
+        const cacheKey = `${state.imageName}:${state.maskRegions.length}`;
+        if (state.unclippedDisplayPixels && state.unclippedDisplayCacheKey === cacheKey) {
+            return state.unclippedDisplayPixels;
+        }
+        const bounds = window.AidaDisplayStretch.percentileBounds(currentDisplayIntensityHistogram(), 0);
+        state.unclippedDisplayPixels = floatPixelsToDisplayImageData(state.imageFloatPixels, bounds);
+        state.unclippedDisplayCacheKey = cacheKey;
+        return state.unclippedDisplayPixels;
     }
 
     function baseDisplayImageData(clipKey = displayClipCacheValue()) {
@@ -6045,28 +7644,64 @@ end
         if (state.baseDisplayPixels && state.baseDisplayCacheKey === cacheKey) {
             return state.baseDisplayPixels;
         }
-        state.baseDisplayPixels = floatPixelsToDisplayImageData(state.imageFloatPixels);
+        const bounds = displayClipBounds();
+        state.baseDisplayPixels = state.displayUsesFloatPixels ?
+            floatPixelsToDisplayImageData(state.imageFloatPixels, bounds) :
+            colorPixelsToDisplayImageData(state.imagePixels, bounds);
         state.baseDisplayCacheKey = cacheKey;
         return state.baseDisplayPixels;
     }
 
-    function highPassImageData(imageData, widthPx) {
+    function highPassFloatImageData(imageData, widthPx) {
         const bg = blurredGrayBackground(imageData, widthPx);
-        const out = new ImageData(imageData.width, imageData.height);
         const src = imageData.data;
-        const dst = out.data;
+        const dst = new Float32Array(imageData.width * imageData.height);
+        let low = Infinity;
+        let high = -Infinity;
+        const x0s = new Uint32Array(imageData.width);
+        const x1s = new Uint32Array(imageData.width);
+        const txs = new Float32Array(imageData.width);
+        for (let x = 0; x < imageData.width; x++) {
+            const gx = Math.min(bg.width - 1, x / bg.factor);
+            const x0 = Math.floor(gx);
+            x0s[x] = x0;
+            x1s[x] = Math.min(bg.width - 1, x0 + 1);
+            txs[x] = gx - x0;
+        }
         for (let y = 0; y < imageData.height; y++) {
+            const gy = Math.min(bg.height - 1, y / bg.factor);
+            const y0 = Math.floor(gy);
+            const y1 = Math.min(bg.height - 1, y0 + 1);
+            const ty = gy - y0;
+            const row0 = y0 * bg.width;
+            const row1 = y1 * bg.width;
             for (let x = 0; x < imageData.width; x++) {
                 const k = 4 * (y * imageData.width + x);
                 const gray = 0.2126 * src[k] + 0.7152 * src[k + 1] + 0.0722 * src[k + 2];
-                const value = Math.max(0, Math.min(255, 18 + 4.0 * (gray - sampledBackground(bg, x, y))));
-                dst[k] = value;
-                dst[k + 1] = value;
-                dst[k + 2] = value;
-                dst[k + 3] = src[k + 3];
+                const tx = txs[x];
+                const a = bg.blurred[row0 + x0s[x]] * (1 - tx) + bg.blurred[row0 + x1s[x]] * tx;
+                const b = bg.blurred[row1 + x0s[x]] * (1 - tx) + bg.blurred[row1 + x1s[x]] * tx;
+                const background = a * (1 - ty) + b * ty;
+                const value = gray - background;
+                const index = y * imageData.width + x;
+                dst[index] = value;
+                low = Math.min(low, value);
+                high = Math.max(high, value);
             }
         }
-        return out;
+        return {
+            data: dst,
+            width: imageData.width,
+            height: imageData.height,
+            dataRange: {low, high},
+        };
+    }
+
+    function currentHighPassIntensityHistogram(highPassPixels) {
+        if (!state.highPassIntensityHistogram) {
+            state.highPassIntensityHistogram = window.AidaDisplayStretch.intensityHistogram(highPassPixels);
+        }
+        return state.highPassIntensityHistogram;
     }
 
     function displayImagePixels() {
@@ -6074,17 +7709,28 @@ end
             invalidateDisplayPixelCaches();
             return state.imagePixels;
         }
-        const clipKey = displayClipCacheValue();
-        const basePixels = baseDisplayImageData(clipKey);
         if (!controls.highPassImage.checked) {
-            return basePixels;
+            return baseDisplayImageData(displayClipCacheValue());
         }
+        const clipKey = displayClipCacheValue();
         const widthPx = Math.max(10, Math.min(300, Number(controls.highPassWidth.value) || 100));
-        const cacheKey = `${state.imageName}:${state.maskRegions.length}:${widthPx}:${clipKey}`;
+        const floatCacheKey = `${state.imageName}:${state.maskRegions.length}:${widthPx}`;
+        if (!state.highPassFloatPixels || state.highPassFloatCacheKey !== floatCacheKey) {
+            state.highPassFloatPixels = highPassFloatImageData(unclippedDisplayImageData(), widthPx);
+            state.highPassFloatCacheKey = floatCacheKey;
+            state.highPassIntensityHistogram = null;
+            state.displayPixels = null;
+            state.highPassCacheKey = "";
+        }
+        const cacheKey = `${floatCacheKey}:${clipKey}`;
         if (state.displayPixels && state.highPassCacheKey === cacheKey) {
             return state.displayPixels;
         }
-        state.displayPixels = highPassImageData(basePixels, widthPx);
+        const bounds = window.AidaDisplayStretch.percentileBounds(
+            currentHighPassIntensityHistogram(state.highPassFloatPixels),
+            displayClipPercent(),
+        );
+        state.displayPixels = floatPixelsToDisplayImageData(state.highPassFloatPixels, bounds);
         state.highPassCacheKey = cacheKey;
         return state.displayPixels;
     }
@@ -6190,7 +7836,7 @@ end
     }
 
     function gaussianCentroid(clickX, clickY) {
-        if (!processingImagePixels()) {
+        if (!analysisImagePixels()) {
             return {x: clickX, y: clickY, method: "click"};
         }
         const searchRadius = 8;
@@ -6283,7 +7929,7 @@ end
     }
 
     function kdeCentroid(clickX, clickY) {
-        const pixels = processingImagePixels();
+        const pixels = analysisImagePixels();
         if (!pixels) {
             return {x: clickX, y: clickY, sigma: 0, method: "click"};
         }
@@ -9996,27 +11642,61 @@ end
         render();
     }
 
-    function refreshDisplayImage() {
-        invalidateDisplayPixelCaches();
+    let displayRefreshAnimationFrame = 0;
+    let displayRefreshTimeout = 0;
+
+    function cancelScheduledDisplayImageRefresh() {
+        if (displayRefreshTimeout) {
+            window.clearTimeout(displayRefreshTimeout);
+            displayRefreshTimeout = 0;
+        }
+        if (displayRefreshAnimationFrame) {
+            window.cancelAnimationFrame(displayRefreshAnimationFrame);
+            displayRefreshAnimationFrame = 0;
+        }
+    }
+
+    function uploadAndRenderDisplayImage() {
+        cancelScheduledDisplayImageRefresh();
         uploadImagePixelsToTexture();
         render();
     }
 
-    let displayRefreshAnimationFrame = 0;
-    function scheduleDisplayImageRefresh(invalidateBase = true) {
-        if (invalidateBase) {
-            invalidateDisplayPixelCaches();
+    function refreshDisplayImage() {
+        invalidateDisplayPixelCaches();
+        uploadAndRenderDisplayImage();
+    }
+
+    function refreshDisplayStretchImage() {
+        invalidateDisplayStretchCaches();
+        uploadAndRenderDisplayImage();
+    }
+
+    function refreshHighPassDisplayImage() {
+        invalidateHighPassDisplayCache();
+        uploadAndRenderDisplayImage();
+    }
+
+    function scheduleDisplayImageRefresh(stretchOnly = true, debounceMs = 100) {
+        if (stretchOnly) {
+            invalidateDisplayStretchCaches();
         } else {
             invalidateHighPassDisplayCache();
         }
-        if (displayRefreshAnimationFrame) {
-            return;
+        cancelScheduledDisplayImageRefresh();
+        const queueRefreshFrame = () => {
+            displayRefreshTimeout = 0;
+            displayRefreshAnimationFrame = window.requestAnimationFrame(() => {
+                displayRefreshAnimationFrame = 0;
+                uploadImagePixelsToTexture();
+                render();
+            });
+        };
+        if (debounceMs > 0) {
+            displayRefreshTimeout = window.setTimeout(queueRefreshFrame, debounceMs);
+        } else {
+            queueRefreshFrame();
         }
-        displayRefreshAnimationFrame = window.requestAnimationFrame(() => {
-            displayRefreshAnimationFrame = 0;
-            uploadImagePixelsToTexture();
-            render();
-        });
     }
 
     function resetInteractiveState() {
@@ -10051,10 +11731,10 @@ end
         state.displayMode = "pairing";
         state.previousAnnotatedDisplayMode = "pairing";
         state.maxMagByMode = {stellarium: 6.0, pairing: 4.0, pureImage: 6.0, pureStellarium: 6.0};
-        state.starNamesByMode = {stellarium: false, pairing: true};
+        state.starNamesByMode = {stellarium: false, pairing: false};
         state.showRaDecGrid = false;
         state.showAzElGrid = true;
-        state.showStarNames = true;
+        state.showStarNames = false;
         state.dragging = false;
         state.lensDragMode = "none";
         state.lastMouse = [0, 0];
@@ -10077,6 +11757,17 @@ end
         state.detectedStars = [];
         state.currentImageMetadata = null;
         state.imageFloatPixels = null;
+        state.displayUsesFloatPixels = false;
+        state.displayIntensityHistogram = null;
+        state.unclippedDisplayPixels = null;
+        state.unclippedDisplayCacheKey = "";
+        state.baseDisplayPixels = null;
+        state.baseDisplayCacheKey = "";
+        state.highPassFloatPixels = null;
+        state.highPassFloatCacheKey = "";
+        state.highPassIntensityHistogram = null;
+        state.displayPixels = null;
+        state.highPassCacheKey = "";
         state.fisheyeDetection = null;
         state.deletedDetectionIds = new Set();
         state.autoMatches = [];
@@ -10109,9 +11800,9 @@ end
         controls.highPassWidth.value = "100";
         if (controls.displayClipMax) {
             controls.displayClipMax.min = "0";
-            controls.displayClipMax.max = "1000";
+            controls.displayClipMax.max = "50";
             controls.displayClipMax.step = "1";
-            controls.displayClipMax.value = "1000";
+            controls.displayClipMax.value = "5";
         }
         controls.maxMag.value = "4";
         controls.flipX.classList.remove("toggle-on");
@@ -10121,8 +11812,8 @@ end
         controls.toggleRaDecGrid.textContent = "Show RA/Dec grid";
         controls.toggleAzElGrid.textContent = "Hide az/el grid";
         controls.toggleAzElGrid.classList.toggle("toggle-on", true);
-        controls.toggleStarNames.textContent = "Hide star names (N)";
-        controls.toggleStarNames.classList.toggle("toggle-on", true);
+        controls.toggleStarNames.textContent = "Show star names (N)";
+        controls.toggleStarNames.classList.toggle("toggle-on", false);
         updateDetectionCircleButton();
         updateFitResidualButton();
     }
@@ -10200,18 +11891,19 @@ end
         };
     }
 
-    function processingImagePixels() {
+    // Analysis and centroiding must always use the original image samples, never display-only HPF/stretch pixels.
+    function analysisImagePixels() {
         return state.imageFloatPixels || state.imagePixels;
     }
 
-    function setDisplayClipMaxFromCurrentImage() {
+    function setDefaultDisplayClipping() {
         if (!controls.displayClipMax) {
             return;
         }
         controls.displayClipMax.min = "0";
-        controls.displayClipMax.max = "1000";
+        controls.displayClipMax.max = "50";
         controls.displayClipMax.step = "1";
-        controls.displayClipMax.value = "1000";
+        controls.displayClipMax.value = "5";
     }
 
     function loadImageSource(
@@ -10225,9 +11917,13 @@ end
     ) {
         const loadId = ++state.imageLoadId;
         const img = new Image();
+        let downloadedImageUrl = "";
         setLoadingProgress(8, `Loading ${name}...`);
         img.onload = () => {
             if (loadId !== state.imageLoadId) {
+                if (downloadedImageUrl) {
+                    URL.revokeObjectURL(downloadedImageUrl);
+                }
                 if (revokeWhenLoaded) {
                     URL.revokeObjectURL(url);
                 }
@@ -10264,12 +11960,16 @@ end
                 try {
                     state.imagePixels = imageContext.getImageData(0, 0, img.width, img.height);
                     state.imageFloatPixels = floatPixels || floatPixelsFromImageData(state.imagePixels);
-                    setDisplayClipMaxFromCurrentImage();
+                    state.displayUsesFloatPixels = Boolean(floatPixels && floatPixels.displaySource === "float");
+                    state.displayIntensityHistogram = null;
+                    setDefaultDisplayClipping();
                     setLoadingProgress(50, "Adjusting brightness and contrast...");
                     autoAdjustDisplayStretch();
                 } catch (error) {
                     state.imagePixels = null;
                     state.imageFloatPixels = null;
+                    state.displayUsesFloatPixels = false;
+                    state.displayIntensityHistogram = null;
                     controls.brightness.value = "0.06";
                     controls.contrast.value = "1.00";
                     state.fitMessage = `image pixel readback unavailable for ${name}; display still works, centroid picking disabled`;
@@ -10329,6 +12029,9 @@ end
                 if (revokeWhenLoaded) {
                     URL.revokeObjectURL(url);
                 }
+                if (downloadedImageUrl) {
+                    URL.revokeObjectURL(downloadedImageUrl);
+                }
                 setLoadingProgress(96, "Rendering calibration view...");
                 recomputeAndRender();
                 hideLoadingProgress();
@@ -10339,11 +12042,36 @@ end
             if (loadId !== state.imageLoadId) {
                 return;
             }
+            if (downloadedImageUrl) {
+                URL.revokeObjectURL(downloadedImageUrl);
+            }
             state.fitMessage = `image load failed: ${name}. If using a web server, serve the WISC repository root.`;
             hideLoadingProgress();
             render();
         };
-        img.src = url;
+        const assignImageSource = async () => {
+            try {
+                if (canFetchWithProgress(url)) {
+                    const blob = await fetchBlobWithProgress(url, name, 8, 24);
+                    if (loadId !== state.imageLoadId) {
+                        return;
+                    }
+                    downloadedImageUrl = URL.createObjectURL(blob);
+                    setLoadingProgress(26, `Decoding ${name}...`);
+                    img.src = downloadedImageUrl;
+                } else {
+                    img.src = url;
+                }
+            } catch (error) {
+                if (loadId !== state.imageLoadId) {
+                    return;
+                }
+                state.fitMessage = `image download failed: ${name}: ${error.message || error}`;
+                hideLoadingProgress();
+                render();
+            }
+        };
+        assignImageSource();
     }
 
     function isHeicFile(file) {
@@ -10410,6 +12138,18 @@ end
         });
     }
 
+    function rawImagePixelsPngBlob() {
+        if (!state.image || !state.imagePixels) {
+            return Promise.reject(new Error("raw image pixels are unavailable"));
+        }
+        const imageCanvas = document.createElement("canvas");
+        imageCanvas.width = state.image.width;
+        imageCanvas.height = state.image.height;
+        const imageContext = imageCanvas.getContext("2d");
+        imageContext.putImageData(state.imagePixels, 0, 0);
+        return canvasToPngBlob(imageCanvas);
+    }
+
     async function displayBlobForImage(file, buffer = null) {
         if (isFitsFile(file)) {
             setLoadingProgress(16, `Integrating FITS frames from ${file.name}...`);
@@ -10428,6 +12168,7 @@ end
                     height: parsed.height,
                     dataRange: parsed.dataRange,
                     stretch: parsed.stretch,
+                    displaySource: "float",
                 },
                 metadata: {
                     ...parsed.metadata,
@@ -10485,10 +12226,10 @@ end
                 null;
             state.localImageUrl = URL.createObjectURL(display.blob);
             loadImageSource(state.localImageUrl, display.displayName, img => {
+                state.testCaseImageFile = file;
+                state.testCaseImageName = file.name;
                 if (fitsSubmitDataUrl) {
                     state.testCaseImageDataUrl = fitsSubmitDataUrl;
-                    state.testCaseImageFile = file;
-                    state.testCaseImageName = file.name;
                 }
                 if (display.message) {
                     state.fitMessage = state.fitMessage ? `${state.fitMessage}; ${display.message}` : display.message;
@@ -11379,17 +13120,29 @@ end
             });
         }
     }
-    controls.highPassImage.addEventListener("change", refreshDisplayImage);
-    controls.highPassWidth.addEventListener("input", () => scheduleDisplayImageRefresh(false));
+    controls.highPassImage.addEventListener("change", uploadAndRenderDisplayImage);
+    controls.highPassWidth.addEventListener("input", () => {
+        controls.highPassWidthValue.textContent = Number(controls.highPassWidth.value).toFixed(0);
+        scheduleDisplayImageRefresh(false);
+    });
+    controls.highPassWidth.addEventListener("change", refreshHighPassDisplayImage);
     if (controls.displayClipMax) {
-        controls.displayClipMax.addEventListener("input", scheduleDisplayImageRefresh);
+        controls.displayClipMax.addEventListener("input", () => {
+            controls.displayClipMaxValue.textContent = `${displayClipPercent().toFixed(0)}%`;
+            scheduleDisplayImageRefresh(true);
+        });
+        controls.displayClipMax.addEventListener("change", refreshDisplayStretchImage);
     }
     if (controls.starCatalog) {
         controls.starCatalog.addEventListener("change", () => {
             state.pendingMatch = null;
             state.automaticMatchingStatus = `star catalogue switched to ${activeStarCatalogName()}`;
             playInteractionSound("mode");
-            recomputeAndRender();
+            if (selectedCatalogName() === "tycho2" && !state.catalogs.tycho2) {
+                loadTycho2Catalog().then(recomputeAndRender);
+            } else {
+                recomputeAndRender();
+            }
         });
     }
     controls.maxMag.addEventListener("input", () => {
@@ -11555,11 +13308,23 @@ end
         const language = selectedExportLanguage();
         copyTextToClipboard(optparArrayText(language), `optpar ${language} array`);
     });
+    if (controls.pasteOptpar) {
+        controls.pasteOptpar.addEventListener("click", () => {
+            playInteractionSound("click");
+            pasteOptparIntoGui();
+        });
+    }
     controls.copyPythonMapper.addEventListener("click", () => {
         playInteractionSound("click");
         const language = selectedExportLanguage();
         copyTextToClipboard(exportFunctionText(language), `${language} mapper code`);
     });
+    if (controls.downloadAzElHdf5) {
+        controls.downloadAzElHdf5.addEventListener("click", downloadAzElHdf5);
+    }
+    if (controls.downloadFitReport) {
+        controls.downloadFitReport.addEventListener("click", downloadFitReportZip);
+    }
     if (controls.localTestCaseTools) {
         controls.localTestCaseTools.hidden = !TEST_CASES_ENABLED;
     }
@@ -11576,6 +13341,12 @@ end
         controls.loadTestCase.addEventListener("click", () => {
             playInteractionSound("click");
             loadSelectedTestCase();
+        });
+    }
+    if (TEST_CASES_ENABLED && controls.copyTestCaseQuickLink) {
+        controls.copyTestCaseQuickLink.addEventListener("click", () => {
+            playInteractionSound("click");
+            copyCurrentTestCaseQuickLink();
         });
     }
     controls.clearMatches.addEventListener("click", () => {
@@ -11613,7 +13384,7 @@ end
         }
         playPingSound();
         state.dragging = true;
-        state.lensDragMode = event.button === 0 ?
+        state.lensDragMode = event.button === 0 && !event.shiftKey ?
             (usesRectilinearDragControls() ? "rectilinearElevationRoll" : "zenithPosition") :
             "azimuthGridRoll";
         state.lastMouse = [event.clientX, event.clientY];
@@ -11869,11 +13640,12 @@ end
         }
         initializeApp.done = true;
         state.lastLensEquation = "";
-        loadTycho2Catalog();
-        loadYaleAsterismIndex();
         updateLensEquation(currentOptpar(), Number(controls.optmod.value));
         refreshTestCaseList();
-        if (!state.image) {
+        const quickLinkToken = quickLinkTokenFromLocation();
+        if (quickLinkToken) {
+            loadQuickLinkTestCase();
+        } else if (!state.image) {
             resetForNewImage();
             loadImageSource(defaultImage.url, defaultImage.name, null, false, defaultImage.metadata, defaultImage.metadataName);
         }

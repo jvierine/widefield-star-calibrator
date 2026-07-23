@@ -561,9 +561,22 @@
         return new Date(Date.UTC(yy, mm - 1, dd, hh, mi, ss, 0));
     }
 
+    function guessTimestampFromSunnivaAlomarName(name) {
+        const filename = String(name || "").split(/[\\/]/).pop();
+        const match = filename.match(
+            /(?:^|_)Alomar_(\d{2})\.(\d{2})\.(20\d{2})_(\d{2})\.(\d{2})UT(?:\.|$)/i,
+        );
+        if (!match) {
+            return null;
+        }
+        const [, dd, mm, yy, hh, mi] = match;
+        return new Date(Date.UTC(Number(yy), Number(mm) - 1, Number(dd), Number(hh), Number(mi), 0, 0));
+    }
+
     function guessTimestampFromImageName(name) {
         return guessTimestampFromIrfAllskyName(name) ||
             guessTimestampFromCompactStationName(name) ||
+            guessTimestampFromSunnivaAlomarName(name) ||
             guessTimestampFromAllsky7Name(name);
     }
 
@@ -1275,6 +1288,10 @@
         {code: "RAM", name: "Ramfjordmoen", latDeg: 69.5860, lonDeg: 19.2247, altM: 0},
     ];
 
+    const NAMED_STATION_METADATA = [
+        {code: "ALOMAR", name: "ALOMAR", token: "alomar", latDeg: 69.2736, lonDeg: 16.0352, altM: 150},
+    ];
+
     function guessAllsky7StationMetadata(name) {
         const filename = String(name || "").split(/[\\/]/).pop().toLowerCase();
         for (const station of ALLSKY7_STATION_METADATA) {
@@ -1323,9 +1340,25 @@
         };
     }
 
+    function guessNamedStationMetadata(name) {
+        const filename = String(name || "").split(/[\\/]/).pop().toLowerCase();
+        const station = NAMED_STATION_METADATA.find(item => filename.includes(item.token));
+        if (!station) {
+            return null;
+        }
+        return {
+            code: station.code,
+            name: station.name,
+            latDeg: station.latDeg,
+            lonDeg: station.lonDeg,
+            altM: station.altM,
+        };
+    }
+
     function guessStationMetadataFromName(name) {
         return guessIrfAllskyStationMetadata(name) ||
             guessCompactStationMetadata(name) ||
+            guessNamedStationMetadata(name) ||
             guessAllsky7StationMetadata(name);
     }
 
@@ -1641,10 +1674,12 @@
         guessAllsky7StationMetadata,
         guessCompactStationMetadata,
         guessIrfAllskyStationMetadata,
+        guessNamedStationMetadata,
         guessStationMetadataFromName,
         guessTimestampFromAllsky7Name,
         guessTimestampFromCompactStationName,
         guessTimestampFromIrfAllskyName,
+        guessTimestampFromSunnivaAlomarName,
         guessTimestampFromImageName,
         parseExifMetadata,
         normalizeExternalExifMetadata,
