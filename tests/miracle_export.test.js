@@ -126,4 +126,7 @@ test("results download includes MIRACLE, compact HDF5, selected-star, and error 
     assert.ok(app.indexOf("\\\\begin{align}", miracleSection) > miracleSection);
     assert.ok(app.indexOf("Figure~\\\\ref{fig:miracle-error}", miracleSection) > miracleSection);
     assert.ok(app.indexOf("\\\\label{fig:miracle-error}", miracleSection) > miracleSection);
+    assert.match(app, /index \+= 3/);
+    assert.match(app, /formattedOptpar\.slice\(index, index \+ 3\)/);
+    assert.match(app, /\\\\small[\s\S]*?\\\\begin{verbatim}[\s\S]*?\$\{optparText\}/);
 });

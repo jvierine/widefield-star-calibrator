@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.51";
+    const APP_VERSION = "v0.3.52";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -5328,7 +5328,13 @@ Compact HDF5 layout:
         const rms = Number.isFinite(summary.rmsPx) ? summary.rmsPx.toFixed(3) : "n/a";
         const median = Number.isFinite(summary.medianPx) ? summary.medianPx.toFixed(3) : "n/a";
         const max = Number.isFinite(summary.maxPx) ? summary.maxPx.toFixed(3) : "n/a";
-        const optparText = [optmod, ...optpar].map(value => Number(value).toPrecision(12)).join(", ");
+        const formattedOptpar = [optmod, ...optpar]
+            .map(value => Number(value).toPrecision(12));
+        const optparLines = [];
+        for (let index = 0; index < formattedOptpar.length; index += 3) {
+            optparLines.push(`  ${formattedOptpar.slice(index, index + 3).join(", ")}`);
+        }
+        const optparText = `[\n${optparLines.join(",\n")}\n]`;
         const miracle = metadata.miracle;
         const miracleText = miracle ? [
             miracle.glatDeg,
@@ -5375,9 +5381,12 @@ Residual max & ${max} px \\\\
 
 \\section{Lens Model}
 The exported parameter vector is:
+\\begingroup
+\\small
 \\begin{verbatim}
-[${optparText}]
+${optparText}
 \\end{verbatim}
+\\endgroup
 
 The browser lens equation shown at export time was:
 ${lensEquationLatex(optpar, optmod)}
