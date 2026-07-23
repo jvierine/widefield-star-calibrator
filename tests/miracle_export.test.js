@@ -120,4 +120,10 @@ test("results download includes MIRACLE, compact HDF5, selected-star, and error 
     const endDocument = app.lastIndexOf("\\\\end{document}");
     assert.ok(miracleSection > app.lastIndexOf("\\\\section{How To Use The Lens Model}"));
     assert.ok(miracleSection < endDocument);
+    assert.ok(app.indexOf("Warning---legacy camera support only", miracleSection) > miracleSection);
+    assert.ok(app.indexOf("overlay\\\\_lens\\\\_model.py", miracleSection) > miracleSection);
+    assert.ok(app.indexOf("\\\\_calibration.h5", miracleSection) > miracleSection);
+    assert.ok(app.indexOf("\\\\begin{align}", miracleSection) > miracleSection);
+    assert.ok(app.indexOf("Figure~\\\\ref{fig:miracle-error}", miracleSection) > miracleSection);
+    assert.ok(app.indexOf("\\\\label{fig:miracle-error}", miracleSection) > miracleSection);
 });

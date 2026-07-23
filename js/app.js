@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.50";
+    const APP_VERSION = "v0.3.51";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -5468,6 +5468,29 @@ Use \\texttt{overlay\\_hdf5.py} when you want a lookup table tied exactly to thi
 image.
 
 \\section{MIRACLE Approximation}
+\\noindent\\textbf{Warning---legacy camera support only.}
+The MIRACLE camera parameters are provided for compatibility with legacy
+software. The fitted native WISC lens model used throughout the GUI is the
+recommended camera calibration and should be used for analysis whenever
+possible. It models the camera more accurately than the six-parameter MIRACLE
+approximation. The recommended model is provided as executable Python in
+\\texttt{overlay\\_lens\\_model.py} and as \\texttt{optmod}/\\texttt{optpar}
+data in \\texttt{${escapeTex(prefix)}\\_calibration.h5}. Use the MIRACLE
+parameters only when downstream legacy software requires that format. The
+absolute angular approximation errors of the MIRACLE model are shown in
+Figure~\\ref{fig:miracle-error}.
+
+For star altitude and azimuth in degrees, the MIRACLE model is
+\\begin{align}
+z_{\\mathrm{deg}} &= 90^\\circ - \\mathrm{Alt}_{\\mathrm{deg}}, \\\\
+\\theta &= \\mathrm{Az}_{\\mathrm{deg}}\\,\\frac{\\pi}{180}, \\\\
+d &= k z_{\\mathrm{deg}}, \\\\
+X_{\\mathrm{row}} &= X_c - d\\cos(\\theta + \\mathrm{rotAngle}), \\\\
+Y_{\\mathrm{col}} &= Y_c - d\\sin(\\theta + \\mathrm{rotAngle}).
+\\end{align}
+Here \\texttt{k} is in pixels per degree, \\texttt{rotAngle} is in radians,
+and $(X_{\\mathrm{row}},Y_{\\mathrm{col}})=(1,1)$ is the upper-left pixel.
+
 The MIRACLE-compatible calibration uses the historical parameter order
 \\texttt{Glat Glon Xc Yc k rotAngle}:
 \\begin{verbatim}
@@ -5492,6 +5515,7 @@ approximation against the native WISC lens model. The image-aligned heatmap
 preserves the source aspect ratio and is capped at 512 pixels on its longest
 side; colors are in degrees. Gray cells are outside the domain of the native
 lens-model inverse.}
+\\label{fig:miracle-error}
 \\end{figure}
 
 \\end{document}
