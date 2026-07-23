@@ -113,5 +113,7 @@ test("results download includes MIRACLE, compact HDF5, selected-star, and error 
     assert.match(app, /miracleApproximationErrorPngBlob/);
     assert.match(app, /figures\/miracle_absolute_angular_error\.png/);
     assert.match(app, /512 \/ Math\.max\(sourceWidth, sourceHeight\)/);
+    assert.match(app, /fraction of \[0, 0\.25, 0\.5, 0\.75, 1\]/);
+    assert.doesNotMatch(app, /98th percentile sample color limit/);
     assert.doesNotMatch(app, /figures\/miracle_approximation_error\.svg/);
 });

@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.48";
+    const APP_VERSION = "v0.3.49";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -4803,15 +4803,21 @@ end
         context.lineWidth = 1;
         context.strokeRect(barX, barY, barWidth, barHeight);
         context.fillStyle = "#334155";
-        context.textAlign = "left";
         context.font = `${Math.round(13 * fontScale)}px Arial, sans-serif`;
-        context.fillText("0 deg", barX, barY + barHeight + Math.round(24 * fontScale));
-        context.textAlign = "right";
-        context.fillText(
-            `≥ ${colorMax.toFixed(3)} deg (98th percentile sample color limit)`,
-            barX + barWidth,
-            barY + barHeight + Math.round(24 * fontScale),
-        );
+        context.textAlign = "center";
+        const colorTickDigits = colorMax < 1 ? 3 : 2;
+        for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+            const x = barX + fraction * barWidth;
+            context.beginPath();
+            context.moveTo(x, barY + barHeight);
+            context.lineTo(x, barY + barHeight + 7);
+            context.stroke();
+            context.fillText(
+                (fraction * colorMax).toFixed(colorTickDigits),
+                x,
+                barY + barHeight + Math.round(24 * fontScale),
+            );
+        }
         context.textAlign = "center";
         context.fillText(
             `Horizontal image coordinate Y (column; source width ${sourceWidth} px)`,
