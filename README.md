@@ -279,7 +279,10 @@ rows embedded directly in root-level Python examples. The ZIP is named
 MIRACLE parameters, native WISC `optpar`, selected-star coordinates, modeled
 positions, and row/column/norm residuals. Dataset column names, units, site,
 time, image metadata, and coordinate conventions are stored as root
-attributes.
+attributes. The ZIP also includes `evaluate_miracle_error.py`; it reads this
+HDF5 file and evaluates the absolute angular difference between the native WISC
+fit and MIRACLE approximation at a specified 1-based image row/column or over a
+sampled image-aligned grid.
 
 The results ZIP also contains `<image-prefix>.miracle`, a plain ASCII file.
 Its first line is a `%` comment containing parameter names and units. The

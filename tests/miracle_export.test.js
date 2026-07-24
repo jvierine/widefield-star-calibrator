@@ -109,6 +109,9 @@ test("results download includes MIRACLE, compact HDF5, selected-star, and error 
     assert.match(app, /wisc_optpar_with_optmod/);
     assert.match(app, /selected_stars/);
     assert.match(app, /residuals_px/);
+    assert.match(app, /evaluate_miracle_error\.py/);
+    assert.match(app, /flip_overlay_x/);
+    assert.match(app, /flip_image_y/);
     assert.match(app, /selectedStarMiracleSamples/);
     assert.match(app, /miracleApproximationErrorPngBlob/);
     assert.match(app, /figures\/miracle_absolute_angular_error\.png/);

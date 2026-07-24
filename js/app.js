@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.52";
+    const APP_VERSION = "v0.3.53";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -4075,6 +4075,14 @@ end
         return module.default;
     }
 
+    async function loadBundledText(filename) {
+        const response = await fetch(filename, {cache: "no-store"});
+        if (!response.ok) {
+            throw new Error(`failed to load bundled file ${filename}: HTTP ${response.status}`);
+        }
+        return response.text();
+    }
+
     async function azElArraysForCurrentImage() {
         if (!state.image) {
             throw new Error("load an image before exporting az/el HDF5");
@@ -4309,6 +4317,10 @@ end
         file.create_attribute("site_lon_deg", new Float64Array([metadata.site.lonDeg]));
         file.create_attribute("site_alt_m", new Float64Array([metadata.site.altM]));
         file.create_attribute("optmod", new Int32Array([optmod]));
+        file.create_attribute("flip_overlay_x", new Uint8Array([state.flipX ? 1 : 0]));
+        file.create_attribute("flip_overlay_y", new Uint8Array([state.flipY ? 1 : 0]));
+        file.create_attribute("flip_image_x", new Uint8Array([state.imageFlipX ? 1 : 0]));
+        file.create_attribute("flip_image_y", new Uint8Array([state.imageFlipY ? 1 : 0]));
         file.create_attribute("miracle_parameter_names",
             "Glat_deg Glon_deg Xc_zenithRow_px_1based Yc_zenithCol_px_1based k_px_per_degree rotAngle_rad");
         file.create_attribute("miracle_fit_source", miracle.fitSource);
@@ -5287,6 +5299,7 @@ Files:
 - report.tex: LaTeX source for the lens model fitting report.
 - ${prefix}.miracle: MIRACLE-compatible plain ASCII calibration. The first line is a % comment with parameter names and units; the second line contains Glat Glon Xc Yc k rotAngle.
 - ${prefix}_calibration.h5: compact HDF5 calibration product containing MIRACLE parameters, native WISC optpar, selected-star coordinates, and fit residuals.
+- evaluate_miracle_error.py: evaluates the absolute angular error between MIRACLE and the fitted native WISC model at one 1-based image row/column or over a sampled image grid.
 - selected_stars.tsv: every star selected in WISC, including starAlt, starAz, 1-based starRow/starCol, J2000 RA/Dec, magnitude, modeled position, and fit residual.
 - overlay_lens_model.py: bare Python script with optpar inside the code; maps Yale star az/el to pixels with the lens model and writes overlay_lens_model.png.
 - create_az_el_table.py: optional script that creates calibration_az_el.h5 in this folder.
@@ -5308,6 +5321,8 @@ MIRACLE convention:
 - WISC fits these four camera parameters from the selected stars using the same unmirrored east-left projection as the supplied MATLAB starcalibration function.
 
 Run python overlay_lens_model.py to annotate Yale stars with the optpar embedded in that script.
+Run python evaluate_miracle_error.py --calibration ${prefix}_calibration.h5 --row ROW --col COLUMN to evaluate one image location.
+Run python evaluate_miracle_error.py --calibration ${prefix}_calibration.h5 --grid-size 512 for a whole-image sampled summary.
 Run python create_az_el_table.py only if you want the optional HDF5 az/el table.
 Run python overlay_hdf5.py after creating calibration_az_el.h5.
 Compile report.tex with pdflatex or latexmk from this directory after unzipping.
@@ -5425,6 +5440,10 @@ The compact \\texttt{${escapeTex(prefix)}\\_calibration.h5} file contains
 \\texttt{/wisc\\_optpar\\_with\\_optmod}, \\texttt{/selected\\_stars}, and
 \\texttt{/residuals\\_px}. Dataset column names, units, image metadata, site,
 time, and coordinate conventions are recorded as root attributes.
+The accompanying \\texttt{evaluate\\_miracle\\_error.py} program reads this
+HDF5 file and evaluates the absolute angular separation between the native WISC
+model and MIRACLE approximation at arbitrary 1-based image rows and columns or
+over an image-aligned sampled grid.
 
 The results ZIP contains one image copy: \\texttt{base\\_image.png}. The large
 per-corner HDF5 az/el table is not included. If you want it, run
@@ -5488,6 +5507,13 @@ data in \\texttt{${escapeTex(prefix)}\\_calibration.h5}. Use the MIRACLE
 parameters only when downstream legacy software requires that format. The
 absolute angular approximation errors of the MIRACLE model are shown in
 Figure~\\ref{fig:miracle-error}.
+
+The same comparison can be evaluated numerically from the command line:
+\\begin{verbatim}
+python -m pip install numpy h5py
+python evaluate_miracle_error.py --calibration PREFIX_calibration.h5 --row ROW --col COLUMN
+python evaluate_miracle_error.py --calibration PREFIX_calibration.h5 --grid-size 512
+\\end{verbatim}
 
 For star altitude and azimuth in degrees, the MIRACLE model is
 \\begin{align}
@@ -5608,9 +5634,10 @@ lens-model inverse.}
             const metadata = reportMetadata(rows, miracleProduct);
             const yaleMag5 = yaleBrightCatalog(5.0);
             setLoadingProgress(72, "Loading results writer...");
-            const [JSZip, hdf5Writer] = await Promise.all([
+            const [JSZip, hdf5Writer, miracleErrorEvaluator] = await Promise.all([
                 loadJsZip(),
                 loadH5Wasm(),
+                loadBundledText("evaluate_miracle_error.py"),
             ]);
             setLoadingProgress(82, "Assembling results ZIP...");
             const zip = new JSZip();
@@ -5631,6 +5658,7 @@ lens-model inverse.}
                 starRows,
             );
             zip.file(calibrationHdf5Name, calibrationHdf5);
+            zip.file("evaluate_miracle_error.py", miracleErrorEvaluator);
             zip.file("selected_stars.tsv", selectedStarsTsv());
             zip.file("base_image.png", baseImagePng);
             zip.file("figures/star_overlay.png", overlayPng);
