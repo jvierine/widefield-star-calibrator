@@ -75,7 +75,13 @@
         return solveLinearSystem(normal, rhs);
     }
 
-    function fitCalibration(samples, options) {
+    function projectionCoordinate(zenithDeg, projection) {
+        const zenithRad = zenithDeg / RAD;
+        return projection === "equisolid" ? Math.sin(0.5 * zenithRad) : zenithRad;
+    }
+
+    function fitProjectionCalibration(samples, options = {}) {
+        const projection = options.projection === "equisolid" ? "equisolid" : "equidistant";
         const rows = (samples || []).filter(sample =>
             Number.isFinite(sample.rowPx) &&
             Number.isFinite(sample.colPx) &&
@@ -90,35 +96,66 @@
         const observed = [];
         for (const row of rows) {
             const theta = row.azimuthDeg / RAD;
-            const z = row.zenithDeg;
+            const radiusCoordinate = projectionCoordinate(row.zenithDeg, projection);
             const cosTheta = Math.cos(theta);
             const sinTheta = Math.sin(theta);
-            // Reparameterize k*cos(rotAngle) and k*sin(rotAngle), making
-            // the MIRACLE position-error minimization a linear least-squares
-            // problem with the same global solution as fminsearch.
-            design.push([1, 0, -z * cosTheta, z * sinTheta]);
+            // Reparameterize k*cos(rotAngle) and k*sin(rotAngle), making the
+            // position-error minimization a linear least-squares problem.
+            design.push([1, 0, -radiusCoordinate * cosTheta, radiusCoordinate * sinTheta]);
             observed.push(row.rowPx);
-            design.push([0, 1, -z * sinTheta, -z * cosTheta]);
+            design.push([0, 1, -radiusCoordinate * sinTheta, -radiusCoordinate * cosTheta]);
             observed.push(row.colPx);
         }
         const [zenithRowPx, zenithColPx, kCosRotation, kSinRotation] =
             leastSquares(design, observed);
-        const kPxPerDeg = Math.hypot(kCosRotation, kSinRotation);
-        if (!Number.isFinite(kPxPerDeg) || kPxPerDeg <= 0) {
+        const scalePx = Math.hypot(kCosRotation, kSinRotation);
+        if (!Number.isFinite(scalePx) || scalePx <= 0) {
             throw new Error("MIRACLE scale fit did not produce a positive k");
         }
         const rotationRad = wrapRadians(Math.atan2(kSinRotation, kCosRotation));
-        return {
+        const imageWidth = Number(options.imageWidth);
+        const imageHeight = Number(options.imageHeight);
+        const calibration = {
             glatDeg: Number(options && options.glatDeg) || 0,
             glonDeg: Number(options && options.glonDeg) || 0,
             // MIRACLE uses 1-based row/column image coordinates.
             xcPx: zenithRowPx,
             ycPx: zenithColPx,
-            kPxPerDeg,
+            projection,
+            scalePx,
             rotationRad,
             sampleCount: rows.length,
             fitSource: options && options.fitSource || "selected WISC stars",
         };
+        if (projection === "equisolid") {
+            calibration.kPx = scalePx;
+            calibration.equation = "d_px = k_px * sin(z_rad / 2)";
+        } else {
+            calibration.kPxPerRad = scalePx;
+            calibration.kPxPerDeg = scalePx / RAD;
+            calibration.equation = "d_px = k_px_per_rad * z_rad";
+        }
+        calibration.centerOffsetRowPx = Number.isFinite(imageHeight) ?
+            zenithRowPx - (imageHeight + 1) / 2 : null;
+        calibration.centerOffsetColPx = Number.isFinite(imageWidth) ?
+            zenithColPx - (imageWidth + 1) / 2 : null;
+        return calibration;
+    }
+
+    function fitCalibration(samples, options = {}) {
+        return fitProjectionCalibration(samples, {...options, projection: "equidistant"});
+    }
+
+    function fitEquisolidCalibration(samples, options = {}) {
+        return fitProjectionCalibration(samples, {...options, projection: "equisolid"});
+    }
+
+    function radialDistanceForZenith(zenithDeg, calibration) {
+        const z = zenithDeg / RAD;
+        if (calibration.projection === "equisolid") {
+            return calibration.kPx * Math.sin(0.5 * z);
+        }
+        return Number(calibration.kPxPerRad ?? calibration.scalePx) * z;
     }
 
     function approximateUnitVectorAtPixel(rowPx, colPx, calibration) {
@@ -139,14 +176,24 @@
                 vertical * sinRotation
             ) / distancePx;
         }
-        const zenithRad = distancePx / calibration.kPxPerDeg / RAD;
+        const projection = calibration.projection || "equidistant";
+        let zenithRad;
+        if (projection === "equisolid") {
+            const normalizedRadius = distancePx / calibration.kPx;
+            zenithRad = normalizedRadius <= 1 ? 2 * Math.asin(normalizedRadius) : NaN;
+        } else {
+            const scalePx = Number(
+                calibration.kPxPerRad ?? calibration.scalePx ?? calibration.kPxPerDeg * RAD
+            );
+            zenithRad = distancePx / scalePx;
+        }
         const sinZenith = Math.sin(zenithRad);
         return {
             east: sinZenith * sinAzimuth,
             north: sinZenith * cosAzimuth,
             up: Math.cos(zenithRad),
             zenithRad,
-            zenithDeg: distancePx / calibration.kPxPerDeg,
+            zenithDeg: zenithRad * RAD,
             distancePx,
         };
     }
@@ -193,6 +240,57 @@
         );
     }
 
+    function projectionResiduals(samples, calibration) {
+        return (samples || []).map(sample => {
+            const theta = sample.azimuthDeg / RAD;
+            const distancePx = radialDistanceForZenith(sample.zenithDeg, calibration);
+            const predictedRowPx = calibration.xcPx -
+                distancePx * Math.cos(theta + calibration.rotationRad);
+            const predictedColPx = calibration.ycPx -
+                distancePx * Math.sin(theta + calibration.rotationRad);
+            const residualRowPx = predictedRowPx - sample.rowPx;
+            const residualColPx = predictedColPx - sample.colPx;
+            const angular = approximationErrors([sample], calibration)[0];
+            return {
+                ...sample,
+                predictedRowPx,
+                predictedColPx,
+                residualRowPx,
+                residualColPx,
+                residualNormPx: Math.hypot(residualRowPx, residualColPx),
+                angularErrorDeg: angular ? angular.angularErrorDeg : NaN,
+            };
+        }).filter(row =>
+            Number.isFinite(row.residualNormPx) && Number.isFinite(row.angularErrorDeg)
+        );
+    }
+
+    function projectionResidualSummary(residuals) {
+        const rows = (residuals || []).filter(row =>
+            Number.isFinite(row.residualNormPx) && Number.isFinite(row.angularErrorDeg)
+        );
+        if (!rows.length) {
+            return {
+                count: 0,
+                rmsPixel: null,
+                stdPixel: null,
+                rmsAngleDeg: null,
+                stdAngleDeg: null,
+            };
+        }
+        const pixel = rows.map(row => row.residualNormPx);
+        const angle = rows.map(row => row.angularErrorDeg);
+        const meanPixel = pixel.reduce((sum, value) => sum + value, 0) / pixel.length;
+        const meanAngle = angle.reduce((sum, value) => sum + value, 0) / angle.length;
+        return {
+            count: rows.length,
+            rmsPixel: Math.sqrt(pixel.reduce((sum, value) => sum + value ** 2, 0) / pixel.length),
+            stdPixel: Math.sqrt(pixel.reduce((sum, value) => sum + (value - meanPixel) ** 2, 0) / pixel.length),
+            rmsAngleDeg: Math.sqrt(angle.reduce((sum, value) => sum + value ** 2, 0) / angle.length),
+            stdAngleDeg: Math.sqrt(angle.reduce((sum, value) => sum + (value - meanAngle) ** 2, 0) / angle.length),
+        };
+    }
+
     function errorSummary(errors) {
         if (!errors.length) {
             return {
@@ -223,7 +321,7 @@
         return Number(value).toPrecision(15);
     }
 
-    function formatMiracleAscii(calibration) {
+    function formatMiracleAscii(calibration, product = null) {
         const comment =
             "% Glat[deg] Glon[deg] Xc=zenithRow[pixel,1-based] " +
             "Yc=zenithCol[pixel,1-based] k[pixel/degree] rotAngle[radian]";
@@ -235,7 +333,36 @@
             calibration.kPxPerDeg,
             calibration.rotationRad,
         ].map(asciiNumber).join(" ");
-        return `${comment}\n${values}\n`;
+        const lines = [comment, values];
+        if (product && product.equidistant && product.equisolid) {
+            const appendFit = (name, fit, summary, scaleName, scaleValue) => {
+                lines.push(
+                    `% WISC_${name} ${scaleName}=${asciiNumber(scaleValue)} ` +
+                    `Xc_offset_from_image_center[pixel]=${asciiNumber(fit.centerOffsetRowPx)} ` +
+                    `Yc_offset_from_image_center[pixel]=${asciiNumber(fit.centerOffsetColPx)} ` +
+                    `rotAngle[radian]=${asciiNumber(fit.rotationRad)} ` +
+                    `rms_pixel[pixel]=${asciiNumber(summary.rmsPixel)} ` +
+                    `std_pixel[pixel]=${asciiNumber(summary.stdPixel)} ` +
+                    `rms_angle[degree]=${asciiNumber(summary.rmsAngleDeg)} ` +
+                    `std_angle[degree]=${asciiNumber(summary.stdAngleDeg)}`
+                );
+            };
+            appendFit(
+                "equidistant_d=k*z_rad",
+                product.equidistant,
+                product.equidistantFitSummary,
+                "k_equdist[pixel/radian]",
+                product.equidistant.kPxPerRad,
+            );
+            appendFit(
+                "equisolid_d=k*sin(z_rad/2)",
+                product.equisolid,
+                product.equisolidFitSummary,
+                "k_equisolid[pixel]",
+                product.equisolid.kPx,
+            );
+        }
+        return `${lines.join("\n")}\n`;
     }
 
     return {
@@ -245,8 +372,12 @@
         approximateUnitVectorAtPixel,
         errorSummary,
         fitCalibration,
+        fitEquisolidCalibration,
+        fitProjectionCalibration,
         formatMiracleAscii,
         imagePrefix,
+        projectionResiduals,
+        projectionResidualSummary,
         wrapDegrees,
         wrapRadians,
     };

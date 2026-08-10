@@ -36,7 +36,7 @@
 
     function pythonLensModuleCode() {
         return `BROWN_CONRADY_OPTMOD = 20
-SUPPORTED_OPTMODS = (1, 2, 3, 4, 5, 12, BROWN_CONRADY_OPTMOD)
+SUPPORTED_OPTMODS = (1, 2, 3, 4, 5, 6, 12, BROWN_CONRADY_OPTMOD)
 
 
 def _as_float_array(values):
@@ -125,6 +125,11 @@ def az_el_to_pixel(az_deg, el_deg, optpar, width, height, optmod=None):
     elif model == 5:
         theta = np.arctan2(radial, s3)
         r = np.tan(radial_alpha * theta)
+        u_norm = f1 * s1 / radial * r + 0.5 + du
+        v_norm = f2 * s2 / radial * r + 0.5 + dv
+    elif model == 6:
+        theta = np.arctan2(radial, s3)
+        r = np.sin(0.5 * theta)
         u_norm = f1 * s1 / radial * r + 0.5 + du
         v_norm = f2 * s2 / radial * r + 0.5 + dv
     elif model == 12:
@@ -320,6 +325,9 @@ function az_el_to_image(az_deg, el_deg; optpar=optpar, optmod=optmod,
     elseif optmod == 5
         theta = atan(radial, s3); r = tan(radial_alpha * theta)
         u_norm = f1 * s1 / radial * r + 0.5 + du; v_norm = f2 * s2 / radial * r + 0.5 + dv
+    elseif optmod == 6
+        theta = atan(radial, s3); r = sin(0.5 * theta)
+        u_norm = f1 * s1 / radial * r + 0.5 + du; v_norm = f2 * s2 / radial * r + 0.5 + dv
     elseif optmod == 12
         theta = atan(radial, s3)
         r = radial_alpha > 0 ? tan(radial_alpha * theta) / radial_alpha :
@@ -376,6 +384,7 @@ void aida_az_el_to_image(double az_deg, double el_deg, double *x, double *y) {
     else if (optmod == 3) { double theta = atan2(radial, s3), ss3 = fmax(s3, 1e-12); u_norm = f1*(1.0-radial_alpha)*s1/ss3 + f1*radial_alpha*s1/radial*theta + 0.5 + du; v_norm = f2*(1.0-radial_alpha)*s2/ss3 + f2*radial_alpha*s2/radial*theta + 0.5 + dv; }
     else if (optmod == 4) { double theta = atan2(radial, s3), rr = pow(fabs(theta), radial_alpha); u_norm = f1*s1/radial*rr + 0.5 + du; v_norm = f2*s2/radial*rr + 0.5 + dv; }
     else if (optmod == 5) { double theta = atan2(radial, s3), rr = tan(radial_alpha*theta); u_norm = f1*s1/radial*rr + 0.5 + du; v_norm = f2*s2/radial*rr + 0.5 + dv; }
+    else if (optmod == 6) { double theta = atan2(radial, s3), rr = sin(0.5*theta); u_norm = f1*s1/radial*rr + 0.5 + du; v_norm = f2*s2/radial*rr + 0.5 + dv; }
     else if (optmod == 12) { double theta = atan2(radial, s3), rr = radial_alpha > 0 ? tan(radial_alpha*theta)/radial_alpha : (radial_alpha < 0 ? sin(radial_alpha*theta)/radial_alpha : fabs(theta)); u_norm = f1*s1/radial*rr + 0.5 + du; v_norm = f2*s2/radial*rr + 0.5 + dv; }
     else {
         double ss3 = fabs(s3) > 1e-12 ? s3 : 1e-12, xn = s1/ss3, yn = s2/ss3;
@@ -423,6 +432,8 @@ elseif optmod == 4
     theta=atan2(radial,s3); rr=abs(theta)^ar; u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
 elseif optmod == 5
     theta=atan2(radial,s3); rr=tan(ar*theta); u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
+elseif optmod == 6
+    theta=atan2(radial,s3); rr=sin(0.5*theta); u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
 elseif optmod == 12
     theta=atan2(radial,s3); if ar>0, rr=tan(ar*theta)/ar; elseif ar<0, rr=sin(ar*theta)/ar; else, rr=abs(theta); end
     u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;

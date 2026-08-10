@@ -23,7 +23,7 @@ import numpy as np
 
 
 BROWN_CONRADY_OPTMOD = 20
-SUPPORTED_OPTMODS = (1, 2, 3, 4, 5, 12, BROWN_CONRADY_OPTMOD)
+SUPPORTED_OPTMODS = (1, 2, 3, 4, 5, 6, 12, BROWN_CONRADY_OPTMOD)
 
 
 def _as_float_array(values: Sequence[float]) -> np.ndarray:
@@ -145,6 +145,11 @@ def az_el_to_pixel(
     elif model == 5:
         theta = math.atan2(radial, s3)
         r = math.tan(radial_alpha * theta)
+        u_norm = f1 * s1 / radial * r + 0.5 + du
+        v_norm = f2 * s2 / radial * r + 0.5 + dv
+    elif model == 6:
+        theta = math.atan2(radial, s3)
+        r = math.sin(0.5 * theta)
         u_norm = f1 * s1 / radial * r + 0.5 + du
         v_norm = f2 * s2 / radial * r + 0.5 + dv
     elif model == 12:

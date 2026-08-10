@@ -188,7 +188,7 @@ h2 {
     position: absolute;
     z-index: 30;
     top: 10px;
-    right: 10px;
+    left: 10px;
     display: flex;
     align-items: center;
     gap: 4px;

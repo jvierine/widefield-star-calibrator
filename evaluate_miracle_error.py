@@ -32,7 +32,7 @@ import h5py
 import numpy as np
 
 
-SUPPORTED_OPTMODS = (1, 2, 3, 4, 5, 12, 20)
+SUPPORTED_OPTMODS = (1, 2, 3, 4, 5, 6, 12, 20)
 
 
 @dataclass(frozen=True)
@@ -151,6 +151,8 @@ def _theta_from_radius(q: np.ndarray, alpha: float, optmod: int) -> np.ndarray:
         if abs(alpha) < 1e-12:
             return q.copy()
         return np.arctan(q) / alpha
+    if optmod == 6:
+        return 2.0 * np.arcsin(np.clip(q, -1.0, 1.0))
     if optmod == 12:
         if alpha > 0:
             return np.arctan(alpha * q) / alpha

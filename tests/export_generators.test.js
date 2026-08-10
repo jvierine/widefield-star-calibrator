@@ -37,7 +37,7 @@ function loadAidaTools() {
 const ExportGenerators = loadExportGenerators();
 const AidaTools = loadAidaTools();
 const LANGUAGES = ["python", "julia", "c", "matlab"];
-const MODELS = [1, 2, 3, 4, 5, 12, ExportGenerators.BROWN_CONRADY_OPTMOD];
+const MODELS = [1, 2, 3, 4, 5, 6, 12, ExportGenerators.BROWN_CONRADY_OPTMOD];
 const RAD = 180 / Math.PI;
 const RUN_FULL_TESTS = process.env.AIDA_FULL_TESTS === "1";
 const GENERATED_MAPPER_REPORT_DIR = path.join(__dirname, "..", "test-report", "generated-mapper-exports");

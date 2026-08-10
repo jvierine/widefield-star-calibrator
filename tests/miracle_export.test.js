@@ -28,6 +28,28 @@ function syntheticSamples({
     return samples;
 }
 
+function syntheticEquisolidSamples({
+    zenithRow = 331,
+    zenithCol = 411,
+    kPx = 1946.7,
+    rotationRad = 0.42,
+} = {}) {
+    const samples = [];
+    for (const zenithDeg of [10, 30, 55, 80]) {
+        for (let azimuthDeg = 0; azimuthDeg < 360; azimuthDeg += 30) {
+            const theta = azimuthDeg * Math.PI / 180;
+            const distance = kPx * Math.sin(0.5 * zenithDeg * Math.PI / 180);
+            samples.push({
+                rowPx: zenithRow - distance * Math.cos(theta + rotationRad),
+                colPx: zenithCol - distance * Math.sin(theta + rotationRad),
+                azimuthDeg,
+                zenithDeg,
+            });
+        }
+    }
+    return samples;
+}
+
 test("MIRACLE fit preserves twisted X/Y axes, scale, and CCW-positive rotation", () => {
     const samples = syntheticSamples();
     const calibration = Miracle.fitCalibration(samples, {
@@ -51,6 +73,49 @@ test("MIRACLE approximation exactly recovers synthetic equidistant samples", () 
     const errors = Miracle.approximationErrors(samples, calibration);
     assert.ok(Math.max(...errors.map(row => row.angularErrorDeg)) < 1e-6);
     assert.ok(Math.max(...errors.map(row => Math.abs(row.zenithErrorDeg))) < 1e-10);
+});
+
+test("equisolid MIRACLE fit recovers d = k sin(z/2) and center offsets", () => {
+    const samples = syntheticEquisolidSamples();
+    const calibration = Miracle.fitEquisolidCalibration(samples, {
+        imageHeight: 700,
+        imageWidth: 900,
+    });
+    assert.ok(Math.abs(calibration.xcPx - 331) < 1e-9);
+    assert.ok(Math.abs(calibration.ycPx - 411) < 1e-9);
+    assert.ok(Math.abs(calibration.kPx - 1946.7) < 1e-8);
+    assert.ok(Math.abs(calibration.rotationRad - 0.42) < 1e-10);
+    assert.ok(Math.abs(calibration.centerOffsetRowPx - (331 - 350.5)) < 1e-9);
+    assert.ok(Math.abs(calibration.centerOffsetColPx - (411 - 450.5)) < 1e-9);
+    const residuals = Miracle.projectionResiduals(samples, calibration);
+    const summary = Miracle.projectionResidualSummary(residuals);
+    assert.ok(summary.rmsPixel < 1e-9);
+    assert.ok(summary.rmsAngleDeg < 1e-6);
+});
+
+test("extended MIRACLE ASCII keeps one legacy numeric row and adds both fits as comments", () => {
+    const equidistant = Miracle.fitCalibration(syntheticSamples(), {
+        imageHeight: 700,
+        imageWidth: 900,
+    });
+    const equisolid = Miracle.fitEquisolidCalibration(syntheticEquisolidSamples(), {
+        imageHeight: 700,
+        imageWidth: 900,
+    });
+    const equidistantResiduals = Miracle.projectionResiduals(syntheticSamples(), equidistant);
+    const equisolidResiduals = Miracle.projectionResiduals(syntheticEquisolidSamples(), equisolid);
+    const text = Miracle.formatMiracleAscii(equidistant, {
+        equidistant,
+        equisolid,
+        equidistantFitSummary: Miracle.projectionResidualSummary(equidistantResiduals),
+        equisolidFitSummary: Miracle.projectionResidualSummary(equisolidResiduals),
+    });
+    const numericLines = text.trim().split("\n").filter(line => !line.startsWith("%"));
+    assert.equal(numericLines.length, 1);
+    assert.equal(numericLines[0].trim().split(/\s+/).length, 6);
+    assert.match(text, /k_equdist\[pixel\/radian\]=/);
+    assert.match(text, /k_equisolid\[pixel\]=/);
+    assert.match(text, /rms_angle\[degree\]=/);
 });
 
 test("MIRACLE pixel unit vectors follow the same sky convention as the approximation", () => {
@@ -106,10 +171,16 @@ test("results download includes MIRACLE, compact HDF5, selected-star, and error 
     assert.match(app, /selected_stars\.tsv/);
     assert.match(app, /_calibration\.h5/);
     assert.match(app, /miracle_parameters/);
+    assert.match(app, /miracle_equidistant_parameters/);
+    assert.match(app, /miracle_equisolid_parameters/);
+    assert.match(app, /best_fit_wisc_optpar_with_optmod/);
+    assert.match(app, /best_fit_wisc_summary/);
     assert.match(app, /wisc_optpar_with_optmod/);
     assert.match(app, /selected_stars/);
     assert.match(app, /residuals_px/);
     assert.match(app, /evaluate_miracle_error\.py/);
+    assert.match(app, /read_calibration_hdf5\.py/);
+    assert.match(app, /read_calibration_hdf5\.m/);
     assert.match(app, /flip_overlay_x/);
     assert.match(app, /flip_image_y/);
     assert.match(app, /selectedStarMiracleSamples/);
@@ -128,6 +199,8 @@ test("results download includes MIRACLE, compact HDF5, selected-star, and error 
     assert.ok(app.indexOf("\\\\_calibration.h5", miracleSection) > miracleSection);
     assert.ok(app.indexOf("\\\\begin{align}", miracleSection) > miracleSection);
     assert.ok(app.indexOf("Figure~\\\\ref{fig:miracle-error}", miracleSection) > miracleSection);
+    assert.ok(app.indexOf("Three-model comparison", miracleSection) > miracleSection);
+    assert.ok(app.indexOf("RMS transverse error at 150 km", miracleSection) > miracleSection);
     assert.ok(app.indexOf("\\\\label{fig:miracle-error}", miracleSection) > miracleSection);
     assert.match(app, /index \+= 3/);
     assert.match(app, /formattedOptpar\.slice\(index, index \+ 3\)/);

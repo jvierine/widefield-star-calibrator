@@ -458,6 +458,10 @@
             const r = Math.tan(alpha * theta);
             uNorm = f1 * sese1 / radial * r + 0.5 + dx;
             vNorm = f2 * sese2 / radial * r + 0.5 + dy;
+        } else if (optmod === 6) {
+            const r = Math.sin(0.5 * theta);
+            uNorm = f1 * sese1 / radial * r + 0.5 + dx;
+            vNorm = f2 * sese2 / radial * r + 0.5 + dy;
         } else if (optmod === 12) {
             let r;
             if (alpha > 0) {
@@ -590,7 +594,7 @@
                 alpha = 0.0;
             } else if (model === 1 || model === 4) {
                 alpha = 1.0;
-            } else if (model === 5) {
+            } else if (model === 5 || model === 6) {
                 alpha = 0.5;
             } else {
                 alpha = 0.35;

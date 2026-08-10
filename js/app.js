@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.54";
+    const APP_VERSION = "v0.3.55";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -23,6 +23,7 @@
     const residualHistogram = document.getElementById("residualHistogram");
     const triangleDebugPlot = document.getElementById("triangleDebugPlot");
     const lensEquation = document.getElementById("lensEquation");
+    const radialAlphaLabel = document.getElementById("radialAlphaLabel");
     const densityPopup = document.getElementById("densityPopup");
     const densityPopupSubtitle = document.getElementById("densityPopupSubtitle");
     const densityPopupClose = document.getElementById("densityPopupClose");
@@ -887,7 +888,7 @@
         if (optmod === 1 || optmod === 4) {
             return 1.0;
         }
-        if (optmod === 5) {
+        if (optmod === 5 || optmod === 6) {
             return 0.5;
         }
         return 0.35;
@@ -1030,6 +1031,12 @@
         const optmodChanged = previousOptmod !== optmod;
         state.activeOptmod = optmod;
         controls.brownConradyParams.hidden = optmod !== BROWN_CONRADY_OPTMOD;
+        controls.radialAlpha.disabled = optmod === 6;
+        if (radialAlphaLabel) {
+            radialAlphaLabel.textContent = optmod === 6 ?
+                "Radial alpha (fixed at 0.5 for equisolid)" :
+                optmod === BROWN_CONRADY_OPTMOD ? "Brown k1" : "Radial alpha";
+        }
         if (optmodChanged) {
             state.baseOptpar = null;
             applyOptpar(defaultOptparForImage(state.image, optmod));
@@ -1056,7 +1063,7 @@
         applied[4] = wrapDegrees180(x[4]);
         applied[5] = Math.max(-0.5, Math.min(0.5, x[5]));
         applied[6] = Math.max(-0.5, Math.min(0.5, x[6]));
-        applied[7] = optmod === BROWN_CONRADY_OPTMOD ?
+        applied[7] = optmod === 6 ? 0.5 : optmod === BROWN_CONRADY_OPTMOD ?
             Math.max(-5.0, Math.min(5.0, x[7] || 0)) :
             optmod === 12 ?
                 Math.max(-2.5, Math.min(2.5, x[7])) :
@@ -1204,10 +1211,15 @@
 
     function lensEquationLatex(optpar, optmod) {
         if (optmod === BROWN_CONRADY_OPTMOD) {
+            const values = optpar.map((value, idx) =>
+                latexNumber(value, idx >= 2 && idx <= 4 ? 3 : 5)
+            );
+            const valueRows = `&=[${values.slice(0, 6).join(", ")},\\\\` +
+                `&\\quad ${values.slice(6).join(", ")}]`;
             return "\\[" +
                 "\\begin{aligned}" +
                 "\\mathbf{o}&=[f_1,f_2,\\alpha,\\beta,\\gamma,d_u,d_v,k_1,k_2,k_3,p_1,p_2]\\\\" +
-                `&=[${optpar.map((value, idx) => latexNumber(value, idx >= 2 && idx <= 4 ? 3 : 5)).join(", ")}]` +
+                valueRows +
                 "\\\\" +
                 "x_n&=s_1/s_3,\\quad y_n=s_2/s_3,\\quad r^2=x_n^2+y_n^2\\\\" +
                 "L(r)&=1+k_1r^2+k_2r^4+k_3r^6\\\\" +
@@ -1224,6 +1236,7 @@
             3: "q_3(\\theta)=a_r\\theta+(1-a_r)\\tan\\theta",
             4: "q_4(\\theta)=\\theta^{a_r}",
             5: "q_5(\\theta)=\\tan(a_r\\theta)",
+            6: "q_6(\\theta)=\\sin(\\theta/2)",
             12: "q_{12}(\\theta)=\\begin{cases}\\tan(a_r\\theta)/a_r,&a_r>0\\\\ \\theta,&a_r=0\\\\ \\sin(a_r\\theta)/a_r,&a_r<0\\end{cases}",
         }[optmod] || "q(\\theta)";
         return "\\[" +
@@ -1486,7 +1499,7 @@
             return null;
         }
         const optmod = Math.round(values[0]);
-        if (![1, 2, 3, 4, 5, 12, BROWN_CONRADY_OPTMOD].includes(optmod)) {
+        if (![1, 2, 3, 4, 5, 6, 12, BROWN_CONRADY_OPTMOD].includes(optmod)) {
             return null;
         }
         const required = requiredOptparLength(optmod);
@@ -2253,6 +2266,11 @@ def az_el_to_image(az_deg, el_deg, optpar=optpar, optmod=optmod,
         r = np.tan(radial_alpha * theta)
         u_norm = f1 * s1 / radial * r + 0.5 + du
         v_norm = f2 * s2 / radial * r + 0.5 + dv
+    elif optmod == 6:
+        theta = np.arctan2(radial, s3)
+        r = np.sin(0.5 * theta)
+        u_norm = f1 * s1 / radial * r + 0.5 + du
+        v_norm = f2 * s2 / radial * r + 0.5 + dv
     elif optmod == 12:
         theta = np.arctan2(radial, s3)
         if radial_alpha > 0:
@@ -2372,6 +2390,10 @@ function az_el_to_image(az_deg, el_deg; optpar=optpar, optmod=optmod,
         theta = atan(radial, s3); r = tan(radial_alpha * theta)
         u_norm = f1 * s1 / radial * r + 0.5 + du
         v_norm = f2 * s2 / radial * r + 0.5 + dv
+    elseif optmod == 6
+        theta = atan(radial, s3); r = sin(0.5 * theta)
+        u_norm = f1 * s1 / radial * r + 0.5 + du
+        v_norm = f2 * s2 / radial * r + 0.5 + dv
     elseif optmod == 12
         theta = atan(radial, s3)
         r = radial_alpha > 0 ? tan(radial_alpha * theta) / radial_alpha :
@@ -2433,6 +2455,7 @@ void aida_az_el_to_image(double az_deg, double el_deg, double *x, double *y) {
     else if (optmod == 3) { double theta = atan2(radial, s3), ss3 = fmax(s3, 1e-12); u_norm = f1*(1.0-radial_alpha)*s1/ss3 + f1*radial_alpha*s1/radial*theta + 0.5 + du; v_norm = f2*(1.0-radial_alpha)*s2/ss3 + f2*radial_alpha*s2/radial*theta + 0.5 + dv; }
     else if (optmod == 4) { double theta = atan2(radial, s3), rr = pow(fabs(theta), radial_alpha); u_norm = f1*s1/radial*rr + 0.5 + du; v_norm = f2*s2/radial*rr + 0.5 + dv; }
     else if (optmod == 5) { double theta = atan2(radial, s3), rr = tan(radial_alpha*theta); u_norm = f1*s1/radial*rr + 0.5 + du; v_norm = f2*s2/radial*rr + 0.5 + dv; }
+    else if (optmod == 6) { double theta = atan2(radial, s3), rr = sin(0.5*theta); u_norm = f1*s1/radial*rr + 0.5 + du; v_norm = f2*s2/radial*rr + 0.5 + dv; }
     else if (optmod == 12) { double theta = atan2(radial, s3), rr = radial_alpha > 0 ? tan(radial_alpha*theta)/radial_alpha : (radial_alpha < 0 ? sin(radial_alpha*theta)/radial_alpha : fabs(theta)); u_norm = f1*s1/radial*rr + 0.5 + du; v_norm = f2*s2/radial*rr + 0.5 + dv; }
     else {
         double ss3 = fabs(s3) > 1e-12 ? s3 : 1e-12, xn = s1/ss3, yn = s2/ss3;
@@ -2483,6 +2506,8 @@ elseif optmod == 4
     theta=atan2(radial,s3); rr=abs(theta)^ar; u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
 elseif optmod == 5
     theta=atan2(radial,s3); rr=tan(ar*theta); u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
+elseif optmod == 6
+    theta=atan2(radial,s3); rr=sin(0.5*theta); u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
 elseif optmod == 12
     theta=atan2(radial,s3); if ar>0, rr=tan(ar*theta)/ar; elseif ar<0, rr=sin(ar*theta)/ar; else, rr=abs(theta); end
     u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
@@ -3895,6 +3920,9 @@ end
         if (optmod === 5) {
             return Math.tan(alpha * theta);
         }
+        if (optmod === 6) {
+            return Math.sin(0.5 * theta);
+        }
         if (optmod === 12) {
             if (alpha > 0) {
                 return Math.tan(alpha * theta) / alpha;
@@ -3932,6 +3960,9 @@ end
                 return q;
             }
             return Math.atan(q) / alpha;
+        }
+        if (optmod === 6) {
+            return 2 * Math.asin(Math.max(-1, Math.min(1, q)));
         }
         if (optmod === 12) {
             if (alpha > 0) {
@@ -4232,6 +4263,7 @@ end
         const residualById = new Map(
             residualRowsForMatches(state.matches).map(row => [row.match.id, row])
         );
+        const fitIds = new Set(fittingMatches().map(match => String(match.id)));
         return state.matches.map((match, index) => {
             const azze = AidaTools.radecToAzZe(
                 match.catalog.raHours,
@@ -4245,6 +4277,7 @@ end
                 index: index + 1,
                 id: String(match.id ?? index + 1),
                 name: match.catalog.name || match.catalog.key || "",
+                includedInFit: fitIds.has(String(match.id)) ? 1 : 0,
                 altitudeDeg: 90 - azze.ze * AidaTools.RAD,
                 azimuthDeg: azze.az * AidaTools.RAD,
                 starRowPx: match.image.y + 1,
@@ -4276,10 +4309,17 @@ end
             // It is normal for the in-memory file not to exist yet.
         }
         const miracle = miracleProduct.calibration;
+        const equidistant = miracleProduct.equidistant;
+        const equisolid = miracleProduct.equisolid;
+        const equidistantSummary = miracleProduct.equidistantFitSummary;
+        const equisolidSummary = miracleProduct.equisolidFitSummary;
+        const nativeAida = miracleProduct.nativeAida;
+        const finiteOrNaN = value => Number.isFinite(Number(value)) ? Number(value) : NaN;
         const optpar = currentOptpar();
         const optmod = Number(controls.optmod.value) || 2;
         const starColumns = [
             "index",
+            "included_in_fit",
             "altitude_deg",
             "azimuth_deg",
             "star_row_px_1based",
@@ -4295,9 +4335,30 @@ end
         ];
         const stars = new Float64Array(starRows.length * starColumns.length);
         const residuals = new Float64Array(starRows.length * 3);
+        const miracleResidualColumns = [
+            "model_minus_observed_row_px",
+            "model_minus_observed_col_px",
+            "norm_px",
+            "angular_error_deg",
+        ];
+        const miracleResidualArray = rows => {
+            const values = new Float64Array(rows.length * miracleResidualColumns.length);
+            rows.forEach((row, index) => values.set([
+                row.residualRowPx,
+                row.residualColPx,
+                row.residualNormPx,
+                row.angularErrorDeg,
+            ], index * miracleResidualColumns.length));
+            return values;
+        };
+        const nativeAngularById = new Map(
+            nativeAida.residuals.map(row => [String(row.matchId), row.angularErrorDeg])
+        );
+        const nativeResiduals = new Float64Array(starRows.length * miracleResidualColumns.length);
         starRows.forEach((row, index) => {
             const values = [
                 row.index,
+                row.includedInFit,
                 row.altitudeDeg,
                 row.azimuthDeg,
                 row.starRowPx,
@@ -4316,6 +4377,12 @@ end
                 [row.residualRowPx, row.residualColPx, row.residualNormPx],
                 index * 3,
             );
+            nativeResiduals.set([
+                row.residualRowPx,
+                row.residualColPx,
+                row.residualNormPx,
+                nativeAngularById.get(String(row.id)) ?? NaN,
+            ], index * miracleResidualColumns.length);
         });
 
         const file = new h5wasm.File(filename, "w");
@@ -4342,6 +4409,84 @@ end
             name: "wisc_optpar_with_optmod",
             data: new Float64Array([optmod, ...optpar]),
             shape: [optpar.length + 1],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "best_fit_wisc_optpar_with_optmod",
+            data: new Float64Array([optmod, ...optpar]),
+            shape: [optpar.length + 1],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "best_fit_wisc_summary",
+            data: new Float64Array([
+                nativeAida.xcPx,
+                nativeAida.ycPx,
+                nativeAida.centerOffsetRowPx,
+                nativeAida.centerOffsetColPx,
+                finiteOrNaN(nativeAida.summary.rmsPixel),
+                finiteOrNaN(nativeAida.summary.stdPixel),
+                finiteOrNaN(nativeAida.summary.rmsAngleDeg),
+                finiteOrNaN(nativeAida.summary.stdAngleDeg),
+            ]),
+            shape: [8],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "best_fit_wisc_residuals",
+            data: nativeResiduals,
+            shape: [starRows.length, miracleResidualColumns.length],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "miracle_equidistant_parameters",
+            data: new Float64Array([
+                equidistant.glatDeg,
+                equidistant.glonDeg,
+                equidistant.xcPx,
+                equidistant.ycPx,
+                equidistant.centerOffsetRowPx,
+                equidistant.centerOffsetColPx,
+                equidistant.kPxPerRad,
+                equidistant.kPxPerDeg,
+                equidistant.rotationRad,
+                equidistantSummary.rmsPixel,
+                equidistantSummary.stdPixel,
+                equidistantSummary.rmsAngleDeg,
+                equidistantSummary.stdAngleDeg,
+            ]),
+            shape: [13],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "miracle_equisolid_parameters",
+            data: new Float64Array([
+                equisolid.glatDeg,
+                equisolid.glonDeg,
+                equisolid.xcPx,
+                equisolid.ycPx,
+                equisolid.centerOffsetRowPx,
+                equisolid.centerOffsetColPx,
+                equisolid.kPx,
+                equisolid.rotationRad,
+                equisolidSummary.rmsPixel,
+                equisolidSummary.stdPixel,
+                equisolidSummary.rmsAngleDeg,
+                equisolidSummary.stdAngleDeg,
+            ]),
+            shape: [12],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "miracle_equidistant_residuals",
+            data: miracleResidualArray(miracleProduct.equidistantFitResiduals),
+            shape: [miracleProduct.equidistantFitResiduals.length, miracleResidualColumns.length],
+            dtype: "<d",
+        });
+        file.create_dataset({
+            name: "miracle_equisolid_residuals",
+            data: miracleResidualArray(miracleProduct.equisolidFitResiduals),
+            shape: [miracleProduct.equisolidFitResiduals.length, miracleResidualColumns.length],
             dtype: "<d",
         });
         file.create_dataset({
@@ -4377,8 +4522,35 @@ end
         file.create_attribute("flip_image_y", new Uint8Array([state.imageFlipY ? 1 : 0]));
         file.create_attribute("miracle_parameter_names",
             "Glat_deg Glon_deg Xc_zenithRow_px_1based Yc_zenithCol_px_1based k_px_per_degree rotAngle_rad");
+        file.create_attribute("recommended_camera_dataset", "/best_fit_wisc_optpar_with_optmod");
+        file.create_attribute("recommended_camera_model",
+            "Native fitted WISC lens model; MIRACLE datasets are lower-accuracy compatibility approximations.");
+        file.create_attribute("best_fit_wisc_summary_names",
+            "Xc_zenithRow_px_1based Yc_zenithCol_px_1based " +
+            "Xc_offset_from_image_center_px Yc_offset_from_image_center_px " +
+            "rms_pixel_px std_pixel_px rms_angle_deg std_angle_deg");
+        file.create_attribute("miracle_equidistant_parameter_names",
+            "Glat_deg Glon_deg Xc_zenithRow_px_1based Yc_zenithCol_px_1based " +
+            "Xc_offset_from_image_center_px Yc_offset_from_image_center_px " +
+            "k_equidistant_px_per_rad k_equidistant_px_per_degree rotAngle_rad " +
+            "rms_pixel_px std_pixel_px rms_angle_deg std_angle_deg");
+        file.create_attribute("miracle_equisolid_parameter_names",
+            "Glat_deg Glon_deg Xc_zenithRow_px_1based Yc_zenithCol_px_1based " +
+            "Xc_offset_from_image_center_px Yc_offset_from_image_center_px " +
+            "k_equisolid_px rotAngle_rad rms_pixel_px std_pixel_px rms_angle_deg std_angle_deg");
+        file.create_attribute("miracle_equidistant_equation", "d_px = k_equidistant_px_per_rad * z_rad");
+        file.create_attribute("miracle_equisolid_equation", "d_px = k_equisolid_px * sin(z_rad / 2)");
+        file.create_attribute("miracle_residual_columns", miracleResidualColumns.join(" "));
+        file.create_attribute("miracle_residual_statistics",
+            "RMS and population standard deviation (ddof=0) of residual norm in pixels and absolute angular residual in degrees.");
+        file.create_attribute("miracle_center_offset_definition",
+            "Xc_offset = Xc - (image_height + 1)/2; Yc_offset = Yc - (image_width + 1)/2 in 1-based row/column coordinates.");
         file.create_attribute("miracle_fit_source", miracle.fitSource);
         file.create_attribute("miracle_fit_sample_count", new Int32Array([miracle.sampleCount]));
+        file.create_attribute("selected_star_count", new Int32Array([starRows.length]));
+        file.create_attribute("fit_star_count", new Int32Array([
+            starRows.filter(row => row.includedInFit).length,
+        ]));
         if (miracleProduct.pixelErrorSummary) {
             file.create_attribute("miracle_pixel_error_rms_deg",
                 new Float64Array([miracleProduct.pixelErrorSummary.rmsAngularDeg]));
@@ -4393,7 +4565,6 @@ end
         file.create_attribute("selected_star_columns", starColumns.join(" "));
         file.create_attribute("selected_star_ids", JSON.stringify(starRows.map(row => row.id)));
         file.create_attribute("selected_star_names", JSON.stringify(starRows.map(row => row.name)));
-        file.create_attribute("selected_star_count", new Int32Array([starRows.length]));
         file.create_attribute("residual_columns",
             "model_minus_selected_row_px model_minus_selected_col_px norm_px");
         file.create_attribute("image_coordinate_convention",
@@ -4502,6 +4673,11 @@ end
             matchedStars: state.matches.length,
             miracle: miracleProduct ? {
                 ...miracleProduct.calibration,
+                equidistant: miracleProduct.equidistant,
+                equisolid: miracleProduct.equisolid,
+                equidistantFitSummary: miracleProduct.equidistantFitSummary,
+                equisolidFitSummary: miracleProduct.equisolidFitSummary,
+                nativeAida: miracleProduct.nativeAida,
                 errorSummary: miracleProduct.summary,
                 pixelErrorSummary: miracleProduct.pixelErrorSummary || null,
             } : null,
@@ -4569,11 +4745,11 @@ end
         return samples;
     }
 
-    function selectedStarMiracleSamples() {
+    function selectedStarMiracleSamples(matches = fittingMatches()) {
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
-        return state.matches.map(match => {
+        return matches.map(match => {
             const azze = AidaTools.radecToAzZe(
                 match.catalog.raHours,
                 match.catalog.decDeg,
@@ -4596,43 +4772,118 @@ end
         );
     }
 
+    function nativeAidaFitProduct(fitSamples, allSelectedSamples = fitSamples) {
+        const optpar = currentOptpar();
+        const optmod = Number(controls.optmod.value) || 2;
+        const rotation = AidaTools.cameraRot(optpar[2], optpar[3], optpar[4]);
+        const pixelResidualById = new Map(
+            residualRowsForMatches(state.matches).map(row => [row.match.id, row.r])
+        );
+        const residualsForSamples = samples => samples.map(sample => {
+            const rawX = sample.colPx - 1;
+            const rawY = sample.rowPx - 1;
+            const displayedX = state.imageFlipX ? state.image.width - 1 - rawX : rawX;
+            const displayedY = state.imageFlipY ? state.image.height - 1 - rawY : rawY;
+            const modelX = state.flipX ? state.image.width - 1 - displayedX : displayedX;
+            const modelY = state.flipY ? state.image.height - 1 - displayedY : displayedY;
+            const camera = cameraVectorFromModelImagePixel(modelX, modelY, optpar, optmod);
+            let angularErrorDeg = NaN;
+            if (camera) {
+                const east = camera.s1 * rotation[0] + camera.s2 * rotation[1] + camera.s3 * rotation[2];
+                const north = camera.s1 * rotation[3] + camera.s2 * rotation[4] + camera.s3 * rotation[5];
+                const up = camera.s1 * rotation[6] + camera.s2 * rotation[7] + camera.s3 * rotation[8];
+                const norm = Math.hypot(east, north, up);
+                const azimuthRad = sample.azimuthDeg * AidaTools.DEG;
+                const zenithRad = sample.zenithDeg * AidaTools.DEG;
+                const trueEast = Math.sin(zenithRad) * Math.sin(azimuthRad);
+                const trueNorth = Math.sin(zenithRad) * Math.cos(azimuthRad);
+                const trueUp = Math.cos(zenithRad);
+                const dot = (east * trueEast + north * trueNorth + up * trueUp) / norm;
+                angularErrorDeg = Math.acos(Math.max(-1, Math.min(1, dot))) * AidaTools.RAD;
+            }
+            return {
+                ...sample,
+                residualNormPx: pixelResidualById.get(sample.matchId),
+                angularErrorDeg,
+            };
+        });
+        const residuals = residualsForSamples(allSelectedSamples);
+        const fitResiduals = residualsForSamples(fitSamples);
+        const zenith = rawPixelForAzimuthZenith(0, 0);
+        return {
+            optmod,
+            optpar: optpar.slice(),
+            xcPx: zenith ? zenith.rowPx : NaN,
+            ycPx: zenith ? zenith.colPx : NaN,
+            centerOffsetRowPx: zenith ? zenith.rowPx - (state.image.height + 1) / 2 : NaN,
+            centerOffsetColPx: zenith ? zenith.colPx - (state.image.width + 1) / 2 : NaN,
+            residuals,
+            summary: window.AidaMiracleExport.projectionResidualSummary(fitResiduals),
+        };
+    }
+
     function miracleCalibrationProduct() {
         if (!state.image || !window.AidaMiracleExport) {
             throw new Error("MIRACLE export support is unavailable");
         }
         const referenceSamples = nativeMiracleReferenceSamples();
-        const selectedSamples = selectedStarMiracleSamples();
+        const allSelectedSamples = selectedStarMiracleSamples(state.matches);
+        const selectedSamples = selectedStarMiracleSamples(fittingMatches());
         let fitSamples = selectedSamples;
         let fitSource = "selected WISC stars";
-        if (fitSamples.length < 2) {
+        if (fitSamples.length < 3) {
             fitSamples = referenceSamples;
-            fitSource = "native WISC lens model fallback (fewer than two selected stars)";
+            fitSource = "native WISC lens model fallback (fewer than three selected stars)";
         }
+        const fitOptions = source => ({
+            glatDeg: Number(controls.latDeg.value) || 0,
+            glonDeg: Number(controls.lonDeg.value) || 0,
+            imageWidth: state.image.width,
+            imageHeight: state.image.height,
+            fitSource: source,
+        });
         let calibration;
         try {
-            calibration = window.AidaMiracleExport.fitCalibration(fitSamples, {
-                glatDeg: Number(controls.latDeg.value) || 0,
-                glonDeg: Number(controls.lonDeg.value) || 0,
-                fitSource,
-            });
+            calibration = window.AidaMiracleExport.fitCalibration(fitSamples, fitOptions(fitSource));
         } catch (error) {
             if (fitSamples === referenceSamples) {
                 throw error;
             }
             fitSamples = referenceSamples;
             fitSource = "native WISC lens model fallback (selected-star geometry was singular)";
-            calibration = window.AidaMiracleExport.fitCalibration(fitSamples, {
-                glatDeg: Number(controls.latDeg.value) || 0,
-                glonDeg: Number(controls.lonDeg.value) || 0,
-                fitSource,
-            });
+            calibration = window.AidaMiracleExport.fitCalibration(fitSamples, fitOptions(fitSource));
         }
+        const equisolid = window.AidaMiracleExport.fitEquisolidCalibration(
+            fitSamples,
+            fitOptions(fitSource),
+        );
+        const residualSamples = selectedSamples.length ? selectedSamples : fitSamples;
+        const equidistantFitResiduals = window.AidaMiracleExport.projectionResiduals(
+            residualSamples,
+            calibration,
+        );
+        const equisolidFitResiduals = window.AidaMiracleExport.projectionResiduals(
+            residualSamples,
+            equisolid,
+        );
         const errors = window.AidaMiracleExport.approximationErrors(referenceSamples, calibration);
         return {
             calibration,
+            equidistant: calibration,
+            equisolid,
+            equidistantFitResiduals,
+            equisolidFitResiduals,
+            equidistantFitSummary: window.AidaMiracleExport.projectionResidualSummary(
+                equidistantFitResiduals,
+            ),
+            equisolidFitSummary: window.AidaMiracleExport.projectionResidualSummary(
+                equisolidFitResiduals,
+            ),
+            nativeAida: nativeAidaFitProduct(selectedSamples, allSelectedSamples),
             errors,
             summary: window.AidaMiracleExport.errorSummary(errors),
             selectedSampleCount: selectedSamples.length,
+            totalSelectedSampleCount: allSelectedSamples.length,
         };
     }
 
@@ -4644,6 +4895,7 @@ end
         const header = [
             "id",
             "star",
+            "included_in_fit",
             "altitude_deg",
             "azimuth_deg",
             "star_row_px_1based",
@@ -4660,6 +4912,7 @@ end
             lines.push([
                 cleanCell(row.id),
                 cleanCell(row.name),
+                row.includedInFit,
                 numberCell(row.altitudeDeg),
                 numberCell(row.azimuthDeg),
                 numberCell(row.starRowPx),
@@ -4842,18 +5095,26 @@ end
         context.textAlign = "center";
         context.font = `700 ${Math.round(22 * fontScale)}px Arial, sans-serif`;
         context.fillText(
-            "Absolute angular error: native WISC model vs MIRACLE d = kz",
+            "MIRACLE equidistant approximation error",
             output.width / 2,
-            Math.round(43 * fontScale),
+            Math.round(34 * fontScale),
         );
-        context.font = `${Math.round(14 * fontScale)}px Arial, sans-serif`;
+        context.font = `${Math.round(12 * fontScale)}px Arial, sans-serif`;
+        context.fillText(
+            "Absolute angular difference from the native WISC model",
+            output.width / 2,
+            Math.round(60 * fontScale),
+        );
         const rmsErrorDeg = validCount > 0 ? Math.sqrt(sumSquaredError / validCount) : NaN;
         context.fillText(
-            `${imageWidth} × ${imageHeight} image-aligned heatmap sampled from ` +
-            `${sourceWidth} × ${sourceHeight} pixels; RMS ${rmsErrorDeg.toFixed(3)} deg, ` +
-            `max ${maxErrorDeg.toFixed(3)} deg`,
+            `${imageWidth} × ${imageHeight} samples from ${sourceWidth} × ${sourceHeight} pixels`,
             output.width / 2,
-            Math.round(72 * fontScale),
+            Math.round(82 * fontScale),
+        );
+        context.fillText(
+            `RMS ${rmsErrorDeg.toFixed(3)} deg; max ${maxErrorDeg.toFixed(3)} deg`,
+            output.width / 2,
+            Math.round(103 * fontScale),
         );
 
         const barX = padding.left;
@@ -5098,6 +5359,8 @@ def az_el_to_pixel(az_deg, el_deg):
             r = abs(theta) ** radial_alpha
         elif OPTMOD == 5:
             r = np.tan(radial_alpha * theta)
+        elif OPTMOD == 6:
+            r = np.sin(0.5 * theta)
         elif OPTMOD == 12:
             r = np.tan(radial_alpha * theta) / radial_alpha if radial_alpha > 0 else (np.sin(radial_alpha * theta) / radial_alpha if radial_alpha < 0 else abs(theta))
         else:
@@ -5174,6 +5437,10 @@ def theta_from_radius(q, radial_alpha):
         if abs(radial_alpha) < 1e-12:
             return np.nan
         return np.arctan(q) / radial_alpha
+    if OPTMOD == 6:
+        if abs(q) > 1:
+            return np.nan
+        return 2.0 * np.arcsin(q)
     if OPTMOD == 12:
         if radial_alpha > 0:
             return np.arctan(q * radial_alpha) / radial_alpha
@@ -5351,8 +5618,10 @@ print(f"wrote {OUT} with {count} stars")
 
 Files:
 - report.tex: LaTeX source for the lens model fitting report.
-- ${prefix}.miracle: MIRACLE-compatible plain ASCII calibration. The first line is a % comment with parameter names and units; the second line contains Glat Glon Xc Yc k rotAngle.
-- ${prefix}_calibration.h5: compact HDF5 calibration product containing MIRACLE parameters, native WISC optpar, selected-star coordinates, and fit residuals.
+- ${prefix}.miracle: one backward-compatible MIRACLE ASCII file. Its legacy numeric row remains Glat Glon Xc Yc k rotAngle; following % comment lines summarize both fitted MIRACLE projections and their errors.
+- ${prefix}_calibration.h5: authoritative compact HDF5 product containing the best native WISC optpar, equidistant/equisolid MIRACLE compatibility fits, selected-star coordinates, and all residuals.
+- read_calibration_hdf5.py and read_calibration_hdf5.m: working examples that read and use all three models plus selected-star data.
+- wisc_mapper.py: complete Python implementation of the recommended native AIDA/WISC fit.
 - evaluate_miracle_error.py: evaluates the absolute angular error between MIRACLE and the fitted native WISC model at one 1-based image row/column or over a sampled image grid.
 - selected_stars.tsv: every star selected in WISC, including starAlt, starAz, 1-based starRow/starCol, J2000 RA/Dec, magnitude, modeled position, and fit residual.
 - overlay_lens_model.py: bare Python script with optpar inside the code; maps Yale star az/el to pixels with the lens model and writes overlay_lens_model.png.
@@ -5382,14 +5651,125 @@ Run python overlay_hdf5.py after creating calibration_az_el.h5.
 Compile report.tex with pdflatex or latexmk from this directory after unzipping.
 
 Compact HDF5 layout:
-- /miracle_parameters: Glat, Glon, Xc, Yc, k, rotAngle in the units documented by its root attribute.
-- /wisc_optpar and /wisc_optpar_with_optmod: the native fitted WISC camera model.
-- /selected_stars: numeric selected-star catalog, observed/model image positions, and residuals; column names are in the selected_star_columns root attribute.
+- /miracle_parameters: backward-compatible Glat, Glon, Xc, Yc, k, rotAngle vector.
+- /miracle_equidistant_parameters and /miracle_equisolid_parameters: named compatibility fits, center offsets, and pixel/angular residual statistics.
+- /best_fit_wisc_optpar_with_optmod and /best_fit_wisc_summary: the recommended native AIDA/WISC fit and its center/error summary.
+- /wisc_optpar and /wisc_optpar_with_optmod: backward-compatible aliases for the native fitted WISC camera model.
+- /selected_stars: complete numeric selected-star catalog, an included_in_fit flag, observed/model image positions, and residuals; column names are in the selected_star_columns root attribute.
 - /residuals_px: model-minus-selected row, column, and norm residuals.
 `;
     }
 
-    function latexReportText(metadata, rows) {
+    function pythonCalibrationReadExample(prefix) {
+        return `#!/usr/bin/env python3
+"""Read the best WISC fit and both MIRACLE compatibility fits."""
+import h5py
+import numpy as np
+from wisc_mapper import az_el_to_image
+
+H5 = ${pythonString(`${prefix}_calibration.h5`)}
+
+
+def named_vector(h, dataset, names_attribute):
+    names = h.attrs[names_attribute]
+    if isinstance(names, bytes):
+        names = names.decode("ascii")
+    return dict(zip(str(names).split(), np.asarray(h[dataset], dtype=float)))
+
+
+def miracle_pixel(altitude_deg, azimuth_deg, parameters, projection):
+    """Return MIRACLE 1-based (row, column)."""
+    z_rad = np.deg2rad(90.0 - altitude_deg)
+    theta = np.deg2rad(azimuth_deg)
+    if projection == "equidistant":
+        distance = parameters["k_equidistant_px_per_rad"] * z_rad
+    elif projection == "equisolid":
+        distance = parameters["k_equisolid_px"] * np.sin(0.5 * z_rad)
+    else:
+        raise ValueError(projection)
+    phi = theta + parameters["rotAngle_rad"]
+    row = parameters["Xc_zenithRow_px_1based"] - distance * np.cos(phi)
+    col = parameters["Yc_zenithCol_px_1based"] - distance * np.sin(phi)
+    return row, col
+
+
+with h5py.File(H5, "r") as h:
+    best_wisc = np.asarray(h["best_fit_wisc_optpar_with_optmod"], dtype=float)
+    wisc_summary = named_vector(h, "best_fit_wisc_summary", "best_fit_wisc_summary_names")
+    equidistant = named_vector(
+        h, "miracle_equidistant_parameters", "miracle_equidistant_parameter_names"
+    )
+    equisolid = named_vector(
+        h, "miracle_equisolid_parameters", "miracle_equisolid_parameter_names"
+    )
+    star_names = str(h.attrs["selected_star_columns"]).split()
+    selected_stars = np.asarray(h["selected_stars"], dtype=float)
+
+azimuth_deg, altitude_deg = 210.0, 45.0
+x0, y0 = az_el_to_image(azimuth_deg, altitude_deg, optpar=best_wisc)
+row_eq, col_eq = miracle_pixel(altitude_deg, azimuth_deg, equidistant, "equidistant")
+row_es, col_es = miracle_pixel(altitude_deg, azimuth_deg, equisolid, "equisolid")
+print("best WISC 0-based x/y:", x0, y0)
+print("MIRACLE equidistant 1-based row/col:", row_eq, col_eq)
+print("MIRACLE equisolid 1-based row/col:", row_es, col_es)
+print("selected-star columns:", star_names)
+print("selected-star array shape:", selected_stars.shape)
+print("best WISC summary:", wisc_summary)
+`;
+    }
+
+    function matlabCalibrationReadExample(prefix) {
+        const mapper = window.AidaExportGenerators.mapperCode(exportContext(), "matlab");
+        const functionStart = mapper.indexOf("function [x, y] = az_el_to_image");
+        const mapperFunction = functionStart >= 0 ? mapper.slice(functionStart) : "";
+        return `% Read the best WISC fit and both MIRACLE compatibility fits.
+file = '${String(prefix).replace(/'/g, "''")}_calibration.h5';
+
+bestWisc = h5read(file, '/best_fit_wisc_optpar_with_optmod');
+wiscSummary = namedVector(file, '/best_fit_wisc_summary', 'best_fit_wisc_summary_names');
+equidistant = namedVector(file, '/miracle_equidistant_parameters', ...
+    'miracle_equidistant_parameter_names');
+equisolid = namedVector(file, '/miracle_equisolid_parameters', ...
+    'miracle_equisolid_parameter_names');
+starColumns = split(string(h5readatt(file, '/', 'selected_star_columns')));
+selectedStars = h5read(file, '/selected_stars')';
+if size(selectedStars, 2) ~= numel(starColumns), selectedStars = selectedStars'; end
+
+azimuthDeg = 210.0; altitudeDeg = 45.0;
+optmod = round(bestWisc(1)); optpar = bestWisc(2:end);
+imageWidth = double(h5readatt(file, '/', 'image_width'));
+imageHeight = double(h5readatt(file, '/', 'image_height'));
+[x0, y0] = az_el_to_image(azimuthDeg, altitudeDeg, optpar, optmod, imageWidth, imageHeight);
+[rowEq, colEq] = miraclePixel(altitudeDeg, azimuthDeg, equidistant, 'equidistant');
+[rowEs, colEs] = miraclePixel(altitudeDeg, azimuthDeg, equisolid, 'equisolid');
+fprintf('best WISC 0-based x/y: %.3f %.3f\n', x0, y0);
+fprintf('MIRACLE equidistant 1-based row/col: %.3f %.3f\n', rowEq, colEq);
+fprintf('MIRACLE equisolid 1-based row/col: %.3f %.3f\n', rowEs, colEs);
+disp(wiscSummary); disp(starColumns); disp(size(selectedStars));
+
+function out = namedVector(file, dataset, attribute)
+names = split(string(h5readatt(file, '/', attribute)));
+values = double(h5read(file, dataset));
+out = cell2struct(num2cell(values(:)), cellstr(names(:)), 1);
+end
+
+function [row, col] = miraclePixel(altitudeDeg, azimuthDeg, q, projection)
+z = deg2rad(90 - altitudeDeg); theta = deg2rad(azimuthDeg);
+if strcmp(projection, 'equidistant')
+    d = q.k_equidistant_px_per_rad * z;
+else
+    d = q.k_equisolid_px * sin(0.5 * z);
+end
+phi = theta + q.rotAngle_rad;
+row = q.Xc_zenithRow_px_1based - d*cos(phi);
+col = q.Yc_zenithCol_px_1based - d*sin(phi);
+end
+
+${mapperFunction}
+`;
+    }
+
+    function latexReportText(metadata, rows, selectedStarRows = selectedStarDataRows()) {
         const optpar = currentOptpar();
         const optmod = Number(controls.optmod.value) || 2;
         const prefix = window.AidaMiracleExport.imagePrefix(metadata.imageName || "wisc");
@@ -5420,11 +5800,43 @@ Compact HDF5 layout:
         const miracleMax = miraclePixelSummary && Number.isFinite(miraclePixelSummary.maxAngularDeg) ?
             miraclePixelSummary.maxAngularDeg.toFixed(3) :
             "n/a";
+        const equidistant = miracle && miracle.equidistant;
+        const equisolid = miracle && miracle.equisolid;
+        const nativeAida = miracle && miracle.nativeAida;
+        const equidistantFit = miracle && miracle.equidistantFitSummary;
+        const equisolidFit = miracle && miracle.equisolidFitSummary;
+        const nativeFit = nativeAida && nativeAida.summary;
+        const tableNumber = (value, digits = 3) => Number.isFinite(Number(value)) ?
+            Number(value).toFixed(digits) : "--";
+        const transverseErrorKm = fit => fit && Number.isFinite(fit.rmsAngleDeg) ?
+            150 * Math.tan(fit.rmsAngleDeg * AidaTools.DEG) : NaN;
+        const aidaOptpar = nativeAida && nativeAida.optpar || [];
+        const aidaExtraParameters = aidaOptpar.slice(7).map(value => tableNumber(value, 6)).join(", ") || "--";
+        const selectedCatalogTableRows = selectedStarRows.map(row => [
+            row.index,
+            escapeTex(row.name),
+            row.includedInFit ? "yes" : "no",
+            tableNumber(row.altitudeDeg, 3),
+            tableNumber(row.azimuthDeg, 3),
+            tableNumber(row.starRowPx, 3),
+            tableNumber(row.starColPx, 3),
+        ].join(" & ") + " \\\\").join("\n");
+        const selectedResidualTableRows = selectedStarRows.map(row => [
+            row.index,
+            tableNumber(row.raHoursJ2000, 6),
+            tableNumber(row.decDegJ2000, 6),
+            tableNumber(row.magnitude, 2),
+            tableNumber(row.modelRowPx, 3),
+            tableNumber(row.modelColPx, 3),
+            tableNumber(row.residualNormPx, 3),
+        ].join(" & ") + " \\\\").join("\n");
         return `\\documentclass[11pt]{article}
 \\usepackage[margin=1in]{geometry}
 \\usepackage{graphicx}
 \\usepackage{amsmath}
 \\usepackage{booktabs}
+\\usepackage{longtable}
+\\usepackage{array}
 \\usepackage{hyperref}
 \\title{WISC Lens Model Fitting Report}
 \\author{Widefield Star Calibrator}
@@ -5489,11 +5901,16 @@ contains six whitespace-delimited numbers and no JSON syntax. It also contains
 \\texttt{star\\_col\\_px\\_1based} columns can be passed directly as
 \\texttt{starAlt}, \\texttt{starAz}, \\texttt{starRow}, and \\texttt{starCol}.
 
-The compact \\texttt{${escapeTex(prefix)}\\_calibration.h5} file contains
-\\texttt{/miracle\\_parameters}, \\texttt{/wisc\\_optpar},
-\\texttt{/wisc\\_optpar\\_with\\_optmod}, \\texttt{/selected\\_stars}, and
-\\texttt{/residuals\\_px}. Dataset column names, units, image metadata, site,
-time, and coordinate conventions are recorded as root attributes.
+The compact \\texttt{${escapeTex(prefix)}\\_calibration.h5} file is the
+authoritative structured product. It contains
+\\texttt{/best\\_fit\\_wisc\\_optpar\\_with\\_optmod},
+\\texttt{/best\\_fit\\_wisc\\_summary},
+\\texttt{/miracle\\_equidistant\\_parameters},
+\\texttt{/miracle\\_equisolid\\_parameters}, per-model residual datasets,
+\\texttt{/selected\\_stars}, and \\texttt{/residuals\\_px}. Dataset column
+names, units, image metadata, site, time, and coordinate conventions are
+recorded as root attributes. The complete selected-star information represented
+by \\texttt{selected\\_stars.tsv} is therefore also present in HDF5.
 The accompanying \\texttt{evaluate\\_miracle\\_error.py} program reads this
 HDF5 file and evaluates the absolute angular separation between the native WISC
 model and MIRACLE approximation at arbitrary 1-based image rows and columns or
@@ -5519,6 +5936,43 @@ scripts as plain Python tuples. No JSON file is needed to run the examples.
 All commands below are run from the unzipped report directory. The two Python
 files are deliberately root-level scripts, so there is no package to install and
 no path setup.
+
+\\subsection{Python}
+The supplied \\texttt{read\\_calibration\\_hdf5.py} reads the authoritative
+AIDA/WISC fit, both MIRACLE fits, residual statistics, and the complete
+selected-star array from the compact HDF5 file:
+\\begin{verbatim}
+python -m pip install h5py numpy
+python read_calibration_hdf5.py
+\\end{verbatim}
+The essential reads are:
+\\begin{verbatim}
+with h5py.File("PREFIX_calibration.h5", "r") as h:
+    best_wisc = h["best_fit_wisc_optpar_with_optmod"][:]
+    equidistant = h["miracle_equidistant_parameters"][:]
+    equisolid = h["miracle_equisolid_parameters"][:]
+    selected_stars = h["selected_stars"][:]
+\\end{verbatim}
+Use \\texttt{wisc\\_mapper.py} for the recommended AIDA/WISC projection.
+The read example implements both legacy MIRACLE equations with the named HDF5
+parameters.
+
+\\subsection{MATLAB}
+The supplied \\texttt{read\\_calibration\\_hdf5.m} is self-contained and
+demonstrates all three projections:
+\\begin{verbatim}
+run('read_calibration_hdf5.m')
+\\end{verbatim}
+The essential MATLAB reads are:
+\\begin{verbatim}
+bestWisc = h5read(file, '/best_fit_wisc_optpar_with_optmod');
+equidistant = h5read(file, '/miracle_equidistant_parameters');
+equisolid = h5read(file, '/miracle_equisolid_parameters');
+selectedStars = h5read(file, '/selected_stars');
+\\end{verbatim}
+Parameter-name attributes beside each vector define every value and unit.
+The example converts these vectors to named structures, evaluates both MIRACLE
+equations, and includes the full AIDA/WISC projection function.
 
 If you want to use the fitted lens model directly, use
 \\texttt{overlay\\_lens\\_model.py}. This file contains \\texttt{OPTMOD},
@@ -5549,6 +6003,45 @@ Use \\texttt{overlay\\_lens\\_model.py} when you want a compact portable formula
 Use \\texttt{overlay\\_hdf5.py} when you want a lookup table tied exactly to this
 image.
 
+\\clearpage
+\\section{Selected Stars}
+The following tables reproduce the complete \\texttt{selected\\_stars.tsv}
+content in a page-friendly form. The \\texttt{fit} column identifies the stars inside the
+current GUI magnitude limit; those are the stars used for all three RMS values
+in Table~\\ref{tab:camera-model-comparison}. Image row and column coordinates
+are 1-based and celestial coordinates are J2000.
+
+\\begingroup
+\\tiny
+\\setlength{\\tabcolsep}{3pt}
+\\begin{longtable}{r l c r r r r}
+\\toprule
+ID & Star & fit & Alt [deg] & Az [deg] & Row [px] & Col [px] \\\\
+\\midrule
+\\endfirsthead
+\\toprule
+ID & Star & fit & Alt [deg] & Az [deg] & Row [px] & Col [px] \\\\
+\\midrule
+\\endhead
+${selectedCatalogTableRows}
+\\bottomrule
+\\end{longtable}
+
+\\begin{longtable}{r r r r r r r}
+\\toprule
+ID & RA [h] & Dec [deg] & mag & Model row [px] & Model col [px] & Residual [px] \\\\
+\\midrule
+\\endfirsthead
+\\toprule
+ID & RA [h] & Dec [deg] & mag & Model row [px] & Model col [px] & Residual [px] \\\\
+\\midrule
+\\endhead
+${selectedResidualTableRows}
+\\bottomrule
+\\end{longtable}
+\\endgroup
+
+\\clearpage
 \\section{MIRACLE Approximation}
 \\noindent\\textbf{Warning---legacy camera support only.}
 The MIRACLE camera parameters are provided for compatibility with legacy
@@ -5563,28 +6056,36 @@ absolute angular approximation errors of the MIRACLE model are shown in
 Figure~\\ref{fig:miracle-error}.
 
 The same comparison can be evaluated numerically from the command line:
+\\begingroup\\footnotesize
 \\begin{verbatim}
 python -m pip install numpy h5py
 python evaluate_miracle_error.py --calibration PREFIX_calibration.h5 --row ROW --col COLUMN
 python evaluate_miracle_error.py --calibration PREFIX_calibration.h5 --grid-size 512
 \\end{verbatim}
+\\endgroup
 
-For star altitude and azimuth in degrees, the MIRACLE model is
+For star altitude and azimuth in degrees, define \\(z_{\\rm rad}\\) and \\(\\theta\\) by
 \\begin{align}
-z_{\\mathrm{deg}} &= 90^\\circ - \\mathrm{Alt}_{\\mathrm{deg}}, \\\\
+z_{\\mathrm{rad}} &= (90^\\circ - \\mathrm{Alt}_{\\mathrm{deg}})\\frac{\\pi}{180}, \\\\
 \\theta &= \\mathrm{Az}_{\\mathrm{deg}}\\,\\frac{\\pi}{180}, \\\\
-d &= k z_{\\mathrm{deg}}, \\\\
+d_{\\rm equidistant} &= k_{\\rm eq} z_{\\rm rad}, \\\\
+d_{\\rm equisolid} &= k_{\\rm es}\\sin(z_{\\rm rad}/2), \\\\
 X_{\\mathrm{row}} &= X_c - d\\cos(\\theta + \\mathrm{rotAngle}), \\\\
 Y_{\\mathrm{col}} &= Y_c - d\\sin(\\theta + \\mathrm{rotAngle}).
 \\end{align}
-Here \\texttt{k} is in pixels per degree, \\texttt{rotAngle} is in radians,
-and $(X_{\\mathrm{row}},Y_{\\mathrm{col}})=(1,1)$ is the upper-left pixel.
+Here \\(k_{\\rm eq}\\) is in pixels per radian, \\(k_{\\rm es}\\) is in pixels,
+\\texttt{rotAngle} is in radians, and
+\\((X_{\\mathrm{row}},Y_{\\mathrm{col}})=(1,1)\\) is the upper-left pixel.
+For compatibility, the original six-value MIRACLE row below stores the
+equidistant scale in pixels per degree.
 
 The MIRACLE-compatible calibration uses the historical parameter order
 \\texttt{Glat Glon Xc Yc k rotAngle}:
+\\begingroup\\footnotesize
 \\begin{verbatim}
 ${miracleText}
 \\end{verbatim}
+\\endgroup
 Here \\texttt{Xc} is the vertical image coordinate (row), \\texttt{Yc} is the
 horizontal image coordinate (column), and $(1,1)$ is the upper-left pixel.
 The scale \\texttt{k} is in pixels per degree for $d=kz$, and
@@ -5593,12 +6094,48 @@ image clockwise aligns north upward. The fit uses the unmirrored convention
 where east is left. Calibration source: \\texttt{${escapeTex(miracle && miracle.fitSource || "n/a")}}.
 The native WISC model remains the authoritative calibration.
 
+\\begin{table}[p]
+\\centering
+\\tiny
+\\setlength{\\tabcolsep}{3pt}
+\\begin{tabular}{p{0.27\\textwidth} >{\\centering\\arraybackslash}p{0.20\\textwidth} >{\\centering\\arraybackslash}p{0.20\\textwidth} >{\\centering\\arraybackslash}p{0.22\\textwidth}}
+\\toprule
+Parameter & MIRACLE equidistant & MIRACLE equisolid & Best fitted AIDA/WISC \\\\
+\\midrule
+Projection & $d=kz_{\\rm rad}$ & $d=k\\sin(z_{\\rm rad}/2)$ & optmod ${nativeAida ? nativeAida.optmod : "--"} \\\\
+$X_c$, zenith row [px, 1-based] & ${tableNumber(equidistant && equidistant.xcPx)} & ${tableNumber(equisolid && equisolid.xcPx)} & ${tableNumber(nativeAida && nativeAida.xcPx)} \\\\
+$Y_c$, zenith column [px, 1-based] & ${tableNumber(equidistant && equidistant.ycPx)} & ${tableNumber(equisolid && equisolid.ycPx)} & ${tableNumber(nativeAida && nativeAida.ycPx)} \\\\
+$X_c$ offset from image center [px] & ${tableNumber(equidistant && equidistant.centerOffsetRowPx)} & ${tableNumber(equisolid && equisolid.centerOffsetRowPx)} & ${tableNumber(nativeAida && nativeAida.centerOffsetRowPx)} \\\\
+$Y_c$ offset from image center [px] & ${tableNumber(equidistant && equidistant.centerOffsetColPx)} & ${tableNumber(equisolid && equisolid.centerOffsetColPx)} & ${tableNumber(nativeAida && nativeAida.centerOffsetColPx)} \\\\
+$k$ [px/degree] & ${tableNumber(equidistant && equidistant.kPxPerDeg, 6)} & -- & -- \\\\
+$k$ [px/radian or px] & ${tableNumber(equidistant && equidistant.kPxPerRad, 6)} & ${tableNumber(equisolid && equisolid.kPx, 6)} & -- \\\\
+rotAngle [rad] & ${tableNumber(equidistant && equidistant.rotationRad, 6)} & ${tableNumber(equisolid && equisolid.rotationRad, 6)} & -- \\\\
+$f_1$ / $f_2$ & -- & -- & ${tableNumber(aidaOptpar[0], 8)} / ${tableNumber(aidaOptpar[1], 8)} \\\\
+$\\alpha$ / $\\beta$ / $\\gamma$ [deg] & -- & -- & ${tableNumber(aidaOptpar[2], 6)} / ${tableNumber(aidaOptpar[3], 6)} / ${tableNumber(aidaOptpar[4], 6)} \\\\
+$d_u$ / $d_v$ & -- & -- & ${tableNumber(aidaOptpar[5], 9)} / ${tableNumber(aidaOptpar[6], 9)} \\\\
+Additional AIDA radial parameters & -- & -- & \\texttt{${escapeTex(aidaExtraParameters)}} \\\\
+RMS 2-D selected-star residual [px] & ${tableNumber(equidistantFit && equidistantFit.rmsPixel)} & ${tableNumber(equisolidFit && equisolidFit.rmsPixel)} & ${tableNumber(nativeFit && nativeFit.rmsPixel)} \\\\
+Residual standard deviation [px] & ${tableNumber(equidistantFit && equidistantFit.stdPixel)} & ${tableNumber(equisolidFit && equisolidFit.stdPixel)} & ${tableNumber(nativeFit && nativeFit.stdPixel)} \\\\
+RMS angular residual [deg] & ${tableNumber(equidistantFit && equidistantFit.rmsAngleDeg, 5)} & ${tableNumber(equisolidFit && equisolidFit.rmsAngleDeg, 5)} & ${tableNumber(nativeFit && nativeFit.rmsAngleDeg, 5)} \\\\
+Angular residual standard deviation [deg] & ${tableNumber(equidistantFit && equidistantFit.stdAngleDeg, 5)} & ${tableNumber(equisolidFit && equisolidFit.stdAngleDeg, 5)} & ${tableNumber(nativeFit && nativeFit.stdAngleDeg, 5)} \\\\
+RMS transverse error at 150 km [km] & ${tableNumber(transverseErrorKm(equidistantFit), 3)} & ${tableNumber(transverseErrorKm(equisolidFit), 3)} & ${tableNumber(transverseErrorKm(nativeFit), 3)} \\\\
+\\bottomrule
+\\end{tabular}
+\\caption{Three-model comparison using the same stars included by the current
+GUI magnitude limit and the same two-dimensional residual norm
+$\\sqrt{\\Delta row^2+\\Delta col^2}$. The 150 km
+value is $150\\tan(\\epsilon_{\\rm RMS})$ and is an approximate transverse
+position error, not a height uncertainty. The AIDA/WISC column is the native
+GUI fit and its pixel RMS therefore matches the GUI residual RMS.}
+\\label{tab:camera-model-comparison}
+\\end{table}
+
 Across all image pixels where the native model is defined, the six-parameter
 approximation has an RMS absolute angular error of ${miracleRms} degrees and a
 maximum error of ${miracleMax} degrees relative to the native WISC lens model.
 \\begin{figure}[h]
 \\centering
-\\includegraphics[width=0.98\\linewidth]{figures/miracle_absolute_angular_error.png}
+\\includegraphics[width=0.95\\linewidth,height=0.72\\textheight,keepaspectratio]{figures/miracle_absolute_angular_error.png}
 \\caption{Pcolormesh-style absolute angular error of the MIRACLE $d=kz$
 approximation against the native WISC lens model. The image-aligned heatmap
 preserves the source aspect ratio and is capped at 512 pixels on its longest
@@ -5703,10 +6240,13 @@ lens-model inverse.}
             setLoadingProgress(82, "Assembling results ZIP...");
             const zip = new JSZip();
             zip.file("README.md", reportReadmeText(prefix));
-            zip.file("report.tex", latexReportText(metadata, rows));
+            zip.file("report.tex", latexReportText(metadata, rows, starRows));
             zip.file(
                 `${prefix}.miracle`,
-                window.AidaMiracleExport.formatMiracleAscii(miracleProduct.calibration),
+                window.AidaMiracleExport.formatMiracleAscii(
+                    miracleProduct.calibration,
+                    miracleProduct,
+                ),
             );
             const calibrationHdf5Name = resultsHdf5Filename(prefix);
             const calibrationHdf5 = writeResultsHdf5Bytes(
@@ -5720,6 +6260,12 @@ lens-model inverse.}
             );
             zip.file(calibrationHdf5Name, calibrationHdf5);
             zip.file("evaluate_miracle_error.py", miracleErrorEvaluator);
+            zip.file("read_calibration_hdf5.py", pythonCalibrationReadExample(prefix));
+            zip.file("read_calibration_hdf5.m", matlabCalibrationReadExample(prefix));
+            zip.file(
+                "wisc_mapper.py",
+                window.AidaExportGenerators.mapperCode(exportContext(), "python"),
+            );
             zip.file("selected_stars.tsv", selectedStarsTsv());
             zip.file("base_image.png", baseImagePng);
             zip.file("figures/star_overlay.png", overlayPng);
@@ -8708,7 +9254,7 @@ lens-model inverse.}
     function clampFitVectorToBounds(x, optmod = Number(controls.optmod.value) || 2) {
         const bounds = fitParameterBounds(optmod);
         const epsilon = 1e-9;
-        return x.slice(0, bounds.length).map((value, index) => {
+        const clamped = x.slice(0, bounds.length).map((value, index) => {
             const bound = bounds[index];
             let clipped = value;
             if (Number.isFinite(bound.lo) && clipped < bound.lo) {
@@ -8728,6 +9274,10 @@ lens-model inverse.}
             }
             return clipped;
         });
+        if (optmod === 6 && clamped.length > 7) {
+            clamped[7] = 0.5;
+        }
+        return clamped;
     }
 
     function fitPenalty(x, optmod = Number(controls.optmod.value) || 2) {

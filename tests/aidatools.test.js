@@ -306,6 +306,11 @@ function matlabCameraModel(az, ze, optpar, optmod, width, height) {
         const r = Math.tan(alpha * theta);
         u = (radial === 0 ? 0 : f1 * sese1 / radial * r) + 0.5 + dx;
         w = (radial === 0 ? 0 : f2 * sese2 / radial * r) + 0.5 + dy;
+    } else if (optmod === 6) {
+        const theta = Math.atan(radial / sese3);
+        const r = Math.sin(0.5 * theta);
+        u = (radial === 0 ? 0 : f1 * sese1 / radial * r) + 0.5 + dx;
+        w = (radial === 0 ? 0 : f2 * sese2 / radial * r) + 0.5 + dy;
     } else if (optmod === 12) {
         const theta = Math.atan(radial / sese3);
         let r;
@@ -729,6 +734,17 @@ test("optmod 2 follows the sin(alpha * theta) radial model", () => {
     const expectedY = (0.5 + optpar[6]) * height - 1;
     assertNear(projected.x, expectedX);
     assertNear(projected.y, expectedY);
+});
+
+test("optmod 6 follows the simple equisolid sin(theta / 2) radial model", () => {
+    const width = 1000;
+    const height = 800;
+    const optpar = [0.8, 0.9, 0, 0, 0, 0, 0, 0.5];
+    const zenithAngle = 60 * AidaTools.DEG;
+    const projected = AidaTools.cameraModel(0, zenithAngle, optpar, 6, width, height);
+    const expectedRadius = Math.sin(0.5 * zenithAngle);
+    assertNear(projected.x, 0.5 * width - 1);
+    assertNear(projected.y, (0.5 + optpar[1] * expectedRadius) * height - 1);
 });
 
 test("optmod 20 follows the Brown-Conrady radial and tangential model", () => {
