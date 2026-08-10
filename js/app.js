@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.53";
+    const APP_VERSION = "v0.3.54";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -145,6 +145,10 @@
         loadTestCase: document.getElementById("loadTestCase"),
         toggleFitResiduals: document.getElementById("toggleFitResiduals"),
         clearMatches: document.getElementById("clearMatches"),
+        viewZoomOut: document.getElementById("viewZoomOut"),
+        viewZoomReset: document.getElementById("viewZoomReset"),
+        viewZoomValue: document.getElementById("viewZoomValue"),
+        viewZoomIn: document.getElementById("viewZoomIn"),
     };
 
     const gl = canvas.getContext("webgl", {antialias: true, preserveDrawingBuffer: true});
@@ -199,6 +203,9 @@
         deleteDetectionMode: false,
         maskMode: false,
         zoomMode: false,
+        viewZoom: 1,
+        viewCenterX: null,
+        viewCenterY: null,
         maskRegions: [],
         junkStarFinderRegions: [],
         badStarFinderDetections: [],
@@ -448,10 +455,57 @@
         if (!state.image) {
             return {x: 0, y: 0, w: canvas.width, h: canvas.height, scale: 1};
         }
-        const scale = Math.min(canvas.width / state.image.width, canvas.height / state.image.height);
-        const w = state.image.width * scale;
-        const h = state.image.height * scale;
-        return {x: (canvas.width - w) / 2, y: (canvas.height - h) / 2, w, h, scale};
+        const viewport = WiscViewZoom.imageViewport(
+            canvas.width,
+            canvas.height,
+            state.image.width,
+            state.image.height,
+            state.viewZoom,
+            state.viewCenterX,
+            state.viewCenterY
+        );
+        state.viewZoom = viewport.zoom;
+        state.viewCenterX = viewport.centerX;
+        state.viewCenterY = viewport.centerY;
+        return viewport;
+    }
+
+    function resetViewZoom(renderAfter = true) {
+        state.viewZoom = 1;
+        state.viewCenterX = state.image ? state.image.width / 2 : null;
+        state.viewCenterY = state.image ? state.image.height / 2 : null;
+        if (renderAfter) {
+            render();
+        }
+    }
+
+    function setViewZoom(nextZoom, anchorCanvasPixel = null) {
+        if (!state.image) {
+            return;
+        }
+        const current = imageViewport();
+        const zoom = Math.max(
+            WiscViewZoom.MIN_ZOOM,
+            Math.min(WiscViewZoom.MAX_ZOOM, Number(nextZoom) || 1)
+        );
+        if (anchorCanvasPixel && current.scale > 0) {
+            const anchorImageX = (anchorCanvasPixel[0] - current.x) / current.scale;
+            const anchorImageY = (anchorCanvasPixel[1] - current.y) / current.scale;
+            const fitScale = current.scale / current.zoom;
+            const center = WiscViewZoom.centerForAnchor(
+                anchorCanvasPixel[0],
+                anchorCanvasPixel[1],
+                anchorImageX,
+                anchorImageY,
+                fitScale * zoom,
+                canvas.width,
+                canvas.height
+            );
+            state.viewCenterX = center.centerX;
+            state.viewCenterY = center.centerY;
+        }
+        state.viewZoom = zoom;
+        render();
     }
 
     function canvasPixelFromImagePixel(x, y) {
@@ -5562,16 +5616,23 @@ lens-model inverse.}
             showFitResiduals: state.showFitResiduals,
             displayMode: state.displayMode,
             showKdePositionDots: state.showKdePositionDots,
+            viewZoom: state.viewZoom,
+            viewCenterX: state.viewCenterX,
+            viewCenterY: state.viewCenterY,
         };
         state.showFitResiduals = fitResiduals;
         state.displayMode = displayMode;
         state.showKdePositionDots = false;
+        resetViewZoom(false);
         render();
         await new Promise(resolve => window.requestAnimationFrame(resolve));
         const blob = await canvasToPngBlob(canvas);
         state.showFitResiduals = saved.showFitResiduals;
         state.displayMode = saved.displayMode;
         state.showKdePositionDots = saved.showKdePositionDots;
+        state.viewZoom = saved.viewZoom;
+        state.viewCenterX = saved.viewCenterX;
+        state.viewCenterY = saved.viewCenterY;
         render();
         return blob;
     }
@@ -6402,6 +6463,7 @@ lens-model inverse.}
         canvas.classList.toggle("probe-mode", false);
         canvas.classList.toggle("delete-mode", state.deleteDetectionMode);
         canvas.classList.toggle("mask-mode", state.maskMode);
+        canvas.classList.toggle("view-zoomed", state.viewZoom > 1.0001);
         gl.clearColor(0, 0, 0, 1);
         gl.clear(gl.COLOR_BUFFER_BIT);
         if (state.showFitResiduals || state.displayMode === "pairing" || state.displayMode === "pureImage") {
@@ -6445,6 +6507,18 @@ lens-model inverse.}
         }
         controls.highPassWidthValue.textContent = Number(controls.highPassWidth.value).toFixed(0);
         controls.magValue.textContent = Number(controls.maxMag.value).toFixed(1);
+        if (controls.viewZoomValue) {
+            controls.viewZoomValue.textContent = `${state.viewZoom.toFixed(1)}×`;
+        }
+        if (controls.viewZoomOut) {
+            controls.viewZoomOut.disabled = !state.image || state.viewZoom <= WiscViewZoom.MIN_ZOOM + 1e-6;
+        }
+        if (controls.viewZoomReset) {
+            controls.viewZoomReset.disabled = !state.image || state.viewZoom <= WiscViewZoom.MIN_ZOOM + 1e-6;
+        }
+        if (controls.viewZoomIn) {
+            controls.viewZoomIn.disabled = !state.image || state.viewZoom >= WiscViewZoom.MAX_ZOOM - 1e-6;
+        }
         matchInstructions.textContent = matchInstructionText();
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const optpar = currentOptpar();
@@ -6471,6 +6545,7 @@ lens-model inverse.}
             `image high-pass: ${controls.highPassImage.checked ? `${controls.highPassWidth.value} px Gaussian` : "off"}\n` +
             `display clipping: ${controls.displayClipMax ? `${displayClipPercent().toFixed(1)}% ` +
                 `(${(displayClipPercent() / 2).toFixed(1)}% from each tail)` : "off"}\n` +
+            `view zoom: ${state.viewZoom.toFixed(2)}x (display only)\n` +
             `star catalogue: ${activeStarCatalogName()} (${state.catalogStatus})\n` +
             `Yale asterism index: ${state.yaleAsterismIndexStatus}\n` +
             `catalog stars <= mag ${controls.maxMag.value}: ` +
@@ -6479,7 +6554,7 @@ lens-model inverse.}
             `boresight az/el: ${boresightAzElFromCameraAngles(optpar[2], optpar[3]).az.toFixed(2)}, ` +
             `${boresightAzElFromCameraAngles(optpar[2], optpar[3]).el.toFixed(2)} deg\n` +
             `du/dv: ${optpar[5].toPrecision(12)}, ${optpar[6].toPrecision(12)}\n` +
-            `mouse drag: edits lens parameters directly\n` +
+            `mouse drag: ${state.viewZoom > 1.0001 ? "pans zoomed image; Shift/right drag edits lens" : "edits lens parameters directly"}\n` +
             `overlay flip x/y: ${state.flipX}/${state.flipY}\n` +
             `image flip x/y: ${state.imageFlipX}/${state.imageFlipY}\n` +
             `image masks: ${state.maskRegions.length}\n` +
@@ -6554,6 +6629,10 @@ lens-model inverse.}
         }
         if (state.zoomMode) {
             return "Zoom mode: move the mouse over the image to inspect a 100 x 100 raw-pixel region.";
+        }
+        if (state.viewZoom > 1.0001) {
+            return `Image view zoom ${state.viewZoom.toFixed(1)}x: left-drag pans without changing calibration. ` +
+                "Use Fit to show the whole image; Shift-left/right drag still rotates the lens model.";
         }
         if (!state.starMatchMode) {
             if (state.showKdePositionDots) {
@@ -12191,6 +12270,9 @@ lens-model inverse.}
         state.deleteDetectionMode = false;
         state.maskMode = false;
         state.zoomMode = false;
+        state.viewZoom = 1;
+        state.viewCenterX = null;
+        state.viewCenterY = null;
         state.maskRegions = [];
         state.junkStarFinderRegions = [];
         state.badStarFinderDetections = [];
@@ -13801,6 +13883,24 @@ lens-model inverse.}
         playInteractionSound("delete");
         clearIdentifiedStars();
     });
+    if (controls.viewZoomOut) {
+        controls.viewZoomOut.addEventListener("click", () => {
+            setViewZoom(state.viewZoom / Math.SQRT2);
+            playInteractionSound("click");
+        });
+    }
+    if (controls.viewZoomReset) {
+        controls.viewZoomReset.addEventListener("click", () => {
+            resetViewZoom();
+            playInteractionSound("click");
+        });
+    }
+    if (controls.viewZoomIn) {
+        controls.viewZoomIn.addEventListener("click", () => {
+            setViewZoom(state.viewZoom * Math.SQRT2);
+            playInteractionSound("click");
+        });
+    }
 
     canvas.addEventListener("pointerdown", event => {
         focusImageWindow();
@@ -13828,6 +13928,14 @@ lens-model inverse.}
         if (state.displayMode === "pairing" && state.pendingMatch && event.button === 0) {
             event.preventDefault();
             handleCatalogPairClick(event);
+            return;
+        }
+        if (state.viewZoom > 1.0001 && event.button === 0 && !event.shiftKey) {
+            event.preventDefault();
+            state.dragging = true;
+            state.lensDragMode = "viewPan";
+            state.lastMouse = [event.clientX, event.clientY];
+            canvas.setPointerCapture(event.pointerId);
             return;
         }
         playPingSound();
@@ -13861,7 +13969,14 @@ lens-model inverse.}
         const alpha = Number(controls.rotAlpha.value) || 0;
         const beta = Number(controls.rotBeta.value) || 0;
         const gamma = Number(controls.rotGamma.value) || 0;
-        if (state.lensDragMode === "zenithPosition") {
+        if (state.lensDragMode === "viewPan") {
+            const viewport = imageViewport();
+            state.viewCenterX -= dxCss * dpr / viewport.scale;
+            state.viewCenterY -= dyCss * dpr / viewport.scale;
+            state.lastMouse = [event.clientX, event.clientY];
+            render();
+            return;
+        } else if (state.lensDragMode === "zenithPosition") {
             const zenith = zenithCanvasPixelForCameraAngles(alpha, beta, gamma);
             if (!zenith) {
                 return;
@@ -13919,6 +14034,11 @@ lens-model inverse.}
     });
     canvas.addEventListener("wheel", event => {
         event.preventDefault();
+        if ((event.ctrlKey || event.metaKey) && state.image) {
+            const factor = Math.exp(-event.deltaY * 0.002);
+            setViewZoom(state.viewZoom * factor, eventToCanvasPixel(event));
+            return;
+        }
         const currentX = Number(controls.fScaleX.value) || 1.0;
         const currentY = Number(controls.fScaleY.value) || 1.0;
         const factor = Math.exp(-event.deltaY * 0.00045);

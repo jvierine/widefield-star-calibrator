@@ -120,6 +120,10 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
 - `M` + click or drag: paint fast 128x128 black not-star mask tiles. Masked
   tiles are ignored by later star finding.
 - `Z`: show the zoom/magnifier view.
+- Use the viewer's `-`, `Fit`, and `+` controls for persistent image zoom up to
+  16x. Left-drag pans while zoomed; `Cmd/Ctrl` + mouse wheel zooms around the
+  pointer. View zoom affects only display and never changes calibration pixels
+  or report framing.
 - `Cmd/Ctrl Z`: undo the most recent accepted fit.
 - `Esc`: cancel the current interaction or close the density popup.
 - `L` or `I'm feeling lucky...`: run automatic star finding, asterism

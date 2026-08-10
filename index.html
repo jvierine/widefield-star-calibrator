@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WISC - Widefield Star Calibrator</title>
-<link rel="stylesheet" href="style.css?v=20260710-slider-controls">
+<link rel="stylesheet" href="style.css?v=20260810-image-view-zoom">
 </head>
 <body>
 <header class="topbar">
@@ -22,7 +22,7 @@
             <kbd>G</kbd> Levenberg-Marquardt fit,
             <kbd>D</kbd> delete pairing,
             <kbd>M</kbd> mark bad detections,
-            <kbd>Z</kbd> zoom,
+            <kbd>Z</kbd> magnifier,
             <kbd>C</kbd> pairing/Stellarium view,
             <kbd>X</kbd> pure image/Stellarium,
             <kbd>N</kbd> star names,
@@ -35,6 +35,7 @@
             <kbd>Left drag</kbd> move view,
             <kbd>Shift-left/right drag</kbd> rotate view,
             <kbd>Wheel</kbd> scale view,
+            <kbd>Cmd/Ctrl Wheel</kbd> zoom image,
             <kbd>Esc</kbd> cancel.
         </div>
     </div>
@@ -55,6 +56,12 @@
     <section class="viewer-panel">
         <canvas id="glCanvas" tabindex="0"></canvas>
         <div class="cardinal-layer" id="cardinalLayer" aria-hidden="true"></div>
+        <div class="view-zoom-controls" role="group" aria-label="Image zoom controls">
+            <button id="viewZoomOut" type="button" title="Zoom out" aria-label="Zoom out">&minus;</button>
+            <button id="viewZoomReset" type="button" title="Fit the whole image in the viewer">Fit</button>
+            <output id="viewZoomValue" aria-live="polite">1.0&times;</output>
+            <button id="viewZoomIn" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+        </div>
         <div id="starPickingLegend" class="star-picking-legend" role="dialog" aria-label="Star picking legend" hidden>
             <div id="starPickingLegendHeader" class="star-picking-legend-header">
                 <h2>Star Picking</h2>
@@ -299,6 +306,7 @@ window.MathJax = {
 <script src="js/star_detector.js?v=20260603-float32-dynamic-range"></script>
 <script src="js/auto_identifier.js?v=20260526a"></script>
 <script src="js/aida_config.js?v=20260603a"></script>
-<script src="js/app.js?v=0.3.53-miracle-error-evaluator"></script>
+<script src="js/view_zoom.js?v=20260810-image-view-zoom"></script>
+<script src="js/app.js?v=0.3.54-image-view-zoom"></script>
 </body>
 </html>
