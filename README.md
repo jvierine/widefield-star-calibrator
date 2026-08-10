@@ -92,9 +92,8 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
   estimate and pair them with catalog stars.
 - Fits the model-specific `optpar` vector: eight parameters for AIDA radial
   models, and twelve for Brown-Conrady with `k1`, `k2`, `k3`, `p1`, and `p2`.
-- Exports and imports the fitted `optpar`, exports mapper code as Python,
-  Julia, C, or MATLAB, and can download an HDF5 azimuth/elevation map for
-  every image pixel.
+- Copies the fitted `optpar`, directly downloads the compact fit HDF5, and can
+  download an HDF5 azimuth/elevation map for every image pixel.
 - Generates a ZIP report bundle with LaTeX source, star-overlay figures,
   residual plots, one base image, bare Python overlay scripts, and an optional
   script that creates the HDF5 az/el grid locally.
@@ -252,17 +251,9 @@ radial models it contains
 Brown-Conrady (`optmod 20`), it contains
 `[20, f1, f2, alpha, beta, gamma, du, dv, k1, k2, k3, p1, p2]`.
 
-The export language selector can copy the array and mapper code as Python,
-Julia, C, or MATLAB. `Paste optpar` accepts copied exports such as
-`optpar = [...]`, C brace arrays, MATLAB bracket arrays, or plain numeric
-vectors. The generated mapper code reads the model number from the first
-element before applying the parameter vector. The Python mapper is a small
-calibration module with the current `optpar`, image width, image height, the
-lens-model implementation, and a ready-to-use `WiscCamera` instance already
-filled in. It is complete as copied; no extra WISC Python file is needed. The
-Julia, C, and MATLAB exports provide the same forward `az_el_to_image`
-projection so they can be embedded in analysis code and inverted numerically
-when needed.
+The export language selector controls the syntax used by `Copy optpar`:
+Python, Julia, C, or MATLAB. The results ZIP still includes the complete
+self-contained Python mapper for the fitted model.
 
 The `Download az/el HDF5` button writes a browser-generated HDF5 file with
 `/azimuth_deg` and `/elevation_deg` Float32 datasets shaped
@@ -292,6 +283,10 @@ models, plus `wisc_mapper.py` for the recommended native fit. It also includes
 HDF5 file and evaluates the absolute angular difference between the native WISC
 fit and MIRACLE approximation at a specified 1-based image row/column or over a
 sampled image-aligned grid.
+
+The `Download fit HDF5` button downloads the same authoritative
+`<image-prefix>_calibration.h5` product directly, without building the report
+ZIP.
 
 The results ZIP also contains `<image-prefix>.miracle`, a plain ASCII file.
 Its first line is a `%` comment containing parameter names and units. The

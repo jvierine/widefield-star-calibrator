@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.55";
+    const APP_VERSION = "v0.3.56";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -131,8 +131,7 @@
         undoFit: document.getElementById("undoFit"),
         exportLanguage: document.getElementById("exportLanguage"),
         copyOptpar: document.getElementById("copyOptpar"),
-        pasteOptpar: document.getElementById("pasteOptpar"),
-        copyPythonMapper: document.getElementById("copyPythonMapper"),
+        downloadFitHdf5: document.getElementById("downloadFitHdf5"),
         downloadAzElHdf5: document.getElementById("downloadAzElHdf5"),
         downloadFitReport: document.getElementById("downloadFitReport"),
         localTestCaseTools: document.getElementById("localTestCaseTools"),
@@ -1480,67 +1479,6 @@
         return window.AidaExportGenerators.optparArrayText(exportContext(), language);
     }
 
-    function parseOptparText(text) {
-        const raw = String(text || "").trim();
-        if (!raw) {
-            return null;
-        }
-        const braceMatch = raw.match(/\{([\s\S]*?)\}/);
-        const squareMatches = Array.from(raw.matchAll(/\[([^\[\]]*)\]/g));
-        const squareMatch = squareMatches.length ? squareMatches[squareMatches.length - 1] : null;
-        const body = braceMatch ? braceMatch[1] : squareMatch ? squareMatch[1] : raw;
-        const values = body
-            .replace(/;/g, " ")
-            .split(/[,\s]+/)
-            .map(value => value.trim())
-            .filter(Boolean)
-            .map(Number);
-        if (values.length < 9 || values.some(value => !Number.isFinite(value))) {
-            return null;
-        }
-        const optmod = Math.round(values[0]);
-        if (![1, 2, 3, 4, 5, 6, 12, BROWN_CONRADY_OPTMOD].includes(optmod)) {
-            return null;
-        }
-        const required = requiredOptparLength(optmod);
-        if (values.length - 1 < required) {
-            return null;
-        }
-        return {optmod, optpar: values.slice(1, 1 + required)};
-    }
-
-    async function readOptparImportText() {
-        if (navigator.clipboard && window.isSecureContext) {
-            try {
-                const text = await navigator.clipboard.readText();
-                if (text && text.trim()) {
-                    return text;
-                }
-            } catch (_error) {
-                // Fall through to manual paste prompt.
-            }
-        }
-        return window.prompt("Paste optpar array, including optmod as the first value:", optparArrayText("python")) || "";
-    }
-
-    async function pasteOptparIntoGui() {
-        const text = await readOptparImportText();
-        const parsed = parseOptparText(text);
-        if (!parsed) {
-            state.fitMessage = "paste optpar: could not parse [optmod, ...optpar]";
-            render();
-            return;
-        }
-        rememberFitState("pasted optpar");
-        controls.optmod.value = String(parsed.optmod);
-        updateOptmodUi();
-        applyOptpar(parsed.optpar);
-        state.lastFitVector = null;
-        state.lastAcceptedFitVector = null;
-        state.fitMessage = `paste optpar: applied optmod ${parsed.optmod}`;
-        recomputeAndRender();
-    }
-
     function safeCaseId(value) {
         return String(value || "aida_case")
             .replace(/\.[^.]*$/, "")
@@ -2171,10 +2109,6 @@
         loadImageSource(payload.imageUrl, imageName, () => {
             restoreTestCaseState(payload.testCase);
         }, false, null, imageName);
-    }
-
-    function exportFunctionText(language = selectedExportLanguage()) {
-        return window.AidaExportGenerators.mapperCode(exportContext(), language);
     }
 
     function exportContext() {
@@ -4613,6 +4547,51 @@ end
             state.fitMessage = `az/el HDF5 export: downloaded ${filename}`;
         } catch (error) {
             state.fitMessage = `az/el HDF5 export failed: ${error && error.message ? error.message : error}`;
+        } finally {
+            hideLoadingProgress();
+            if (button) {
+                button.disabled = false;
+            }
+            render();
+        }
+    }
+
+    async function downloadFitHdf5() {
+        if (!state.image) {
+            state.fitMessage = "fit HDF5 export: load an image first";
+            render();
+            return;
+        }
+        const button = controls.downloadFitHdf5;
+        if (button) {
+            button.disabled = true;
+        }
+        try {
+            playInteractionSound("click");
+            setLoadingProgress(10, "Preparing fit HDF5 export...");
+            const rows = matchResidualRows();
+            const prefix = window.AidaMiracleExport.imagePrefix(state.imageName || "wisc");
+            const miracleProduct = miracleCalibrationProduct();
+            const starRows = selectedStarDataRows();
+            const metadata = reportMetadata(rows, miracleProduct);
+            setLoadingProgress(55, "Loading HDF5 writer...");
+            const {h5wasm, FS} = await loadH5Wasm();
+            const filename = resultsHdf5Filename(prefix);
+            setLoadingProgress(78, "Writing fit HDF5 datasets...");
+            const bytes = writeResultsHdf5Bytes(
+                h5wasm,
+                FS,
+                filename,
+                prefix,
+                metadata,
+                miracleProduct,
+                starRows,
+            );
+            setLoadingProgress(94, "Starting fit HDF5 download...");
+            downloadBlob(new Blob([bytes], {type: "application/x-hdf5"}), filename);
+            state.fitMessage = `fit HDF5 export: downloaded ${filename}`;
+        } catch (error) {
+            state.fitMessage = `fit HDF5 export failed: ${error && error.message ? error.message : error}`;
         } finally {
             hideLoadingProgress();
             if (button) {
@@ -14388,17 +14367,9 @@ lens-model inverse.}
         const language = selectedExportLanguage();
         copyTextToClipboard(optparArrayText(language), `optpar ${language} array`);
     });
-    if (controls.pasteOptpar) {
-        controls.pasteOptpar.addEventListener("click", () => {
-            playInteractionSound("click");
-            pasteOptparIntoGui();
-        });
+    if (controls.downloadFitHdf5) {
+        controls.downloadFitHdf5.addEventListener("click", downloadFitHdf5);
     }
-    controls.copyPythonMapper.addEventListener("click", () => {
-        playInteractionSound("click");
-        const language = selectedExportLanguage();
-        copyTextToClipboard(exportFunctionText(language), `${language} mapper code`);
-    });
     if (controls.downloadAzElHdf5) {
         controls.downloadAzElHdf5.addEventListener("click", downloadAzElHdf5);
     }

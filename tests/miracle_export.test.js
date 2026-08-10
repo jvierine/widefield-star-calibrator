@@ -166,10 +166,14 @@ test("results download includes MIRACLE, compact HDF5, selected-star, and error 
     const app = fs.readFileSync(path.join(root, "js", "app.js"), "utf8");
     const index = fs.readFileSync(path.join(root, "index.html"), "utf8");
     assert.match(index, />Download results</);
+    assert.match(index, />Download fit HDF5</);
+    assert.doesNotMatch(index, />Paste optpar</);
+    assert.doesNotMatch(index, />Copy mapper code</);
     assert.match(index, /js\/miracle_export\.js/);
     assert.ok(app.includes("`${prefix}.miracle`"));
     assert.match(app, /selected_stars\.tsv/);
     assert.match(app, /_calibration\.h5/);
+    assert.match(app, /async function downloadFitHdf5/);
     assert.match(app, /miracle_parameters/);
     assert.match(app, /miracle_equidistant_parameters/);
     assert.match(app, /miracle_equisolid_parameters/);
