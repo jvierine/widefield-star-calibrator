@@ -339,8 +339,9 @@
             lines.push(
                 "% MIRACLE_equisolid Glat[deg] Glon[deg] " +
                 "Xc=zenithRow[pixel,1-based] Yc=zenithCol[pixel,1-based] " +
-                "k_equisolid[pixel] rotAngle[radian] " +
-                "equation:d_px=k_equisolid*sin(z_rad/2)"
+                "k_equisolid[pixel] a[dimensionless,fixed] p[pixel,fixed] " +
+                "rotAngle[radian] RMS[pixel] " +
+                "equation:d_px=k_equisolid*sin(0.5*z_rad) a=0.5 p=0"
             );
             lines.push([
                 product.equisolid.glatDeg,
@@ -348,7 +349,10 @@
                 product.equisolid.xcPx,
                 product.equisolid.ycPx,
                 product.equisolid.kPx,
+                0.5,
+                0,
                 product.equisolid.rotationRad,
+                product.equisolidFitSummary.rmsPixel,
             ].map(asciiNumber).join(" "));
             const appendFit = (name, fit, summary, scaleName, scaleValue) => {
                 lines.push(

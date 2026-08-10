@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.57";
+    const APP_VERSION = "v0.3.58";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -5597,7 +5597,7 @@ print(f"wrote {OUT} with {count} stars")
 
 Files:
 - report.tex: LaTeX source for the lens model fitting report.
-- ${prefix}.miracle: one backward-compatible MIRACLE ASCII file. The first commented header and numeric row contain Glat Glon Xc Yc k_equdist rotAngle; a second commented header and numeric row contain Glat Glon Xc Yc k_equisolid rotAngle; following % comment lines summarize both fits and their errors.
+- ${prefix}.miracle: one backward-compatible MIRACLE ASCII file containing only the d=k*z equidistant and d=k*sin(0.5*z) equisolid fits. The legacy first row is Glat Glon Xc Yc k_equdist rotAngle. The second row is Glat Glon Xc Yc k_equisolid a p rotAngle RMS, with a=0.5 and p=0 fixed. Comment lines name all fields and units.
 - ${prefix}_calibration.h5: authoritative compact HDF5 product containing the best native WISC optpar, equidistant/equisolid MIRACLE compatibility fits, selected-star coordinates, and all residuals.
 - read_calibration_hdf5.py and read_calibration_hdf5.m: working examples that read and use all three models plus selected-star data.
 - wisc_mapper.py: complete Python implementation of the recommended native AIDA/WISC fit.
@@ -5769,10 +5769,11 @@ ${mapperFunction}
             [miracle.glatDeg, miracle.glonDeg, miracle.xcPx, miracle.ycPx,
                 miracle.kPxPerDeg, miracle.rotationRad]
                 .map(value => Number(value).toPrecision(12)).join(" "),
-            "% MIRACLE_equisolid: Glat Glon Xc Yc k_equisolid[pixel] rotAngle[radian]",
+            "% MIRACLE_equisolid: Glat Glon Xc Yc k_equisolid[pixel] a[dimensionless,fixed] p[pixel,fixed] rotAngle[radian] RMS[pixel]",
             [miracle.equisolid.glatDeg, miracle.equisolid.glonDeg,
                 miracle.equisolid.xcPx, miracle.equisolid.ycPx,
-                miracle.equisolid.kPx, miracle.equisolid.rotationRad]
+                miracle.equisolid.kPx, 0.5, 0, miracle.equisolid.rotationRad,
+                miracle.equisolidFitSummary.rmsPixel]
                 .map(value => Number(value).toPrecision(12)).join(" "),
         ].join("\n") : "n/a";
         const miraclePixelSummary = miracle && miracle.pixelErrorSummary;
@@ -5877,8 +5878,10 @@ ${lensEquationLatex(optpar, optmod)}
 \\section{Generated Data Products}
 The results ZIP contains a plain ASCII \\texttt{.miracle} file. A commented
 header with parameter names and units precedes each of its two numeric rows.
-The first row is the legacy equidistant fit and the second is the equisolid fit;
-both contain six whitespace-delimited numbers and no JSON syntax. It also contains
+The first row is the six-value legacy equidistant fit. The second row is the
+simple equisolid fit and explicitly carries its fixed \\(a=0.5\\), fixed \\(p=0\\),
+rotation, and pixel RMS. There is no generalized third model. Neither row uses
+JSON syntax. It also contains
 \\texttt{selected\\_stars.tsv}, whose \\texttt{altitude\\_deg},
 \\texttt{azimuth\\_deg}, \\texttt{star\\_row\\_px\\_1based}, and
 \\texttt{star\\_col\\_px\\_1based} columns can be passed directly as
@@ -6060,12 +6063,14 @@ Here \\(k_{\\rm eq}\\) is in pixels per radian, \\(k_{\\rm es}\\) is in pixels,
 \\texttt{rotAngle} is in radians, and
 \\((X_{\\mathrm{row}},Y_{\\mathrm{col}})=(1,1)\\) is the upper-left pixel.
 For compatibility, the first six-value MIRACLE row below stores the equidistant
-scale in pixels per degree. The second six-value row stores the equisolid scale
-in pixels.
+scale in pixels per degree. The second row stores the simple equisolid scale in
+pixels, fixed \\(a=0.5\\), fixed \\(p=0\\), rotation, and pixel RMS.
 
-Both MIRACLE-compatible calibrations use the historical parameter order
-\\texttt{Glat Glon Xc Yc k rotAngle}:
-\\begingroup\\footnotesize
+The first row uses the historical parameter order
+\\texttt{Glat Glon Xc Yc k rotAngle}. The equisolid row keeps the same
+geographic/center/scale prefix and then records its fixed \\texttt{a} and
+\\texttt{p}, rotation, and RMS:
+\\begingroup\\tiny
 \\begin{verbatim}
 ${miracleText}
 \\end{verbatim}
@@ -6074,7 +6079,8 @@ Here \\texttt{Xc} is the vertical image coordinate (row), \\texttt{Yc} is the
 horizontal image coordinate (column), and $(1,1)$ is the upper-left pixel.
 In the first row, \\texttt{k} is in pixels per degree for $d=kz_{\\rm degree}$.
 In the second row, \\texttt{k} is in pixels for
-$d=k\\sin(z_{\\rm rad}/2)$. In both rows,
+$d=k\\sin(0.5z_{\\rm rad})$; \\texttt{a=0.5} and \\texttt{p=0} are fixed,
+and the final value is the two-dimensional selected-star RMS in pixels. In both rows,
 \\texttt{rotAngle} is in radians. A positive angle means that rotating the
 image clockwise aligns north upward. The fit uses the unmirrored convention
 where east is left. Calibration source: \\texttt{${escapeTex(miracle && miracle.fitSource || "n/a")}}.
@@ -6095,6 +6101,8 @@ $X_c$ offset from image center [px] & ${tableNumber(equidistant && equidistant.c
 $Y_c$ offset from image center [px] & ${tableNumber(equidistant && equidistant.centerOffsetColPx)} & ${tableNumber(equisolid && equisolid.centerOffsetColPx)} & ${tableNumber(nativeAida && nativeAida.centerOffsetColPx)} \\\\
 $k$ [px/degree] & ${tableNumber(equidistant && equidistant.kPxPerDeg, 6)} & -- & -- \\\\
 $k$ [px/radian or px] & ${tableNumber(equidistant && equidistant.kPxPerRad, 6)} & ${tableNumber(equisolid && equisolid.kPx, 6)} & -- \\\\
+$a$ & -- & 0.5 (fixed) & -- \\\\
+$p$ [px] & -- & 0 (fixed) & -- \\\\
 rotAngle [rad] & ${tableNumber(equidistant && equidistant.rotationRad, 6)} & ${tableNumber(equisolid && equisolid.rotationRad, 6)} & -- \\\\
 $f_1$ / $f_2$ & -- & -- & ${tableNumber(aidaOptpar[0], 8)} / ${tableNumber(aidaOptpar[1], 8)} \\\\
 $\\alpha$ / $\\beta$ / $\\gamma$ [deg] & -- & -- & ${tableNumber(aidaOptpar[2], 6)} / ${tableNumber(aidaOptpar[3], 6)} / ${tableNumber(aidaOptpar[4], 6)} \\\\

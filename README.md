@@ -292,13 +292,16 @@ The results ZIP also contains `<image-prefix>.miracle`, a plain ASCII file.
 Its first commented header and numeric row contain the backward-compatible
 equidistant `Glat Glon Xc Yc k_equdist rotAngle` parameters. A second commented
 header and numeric row contain the equisolid
-`Glat Glon Xc Yc k_equisolid rotAngle` parameters. `Glat` and `Glon` are station
+`Glat Glon Xc Yc k_equisolid a p rotAngle RMS` values for the simple
+`d = k_equisolid sin(0.5 z_rad)` model, with `a = 0.5` and `p = 0` fixed.
+No generalized `k sin(a z) + p` model is fitted. `Glat` and `Glon` are station
 geographic coordinates in degrees. MIRACLE's historical image axes are
 intentionally twisted: `Xc` is the 1-based vertical coordinate
 (`zenithRow`) and `Yc` is the 1-based horizontal coordinate (`zenithCol`),
 with `(1, 1)` at the upper-left. `k_equdist` is in pixels per degree for
 `d = k_equdist z_degree`; `k_equisolid` is in pixels for
-`d = k_equisolid sin(z_rad/2)`; and `rotAngle` is in radians. A positive angle means rotating the image
+`d = k_equisolid sin(z_rad/2)`; `rotAngle` is in radians; and `RMS` is the
+two-dimensional selected-star residual RMS in pixels. A positive angle means rotating the image
 clockwise aligns north upward, equivalently the uncorrected image is rotated
 counter-clockwise. Additional `%` comment lines summarize both fits and their
 residual errors. The legacy equidistant row remains the first numeric row.

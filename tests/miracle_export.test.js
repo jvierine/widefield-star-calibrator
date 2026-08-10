@@ -113,15 +113,15 @@ test("extended MIRACLE ASCII writes equidistant and equisolid numeric rows", () 
     const numericLines = text.trim().split("\n").filter(line => !line.startsWith("%"));
     assert.equal(numericLines.length, 2);
     assert.equal(numericLines[0].trim().split(/\s+/).length, 6);
-    assert.equal(numericLines[1].trim().split(/\s+/).length, 6);
+    assert.equal(numericLines[1].trim().split(/\s+/).length, 9);
     assert.deepEqual(numericLines[0].split(/\s+/).map(Number), [0, 0, 331, 411, 4.8, 0.42]);
-    assert.deepEqual(
-        numericLines[1].split(/\s+/).map(Number),
-        [0, 0, 331, 411, 1946.7, 0.42],
-    );
+    const equisolidValues = numericLines[1].split(/\s+/).map(Number);
+    assert.deepEqual(equisolidValues.slice(0, 8), [0, 0, 331, 411, 1946.7, 0.5, 0, 0.42]);
+    assert.ok(equisolidValues[8] < 1e-9);
     assert.match(text, /% MIRACLE_equidistant Glat\[deg\].*k_equdist\[pixel\/degree\]/);
     assert.match(text, /% MIRACLE_equisolid Glat\[deg\].*k_equisolid\[pixel\]/);
-    assert.match(text, /equation:d_px=k_equisolid\*sin\(z_rad\/2\)/);
+    assert.match(text, /a\[dimensionless,fixed\] p\[pixel,fixed\]/);
+    assert.match(text, /equation:d_px=k_equisolid\*sin\(0\.5\*z_rad\) a=0\.5 p=0/);
     assert.match(text, /k_equdist\[pixel\/radian\]=/);
     assert.match(text, /k_equisolid\[pixel\]=/);
     assert.match(text, /rms_angle\[degree\]=/);
