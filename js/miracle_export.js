@@ -323,8 +323,9 @@
 
     function formatMiracleAscii(calibration, product = null) {
         const comment =
-            "% Glat[deg] Glon[deg] Xc=zenithRow[pixel,1-based] " +
-            "Yc=zenithCol[pixel,1-based] k[pixel/degree] rotAngle[radian]";
+            "% MIRACLE_equidistant Glat[deg] Glon[deg] " +
+            "Xc=zenithRow[pixel,1-based] Yc=zenithCol[pixel,1-based] " +
+            "k_equdist[pixel/degree] rotAngle[radian] equation:d_px=k_equdist*z_degree";
         const values = [
             calibration.glatDeg,
             calibration.glonDeg,
@@ -335,6 +336,20 @@
         ].map(asciiNumber).join(" ");
         const lines = [comment, values];
         if (product && product.equidistant && product.equisolid) {
+            lines.push(
+                "% MIRACLE_equisolid Glat[deg] Glon[deg] " +
+                "Xc=zenithRow[pixel,1-based] Yc=zenithCol[pixel,1-based] " +
+                "k_equisolid[pixel] rotAngle[radian] " +
+                "equation:d_px=k_equisolid*sin(z_rad/2)"
+            );
+            lines.push([
+                product.equisolid.glatDeg,
+                product.equisolid.glonDeg,
+                product.equisolid.xcPx,
+                product.equisolid.ycPx,
+                product.equisolid.kPx,
+                product.equisolid.rotationRad,
+            ].map(asciiNumber).join(" "));
             const appendFit = (name, fit, summary, scaleName, scaleValue) => {
                 lines.push(
                     `% WISC_${name} ${scaleName}=${asciiNumber(scaleValue)} ` +

@@ -289,17 +289,19 @@ The `Download fit HDF5` button downloads the same authoritative
 ZIP.
 
 The results ZIP also contains `<image-prefix>.miracle`, a plain ASCII file.
-Its first line is a `%` comment containing parameter names and units. The
-second line contains the backward-compatible `Glat Glon Xc Yc k rotAngle` row. `Glat` and `Glon` are station
+Its first commented header and numeric row contain the backward-compatible
+equidistant `Glat Glon Xc Yc k_equdist rotAngle` parameters. A second commented
+header and numeric row contain the equisolid
+`Glat Glon Xc Yc k_equisolid rotAngle` parameters. `Glat` and `Glon` are station
 geographic coordinates in degrees. MIRACLE's historical image axes are
 intentionally twisted: `Xc` is the 1-based vertical coordinate
 (`zenithRow`) and `Yc` is the 1-based horizontal coordinate (`zenithCol`),
-with `(1, 1)` at the upper-left. `k` is in pixels per degree for `d = k z`,
-and `rotAngle` is in radians. A positive angle means rotating the image
+with `(1, 1)` at the upper-left. `k_equdist` is in pixels per degree for
+`d = k_equdist z_degree`; `k_equisolid` is in pixels for
+`d = k_equisolid sin(z_rad/2)`; and `rotAngle` is in radians. A positive angle means rotating the image
 clockwise aligns north upward, equivalently the uncorrected image is rotated
-counter-clockwise. Additional `%` comment lines summarize the equidistant and
-equisolid fits without adding another MIRACLE parameter file or breaking the
-legacy six-number row.
+counter-clockwise. Additional `%` comment lines summarize both fits and their
+residual errors. The legacy equidistant row remains the first numeric row.
 
 WISC fits the MIRACLE camera parameters directly from selected-star
 row/column positions using the unmirrored east-left projection in the MIRACLE

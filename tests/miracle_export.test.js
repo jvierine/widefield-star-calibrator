@@ -93,7 +93,7 @@ test("equisolid MIRACLE fit recovers d = k sin(z/2) and center offsets", () => {
     assert.ok(summary.rmsAngleDeg < 1e-6);
 });
 
-test("extended MIRACLE ASCII keeps one legacy numeric row and adds both fits as comments", () => {
+test("extended MIRACLE ASCII writes equidistant and equisolid numeric rows", () => {
     const equidistant = Miracle.fitCalibration(syntheticSamples(), {
         imageHeight: 700,
         imageWidth: 900,
@@ -111,8 +111,17 @@ test("extended MIRACLE ASCII keeps one legacy numeric row and adds both fits as 
         equisolidFitSummary: Miracle.projectionResidualSummary(equisolidResiduals),
     });
     const numericLines = text.trim().split("\n").filter(line => !line.startsWith("%"));
-    assert.equal(numericLines.length, 1);
+    assert.equal(numericLines.length, 2);
     assert.equal(numericLines[0].trim().split(/\s+/).length, 6);
+    assert.equal(numericLines[1].trim().split(/\s+/).length, 6);
+    assert.deepEqual(numericLines[0].split(/\s+/).map(Number), [0, 0, 331, 411, 4.8, 0.42]);
+    assert.deepEqual(
+        numericLines[1].split(/\s+/).map(Number),
+        [0, 0, 331, 411, 1946.7, 0.42],
+    );
+    assert.match(text, /% MIRACLE_equidistant Glat\[deg\].*k_equdist\[pixel\/degree\]/);
+    assert.match(text, /% MIRACLE_equisolid Glat\[deg\].*k_equisolid\[pixel\]/);
+    assert.match(text, /equation:d_px=k_equisolid\*sin\(z_rad\/2\)/);
     assert.match(text, /k_equdist\[pixel\/radian\]=/);
     assert.match(text, /k_equisolid\[pixel\]=/);
     assert.match(text, /rms_angle\[degree\]=/);
@@ -147,10 +156,10 @@ test("MIRACLE file has a units/name comment and one ASCII row with six numeric v
     });
     assert.match(text, /^(?:[\x20-\x7e]+\n){2}$/);
     const lines = text.trim().split("\n");
-    assert.match(lines[0], /^% Glat\[deg\] Glon\[deg\]/);
+    assert.match(lines[0], /^% MIRACLE_equidistant Glat\[deg\] Glon\[deg\]/);
     assert.match(lines[0], /Xc=zenithRow\[pixel,1-based\]/);
     assert.match(lines[0], /Yc=zenithCol\[pixel,1-based\]/);
-    assert.match(lines[0], /k\[pixel\/degree\] rotAngle\[radian\]$/);
+    assert.match(lines[0], /k_equdist\[pixel\/degree\] rotAngle\[radian\]/);
     assert.equal(lines[1].split(/\s+/).length, 6);
     assert.doesNotMatch(lines[1], /[{}\[\]",:]/);
     assert.deepEqual(lines[1].split(/\s+/).map(Number), [69.1, 20.3, 331, 411, 4.8, 0.42]);

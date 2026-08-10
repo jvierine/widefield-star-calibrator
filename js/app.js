@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.56";
+    const APP_VERSION = "v0.3.57";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -5597,7 +5597,7 @@ print(f"wrote {OUT} with {count} stars")
 
 Files:
 - report.tex: LaTeX source for the lens model fitting report.
-- ${prefix}.miracle: one backward-compatible MIRACLE ASCII file. Its legacy numeric row remains Glat Glon Xc Yc k rotAngle; following % comment lines summarize both fitted MIRACLE projections and their errors.
+- ${prefix}.miracle: one backward-compatible MIRACLE ASCII file. The first commented header and numeric row contain Glat Glon Xc Yc k_equdist rotAngle; a second commented header and numeric row contain Glat Glon Xc Yc k_equisolid rotAngle; following % comment lines summarize both fits and their errors.
 - ${prefix}_calibration.h5: authoritative compact HDF5 product containing the best native WISC optpar, equidistant/equisolid MIRACLE compatibility fits, selected-star coordinates, and all residuals.
 - read_calibration_hdf5.py and read_calibration_hdf5.m: working examples that read and use all three models plus selected-star data.
 - wisc_mapper.py: complete Python implementation of the recommended native AIDA/WISC fit.
@@ -5765,13 +5765,16 @@ ${mapperFunction}
         const optparText = `[\n${optparLines.join(",\n")}\n]`;
         const miracle = metadata.miracle;
         const miracleText = miracle ? [
-            miracle.glatDeg,
-            miracle.glonDeg,
-            miracle.xcPx,
-            miracle.ycPx,
-            miracle.kPxPerDeg,
-            miracle.rotationRad,
-        ].map(value => Number(value).toPrecision(12)).join(" ") : "n/a";
+            "% MIRACLE_equidistant: Glat Glon Xc Yc k_equdist[pixel/degree] rotAngle[radian]",
+            [miracle.glatDeg, miracle.glonDeg, miracle.xcPx, miracle.ycPx,
+                miracle.kPxPerDeg, miracle.rotationRad]
+                .map(value => Number(value).toPrecision(12)).join(" "),
+            "% MIRACLE_equisolid: Glat Glon Xc Yc k_equisolid[pixel] rotAngle[radian]",
+            [miracle.equisolid.glatDeg, miracle.equisolid.glonDeg,
+                miracle.equisolid.xcPx, miracle.equisolid.ycPx,
+                miracle.equisolid.kPx, miracle.equisolid.rotationRad]
+                .map(value => Number(value).toPrecision(12)).join(" "),
+        ].join("\n") : "n/a";
         const miraclePixelSummary = miracle && miracle.pixelErrorSummary;
         const miracleRms = miraclePixelSummary && Number.isFinite(miraclePixelSummary.rmsAngularDeg) ?
             miraclePixelSummary.rmsAngularDeg.toFixed(3) :
@@ -5872,9 +5875,10 @@ ${lensEquationLatex(optpar, optmod)}
 \\end{figure}
 
 \\section{Generated Data Products}
-The results ZIP contains a plain ASCII \\texttt{.miracle} file. Its first line
-is a \\texttt{\\%} comment containing parameter names and units; its second line
-contains six whitespace-delimited numbers and no JSON syntax. It also contains
+The results ZIP contains a plain ASCII \\texttt{.miracle} file. A commented
+header with parameter names and units precedes each of its two numeric rows.
+The first row is the legacy equidistant fit and the second is the equisolid fit;
+both contain six whitespace-delimited numbers and no JSON syntax. It also contains
 \\texttt{selected\\_stars.tsv}, whose \\texttt{altitude\\_deg},
 \\texttt{azimuth\\_deg}, \\texttt{star\\_row\\_px\\_1based}, and
 \\texttt{star\\_col\\_px\\_1based} columns can be passed directly as
@@ -6055,10 +6059,11 @@ Y_{\\mathrm{col}} &= Y_c - d\\sin(\\theta + \\mathrm{rotAngle}).
 Here \\(k_{\\rm eq}\\) is in pixels per radian, \\(k_{\\rm es}\\) is in pixels,
 \\texttt{rotAngle} is in radians, and
 \\((X_{\\mathrm{row}},Y_{\\mathrm{col}})=(1,1)\\) is the upper-left pixel.
-For compatibility, the original six-value MIRACLE row below stores the
-equidistant scale in pixels per degree.
+For compatibility, the first six-value MIRACLE row below stores the equidistant
+scale in pixels per degree. The second six-value row stores the equisolid scale
+in pixels.
 
-The MIRACLE-compatible calibration uses the historical parameter order
+Both MIRACLE-compatible calibrations use the historical parameter order
 \\texttt{Glat Glon Xc Yc k rotAngle}:
 \\begingroup\\footnotesize
 \\begin{verbatim}
@@ -6067,7 +6072,9 @@ ${miracleText}
 \\endgroup
 Here \\texttt{Xc} is the vertical image coordinate (row), \\texttt{Yc} is the
 horizontal image coordinate (column), and $(1,1)$ is the upper-left pixel.
-The scale \\texttt{k} is in pixels per degree for $d=kz$, and
+In the first row, \\texttt{k} is in pixels per degree for $d=kz_{\\rm degree}$.
+In the second row, \\texttt{k} is in pixels for
+$d=k\\sin(z_{\\rm rad}/2)$. In both rows,
 \\texttt{rotAngle} is in radians. A positive angle means that rotating the
 image clockwise aligns north upward. The fit uses the unmirrored convention
 where east is left. Calibration source: \\texttt{${escapeTex(miracle && miracle.fitSource || "n/a")}}.
