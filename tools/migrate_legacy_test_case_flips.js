@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 "use strict";
 
-const fs = require("node:fs");
-const path = require("node:path");
+const fs = require("fs");
+const path = require("path");
 
 const root = path.resolve(process.argv[2] || "test_cases");
 const write = process.argv.includes("--write");
