@@ -26,10 +26,13 @@ BROWN_CONRADY_OPTMOD = 20
 SUPPORTED_OPTMODS = (1, 2, 3, 4, 5, 6, 12, BROWN_CONRADY_OPTMOD)
 
 
-def _as_float_array(values: Sequence[float]) -> np.ndarray:
+def _as_float_array(values: Sequence[float], minimum_size: int = 9) -> np.ndarray:
     arr = np.asarray(values, dtype=float).ravel()
-    if arr.size < 9:
-        raise ValueError("optpar must contain [optmod, f1, f2, alpha, beta, gamma, du, dv, ...]")
+    if arr.size < minimum_size:
+        raise ValueError(
+            "optpar must contain f1, f2, alpha, beta, gamma, du, dv, radial_alpha "
+            "and must start with optmod unless optmod is passed separately"
+        )
     return arr
 
 
@@ -40,7 +43,7 @@ def split_optpar(optpar: Sequence[float], optmod: Optional[int] = None) -> Tuple
     compatibility with embedded code, an optpar vector without the model number
     can be used if ``optmod`` is supplied explicitly.
     """
-    arr = _as_float_array(optpar)
+    arr = _as_float_array(optpar, minimum_size=8 if optmod is not None else 9)
     if optmod is None:
         model = int(round(float(arr[0])))
         params = arr[1:].astype(float, copy=True)
@@ -268,6 +271,11 @@ def az_el_to_image(*args, **kwargs):
 
 def image_to_az_el(*args, **kwargs):
     """Alias for compatibility with GUI-generated mapper snippets."""
+    return pixel_to_az_el(*args, **kwargs)
+
+
+def pixel2azel(*args, **kwargs):
+    """Compact alias for :func:`pixel_to_az_el`."""
     return pixel_to_az_el(*args, **kwargs)
 
 

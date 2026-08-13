@@ -173,6 +173,14 @@ for case in cases:
         case["width"],
         case["height"],
     )
+    explicit_x, explicit_y = wisc_lens.az_el_to_pixel(
+        case["sample"]["azDeg"],
+        case["sample"]["elDeg"],
+        case["optpar"],
+        case["width"],
+        case["height"],
+        optmod=case["optmod"],
+    )
     az, el, err = wisc_lens.pixel_to_az_el(
         x,
         y,
@@ -181,7 +189,21 @@ for case in cases:
         case["height"],
         return_error=True,
     )
-    out.append({"x": x, "y": y, "az": az, "el": el, "err": err})
+    explicit_az, explicit_el, explicit_err = wisc_lens.pixel_to_az_el(
+        explicit_x,
+        explicit_y,
+        case["optpar"],
+        case["width"],
+        case["height"],
+        optmod=case["optmod"],
+        return_error=True,
+    )
+    out.append({
+        "x": x, "y": y, "az": az, "el": el, "err": err,
+        "explicit_x": explicit_x, "explicit_y": explicit_y,
+        "explicit_az": explicit_az, "explicit_el": explicit_el,
+        "explicit_err": explicit_err,
+    })
 print(json.dumps(out))
 `;
     const result = childProcess.spawnSync(python, ["-c", script], {
@@ -198,6 +220,12 @@ print(json.dumps(out))
         assert.ok(Math.abs(row.y - expected.y) < 1e-6,
             `case ${index} y ${row.y} should match JS ${expected.y}`);
         assert.ok(row.err < 0.1, `case ${index} inverse reprojection error ${row.err} px`);
+        assert.ok(Math.abs(row.explicit_x - row.x) < 1e-12,
+            `case ${index} explicit optmod x should match prefixed optpar`);
+        assert.ok(Math.abs(row.explicit_y - row.y) < 1e-12,
+            `case ${index} explicit optmod y should match prefixed optpar`);
+        assert.ok(row.explicit_err < 0.1,
+            `case ${index} explicit optmod inverse error ${row.explicit_err} px`);
     });
 });
 

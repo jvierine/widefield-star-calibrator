@@ -257,6 +257,13 @@ radial models it contains
 Brown-Conrady (`optmod 20`), it contains
 `[20, f1, f2, alpha, beta, gamma, du, dv, k1, k2, k3, p1, p2]`.
 
+Lens parameters always map directly to raw, zero-based image pixel centers and
+never depend on GUI flip state. `Flip model X` negates only `f1`; `Flip model Y`
+negates only `f2`. Image-flip controls affect display only. Legacy saved cases
+with external overlay flips are converted once on load to equivalent raw-pixel
+parameters; new test cases and HDF5 products record
+`modelCoordinates = raw_image_pixel_centers`.
+
 The export language selector controls the syntax used by `Copy optpar`:
 Python, Julia, C, or MATLAB. The results ZIP still includes the complete
 self-contained Python mapper for the fitted model.
@@ -502,6 +509,38 @@ GitHub Actions runs these fast tests on every pushed commit and pull request.
 Long-running reports and sensitivity studies are intentionally local-only; they
 write into ignored directories such as `test-report/`, `lucky-report/`, and
 `test_cases/report/`.
+
+To independently check the two low-resolution `BACC_*` cases, first load each
+case in WISC and click `Download az/el HDF5`. Then run:
+
+```bash
+conda run -n base python tools/verify_bacc_astropy_hdf5.py
+```
+
+The script downloads the saved images and J2000 catalog coordinates, calculates
+unrefracted apparent azimuth/elevation with Astropy, and numerically inverts the
+downloaded `[height + 1, width + 1]` pixel-edge grids. It does not import the
+WISC/AIDA lens mapper. The command fails if either fit exceeds its expected RMS,
+if the grid inversion is inaccurate, or if the mean x/y residual indicates a
+pixel-indexing offset. It writes full-frame high-pass overlays, pixel-resolved
+montages of every selected-star cutout, and a detailed HDF5 result to
+`test-report/bacc-astropy-hdf5/`. The high-pass and contrast stretch are only
+used for display; calculations use the original coordinates and az/el grid. Use repeated
+`--grid CASE_ID=/path/to/file.h5` options if the downloads are elsewhere.
+
+A shorter direct check of the Python WISC library is available as:
+
+```bash
+conda run -n base python tools/check_bacc_pixel2azel.py
+```
+
+It reads the two tracked BACC images and test-case JSON files, explicitly
+separates the saved `optmod = optpar[0]` from the remaining parameters, runs
+`wisc_lens.pixel2azel` on the selected zero-based pixel centers, compares
+the result with Astropy, and plots the selected and predicted pixel centers.
+There is no fitting or HDF5 inversion in this test. Integer coordinates are
+displayed at image pixel centers using an image extent from `-0.5` to
+`size - 0.5`.
 
 The camera-model cross-check starts Python and imports `aida_tools_py`. Set
 `PYTHON=/path/to/python` if the default `/opt/miniconda3/bin/python` is not the

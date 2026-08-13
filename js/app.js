@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.59";
+    const APP_VERSION = "v0.3.60";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -184,8 +184,6 @@
         loadedTestCaseId: "",
         imageLoadId: 0,
         fitBusy: false,
-        flipX: false,
-        flipY: false,
         imageFlipX: false,
         imageFlipY: false,
         displayMode: "pairing",
@@ -545,23 +543,15 @@
     }
 
     function displayedImagePixelFromModelImagePixel(x, y) {
-        return [
-            state.flipX ? state.image.width - 1 - x : x,
-            state.flipY ? state.image.height - 1 - y : y,
-        ];
+        return displayedImagePixelFromRawImagePixel(x, y);
     }
 
     function rawImagePixelFromModelImagePixel(x, y) {
-        const [displayedX, displayedY] = displayedImagePixelFromModelImagePixel(x, y);
-        return rawImagePixelFromDisplayedImagePixel(displayedX, displayedY);
+        return [x, y];
     }
 
     function modelImagePixelFromRawImagePixel(x, y) {
-        const [displayedX, displayedY] = displayedImagePixelFromRawImagePixel(x, y);
-        return [
-            state.flipX ? state.image.width - 1 - displayedX : displayedX,
-            state.flipY ? state.image.height - 1 - displayedY : displayedY,
-        ];
+        return [x, y];
     }
 
     function isMaskedImagePixel(x, y, pad = 0) {
@@ -1685,11 +1675,12 @@
             lonDeg: Number(controls.lonDeg.value) || 0,
             altM: Number(controls.altM.value) || 0,
             optpar,
+            modelCoordinates: "raw_image_pixel_centers",
             maxMag: Number(controls.maxMag.value) || 7,
             matchRadiusPx: 22,
             display: {
-                flipX: state.flipX,
-                flipY: state.flipY,
+                flipX: false,
+                flipY: false,
                 imageFlipX: state.imageFlipX,
                 imageFlipY: state.imageFlipY,
                 highPassImage: controls.highPassImage.checked,
@@ -1928,7 +1919,19 @@
 
     function restoreTestCaseState(testCase) {
         state.loadedTestCaseId = safeCaseId(testCase.id || testCase.image || "");
-        const optpar = Array.isArray(testCase.optpar) ? testCase.optpar.map(Number) : [];
+        const savedOptpar = Array.isArray(testCase.optpar) ? testCase.optpar.map(Number) : [];
+        const display = testCase.display || {};
+        const optpar = savedOptpar.length > 1 &&
+                testCase.modelCoordinates !== "raw_image_pixel_centers" ?
+            [savedOptpar[0], ...AidaTools.legacyFlippedOptparToRawPixels(
+                savedOptpar.slice(1),
+                Number(testCase.width) || state.image.width,
+                Number(testCase.height) || state.image.height,
+                display.flipX,
+                display.flipY,
+                display.imageFlipX,
+                display.imageFlipY,
+            )] : savedOptpar;
         const optmod = Number.isFinite(optpar[0]) ? Math.round(optpar[0]) : Number(testCase.optmod) || 2;
         controls.optmod.value = String(optmod);
         updateOptmodUi();
@@ -1951,9 +1954,6 @@
         if (Number.isFinite(Number(testCase.maxMag))) {
             controls.maxMag.value = Number(testCase.maxMag).toFixed(1);
         }
-        const display = testCase.display || {};
-        state.flipX = Boolean(display.flipX);
-        state.flipY = Boolean(display.flipY);
         state.imageFlipX = Boolean(display.imageFlipX);
         state.imageFlipY = Boolean(display.imageFlipY);
         controls.highPassImage.checked = display.highPassImage !== false;
@@ -4180,8 +4180,9 @@ end
         file.create_attribute("optmod", new Int32Array([optmod]));
         file.create_attribute("optpar", new Float64Array(optpar));
         file.create_attribute("optpar_with_optmod", new Float64Array([optmod, ...optpar]));
-        file.create_attribute("flip_overlay_x", new Uint8Array([state.flipX ? 1 : 0]));
-        file.create_attribute("flip_overlay_y", new Uint8Array([state.flipY ? 1 : 0]));
+        file.create_attribute("model_coordinates", "raw_image_pixel_centers");
+        file.create_attribute("flip_overlay_x", new Uint8Array([0]));
+        file.create_attribute("flip_overlay_y", new Uint8Array([0]));
         file.create_attribute("flip_image_x", new Uint8Array([state.imageFlipX ? 1 : 0]));
         file.create_attribute("flip_image_y", new Uint8Array([state.imageFlipY ? 1 : 0]));
         file.create_attribute("description",
@@ -4462,8 +4463,9 @@ end
         file.create_attribute("site_lon_deg", new Float64Array([metadata.site.lonDeg]));
         file.create_attribute("site_alt_m", new Float64Array([metadata.site.altM]));
         file.create_attribute("optmod", new Int32Array([optmod]));
-        file.create_attribute("flip_overlay_x", new Uint8Array([state.flipX ? 1 : 0]));
-        file.create_attribute("flip_overlay_y", new Uint8Array([state.flipY ? 1 : 0]));
+        file.create_attribute("model_coordinates", "raw_image_pixel_centers");
+        file.create_attribute("flip_overlay_x", new Uint8Array([0]));
+        file.create_attribute("flip_overlay_y", new Uint8Array([0]));
         file.create_attribute("flip_image_x", new Uint8Array([state.imageFlipX ? 1 : 0]));
         file.create_attribute("flip_image_y", new Uint8Array([state.imageFlipY ? 1 : 0]));
         file.create_attribute("miracle_parameter_names",
@@ -4651,8 +4653,8 @@ end
             boresightAzDeg: boresight.az,
             boresightElDeg: boresight.el,
             display: {
-                flipOverlayX: state.flipX,
-                flipOverlayY: state.flipY,
+                flipOverlayX: false,
+                flipOverlayY: false,
                 flipImageX: state.imageFlipX,
                 flipImageY: state.imageFlipY,
                 highPassImage: controls.highPassImage.checked,
@@ -4773,11 +4775,7 @@ end
         const residualsForSamples = samples => samples.map(sample => {
             const rawX = sample.colPx - 1;
             const rawY = sample.rowPx - 1;
-            const displayedX = state.imageFlipX ? state.image.width - 1 - rawX : rawX;
-            const displayedY = state.imageFlipY ? state.image.height - 1 - rawY : rawY;
-            const modelX = state.flipX ? state.image.width - 1 - displayedX : displayedX;
-            const modelY = state.flipY ? state.image.height - 1 - displayedY : displayedY;
-            const camera = cameraVectorFromModelImagePixel(modelX, modelY, optpar, optmod);
+            const camera = cameraVectorFromModelImagePixel(rawX, rawY, optpar, optmod);
             let angularErrorDeg = NaN;
             if (camera) {
                 const east = camera.s1 * rotation[0] + camera.s2 * rotation[1] + camera.s3 * rotation[2];
@@ -4976,11 +4974,7 @@ end
             const rawY = (gridY + 0.5) * sourceHeight / imageHeight - 0.5;
             for (let gridX = 0; gridX < imageWidth; gridX += 1) {
                 const rawX = (gridX + 0.5) * sourceWidth / imageWidth - 0.5;
-                const displayedX = state.imageFlipX ? sourceWidth - 1 - rawX : rawX;
-                const displayedY = state.imageFlipY ? sourceHeight - 1 - rawY : rawY;
-                const modelX = state.flipX ? sourceWidth - 1 - displayedX : displayedX;
-                const modelY = state.flipY ? sourceHeight - 1 - displayedY : displayedY;
-                const s = cameraVectorFromModelImagePixel(modelX, modelY, optpar, optmod);
+                const s = cameraVectorFromModelImagePixel(rawX, rawY, optpar, optmod);
                 const pixelIndex = (gridY * imageWidth + gridX) * 4;
                 if (!s) {
                     pixels[pixelIndex] = 203;
@@ -7117,7 +7111,7 @@ lens-model inverse.}
             `${boresightAzElFromCameraAngles(optpar[2], optpar[3]).el.toFixed(2)} deg\n` +
             `du/dv: ${optpar[5].toPrecision(12)}, ${optpar[6].toPrecision(12)}\n` +
             `mouse drag: ${state.viewZoom > 1.0001 ? "pans zoomed image; Shift/right drag edits lens" : "edits lens parameters directly"}\n` +
-            `overlay flip x/y: ${state.flipX}/${state.flipY}\n` +
+            "model coordinates: raw zero-based pixel centers (flip buttons negate f1/f2)\n" +
             `image flip x/y: ${state.imageFlipX}/${state.imageFlipY}\n` +
             `image masks: ${state.maskRegions.length}\n` +
             `bad star finder detections: ${state.badStarFinderDetections.length} in ${state.junkStarFinderRegions.length} marked regions\n` +
@@ -12820,8 +12814,6 @@ lens-model inverse.}
         state.testCaseImageDataUrl = null;
         state.testCaseImageFile = null;
         state.testCaseImageName = "";
-        state.flipX = false;
-        state.flipY = false;
         state.imageFlipX = false;
         state.imageFlipY = false;
         state.displayMode = "pairing";
@@ -14259,13 +14251,13 @@ lens-model inverse.}
     });
 
     controls.flipX.addEventListener("click", () => {
-        state.flipX = !state.flipX;
+        applyFitVector(AidaTools.optparWithNegatedFocal(currentOptpar(), "x"));
         playInteractionSound("mode");
         updateAutoMatches();
         render();
     });
     controls.flipY.addEventListener("click", () => {
-        state.flipY = !state.flipY;
+        applyFitVector(AidaTools.optparWithNegatedFocal(currentOptpar(), "y"));
         playInteractionSound("mode");
         updateAutoMatches();
         render();

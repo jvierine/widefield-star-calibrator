@@ -40,6 +40,44 @@ function assertNear(actual, expected, tolerance = 1e-12) {
 
 const AidaTools = loadAidaTools();
 
+test("legacy GUI flips are absorbed exactly into raw-pixel optpar", () => {
+    const width = 608;
+    const height = 608;
+    const original = [2.52, 2.51, 0.6, -1.7, 28, -0.001, 0.026, 0.1];
+    const converted = AidaTools.legacyFlippedOptparToRawPixels(
+        original, width, height, false, true, false, false,
+    );
+    assertNear(converted[0], original[0]);
+    assertNear(converted[1], -original[1]);
+    assertNear(converted[5], original[5]);
+    assertNear(converted[6], 1 / height - original[6]);
+    for (const [azDeg, zeDeg] of [[0, 5], [75, 30], [220, 65]]) {
+        const legacy = AidaTools.cameraModel(
+            azDeg * AidaTools.DEG, zeDeg * AidaTools.DEG,
+            original, 2, width, height,
+        );
+        const raw = AidaTools.cameraModel(
+            azDeg * AidaTools.DEG, zeDeg * AidaTools.DEG,
+            converted, 2, width, height,
+        );
+        assertNear(raw.x, legacy.x, 1e-10);
+        assertNear(raw.y, height - 1 - legacy.y, 1e-10);
+    }
+});
+
+test("model flip actions change only the requested focal sign", () => {
+    const original = [2.5, -2.4, 1, 2, 3, 0.04, -0.03, 0.5];
+    assert.deepEqual(
+        Array.from(AidaTools.optparWithNegatedFocal(original, "x")),
+        [-2.5, -2.4, 1, 2, 3, 0.04, -0.03, 0.5],
+    );
+    assert.deepEqual(
+        Array.from(AidaTools.optparWithNegatedFocal(original, "y")),
+        [2.5, 2.4, 1, 2, 3, 0.04, -0.03, 0.5],
+    );
+    assert.deepEqual(original, [2.5, -2.4, 1, 2, 3, 0.04, -0.03, 0.5]);
+});
+
 function loadStarCatalog() {
     const source = fs.readFileSync(path.join(__dirname, "..", "js", "star_catalog.js"), "utf8");
     const context = {window: {}};

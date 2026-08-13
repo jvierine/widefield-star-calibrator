@@ -499,6 +499,37 @@
         return {x: uNorm * width - 1, y: vNorm * height - 1};
     }
 
+    function legacyFlippedOptparToRawPixels(
+        optpar,
+        width,
+        height,
+        flipOverlayX,
+        flipOverlayY,
+        flipImageX,
+        flipImageY
+    ) {
+        const out = optpar.slice();
+        if (Boolean(flipOverlayX) !== Boolean(flipImageX)) {
+            out[0] = -out[0];
+            out[5] = 1 / width - out[5];
+        }
+        if (Boolean(flipOverlayY) !== Boolean(flipImageY)) {
+            out[1] = -out[1];
+            out[6] = 1 / height - out[6];
+        }
+        return out;
+    }
+
+    function optparWithNegatedFocal(optpar, axis) {
+        const out = optpar.slice();
+        const index = axis === "x" ? 0 : axis === "y" ? 1 : -1;
+        if (index < 0) {
+            throw new Error("focal-sign axis must be x or y");
+        }
+        out[index] = -out[index];
+        return out;
+    }
+
     function visibleStars(catalog, date, latDeg, lonDeg, maxMagnitude, maxZenithDeg) {
         const out = [];
         for (const row of catalog) {
@@ -1692,6 +1723,8 @@
         cameraRot,
         cameraAnglesFromRotation,
         cameraModel,
+        legacyFlippedOptparToRawPixels,
+        optparWithNegatedFocal,
         precessJ2000ToDate,
         radecToAzZe: starAzZe,
         visibleStars,
