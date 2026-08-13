@@ -264,6 +264,15 @@ with external overlay flips are converted once on load to equivalent raw-pixel
 parameters; new test cases and HDF5 products record
 `modelCoordinates = raw_image_pixel_centers`.
 
+An existing server-side test-case directory can be migrated without refitting:
+
+```bash
+node tools/migrate_legacy_test_case_flips.js /path/to/test-cases --write
+```
+
+The migration is algebraic and writes a `.pre-raw-pixel-model` backup beside
+each changed `metadata.json` file.
+
 The export language selector controls the syntax used by `Copy optpar`:
 Python, Julia, C, or MATLAB. The results ZIP still includes the complete
 self-contained Python mapper for the fitted model.
