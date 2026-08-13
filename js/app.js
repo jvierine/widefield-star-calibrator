@@ -1,13 +1,14 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.58";
+    const APP_VERSION = "v0.3.59";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
     const NOT_STAR_TILE_SIZE = 128;
     const MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION = 8 / 4032;
     const MANUAL_CENTROID_PATCH_RADIUS_EXTRA_PX = 1;
+    const AUTO_KDE_DOT_ZOOM = 10;
     const FISHEYE_AUTO_MIN_ELEVATION_DEG = 10;
     const canvas = document.getElementById("glCanvas");
     const rotationCanvas = document.getElementById("rotationCanvas");
@@ -515,7 +516,10 @@
 
     function canvasPixelFromDisplayedImagePixel(x, y) {
         const vp = imageViewport();
-        return [vp.x + x * vp.scale, vp.y + y * vp.scale];
+        return [
+            WiscViewZoom.canvasCoordinateForPixelCenter(x, vp.x, vp.scale),
+            WiscViewZoom.canvasCoordinateForPixelCenter(y, vp.y, vp.scale),
+        ];
     }
 
     function imageMarkerCanvasPixel(x, y) {
@@ -616,9 +620,10 @@
         }
         const [cx, cy] = eventToCanvasPixel(event);
         const vp = imageViewport();
-        let x = (cx - vp.x) / vp.scale;
-        let y = (cy - vp.y) / vp.scale;
-        if (x < 0 || x >= state.image.width || y < 0 || y >= state.image.height) {
+        let x = WiscViewZoom.pixelCenterForCanvasCoordinate(cx, vp.x, vp.scale);
+        let y = WiscViewZoom.pixelCenterForCanvasCoordinate(cy, vp.y, vp.scale);
+        if (x < -0.5 || x >= state.image.width - 0.5 ||
+                y < -0.5 || y >= state.image.height - 0.5) {
             return null;
         }
         x = state.imageFlipX ? state.image.width - 1 - x : x;
@@ -784,8 +789,15 @@
         if (!state.image) {
             return false;
         }
-        const a = imageMarkerCanvasPixel(rawX, rawY);
-        const b = imageMarkerCanvasPixel(rawX + width, rawY + height);
+        const vp = imageViewport();
+        const displayedBoundary = (x, y) => [
+            state.imageFlipX ? state.image.width - x : x,
+            state.imageFlipY ? state.image.height - y : y,
+        ];
+        const [ax, ay] = displayedBoundary(rawX, rawY);
+        const [bx, by] = displayedBoundary(rawX + width, rawY + height);
+        const a = [vp.x + ax * vp.scale, vp.y + ay * vp.scale];
+        const b = [vp.x + bx * vp.scale, vp.y + by * vp.scale];
         const [left, top] = canvasPixelToCssPixel([Math.min(a[0], b[0]), Math.min(a[1], b[1])]);
         const [right, bottom] = canvasPixelToCssPixel([Math.max(a[0], b[0]), Math.max(a[1], b[1])]);
         if (right < 0 || left > canvas.clientWidth || bottom < 0 || top > canvas.clientHeight) {
@@ -6831,6 +6843,10 @@ lens-model inverse.}
         }
     }
 
+    function automaticKdePositionDotsVisible() {
+        return WiscViewZoom.automaticKdeDotsVisible(state.viewZoom, AUTO_KDE_DOT_ZOOM);
+    }
+
     function drawAutoDetectionMarkers() {
         if (!state.image || !state.showAutoDetectionMarkers ||
                 !(state.displayMode === "pairing" || state.displayMode === "pureImage")) {
@@ -6976,6 +6992,9 @@ lens-model inverse.}
             drawBadStarFinderMarkers();
             drawCatalogPairingMarkers();
             drawMatchMarkers(optpar, optmod);
+            if (automaticKdePositionDotsVisible()) {
+                drawKdePositionDots();
+            }
         } else if (state.displayMode === "pureImage") {
             drawAutoDetectionMarkers();
             drawLucky2Diagnostics();
@@ -7016,6 +7035,9 @@ lens-model inverse.}
                 drawKdePositionDots();
             } else {
                 drawFitResiduals(rows);
+                if (automaticKdePositionDotsVisible()) {
+                    drawKdePositionDots();
+                }
             }
             drawQueuedAnnotations();
             updateResidualHistogram(rows);
@@ -7103,7 +7125,8 @@ lens-model inverse.}
             `az/el grid: ${state.showAzElGrid ? "on" : "off"}\n` +
             `display mode: ${state.displayMode}\n` +
             `star names: ${state.showStarNames ? "on" : "off"}\n` +
-            `KDE sub-pixel dots: ${state.showKdePositionDots ? "on" : "off"}\n` +
+            `KDE sub-pixel dots: ${state.showKdePositionDots ? "on (inspection mode)" :
+                automaticKdePositionDotsVisible() ? `on automatically above ${AUTO_KDE_DOT_ZOOM}x` : "off"}\n` +
             `asterism lines: ${state.showAsterismLines ? "on" : "off"} (${state.asterismEdges.length} edges)\n` +
             `fit residuals: ${state.showFitResiduals ? "on" : "off"}\n` +
             `star pairing armed: ${state.starMatchMode ? "on" : "off"}${state.pendingMatch ? " (select catalog star)" : ""}\n` +
@@ -9001,8 +9024,10 @@ lens-model inverse.}
             return {x: clickX, y: clickY, sigma: 0, method: "click"};
         }
         const result = AidaCentroid.estimateCentroid(clickX, clickY, imageGrayInterpolated, {
-            patchRadius: Math.max(2, Math.round((state.image ? state.image.width : 4032) *
+            patchRadius: Math.max(3, Math.round((state.image ? state.image.width : 4032) *
                 MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION) + MANUAL_CENTROID_PATCH_RADIUS_EXTRA_PX),
+            searchRadius: Math.max(4, Math.min(10,
+                Math.round((state.image ? state.image.width : 4032) * 4 / 608))),
         });
         state.centroidDensity = result.density;
         const usesFloat = pixels.data && pixels.data.constructor && pixels.data.constructor.name === "Float32Array";

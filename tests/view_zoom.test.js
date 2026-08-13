@@ -34,3 +34,16 @@ test("pointer anchored zoom keeps the same image pixel under the pointer", () =>
     assert.ok(Math.abs(next.x + image.x * next.scale - pointer.x) < 1e-9);
     assert.ok(Math.abs(next.y + image.y * next.scale - pointer.y) < 1e-9);
 });
+
+test("integer image coordinates map to pixel centers rather than pixel boundaries", () => {
+    assert.equal(Zoom.canvasCoordinateForPixelCenter(0, 100, 12), 106);
+    assert.equal(Zoom.canvasCoordinateForPixelCenter(7, 100, 12), 190);
+    assert.equal(Zoom.pixelCenterForCanvasCoordinate(106, 100, 12), 0);
+    assert.equal(Zoom.pixelCenterForCanvasCoordinate(190, 100, 12), 7);
+});
+
+test("picked-position dots turn on only above 10x zoom", () => {
+    assert.equal(Zoom.automaticKdeDotsVisible(10), false);
+    assert.equal(Zoom.automaticKdeDotsVisible(10.0001), true);
+    assert.equal(Zoom.automaticKdeDotsVisible(16), true);
+});

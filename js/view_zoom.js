@@ -63,5 +63,28 @@
         };
     }
 
-    return {MIN_ZOOM, MAX_ZOOM, imageViewport, centerForAnchor};
+    // Integer image coordinates identify pixel centers. The viewport x/y
+    // values identify the outer image boundaries, so the half-pixel belongs
+    // in both the forward and inverse display transforms.
+    function canvasCoordinateForPixelCenter(pixel, viewportStart, scale) {
+        return Number(viewportStart) + (Number(pixel) + 0.5) * Number(scale);
+    }
+
+    function pixelCenterForCanvasCoordinate(canvasCoordinate, viewportStart, scale) {
+        return (Number(canvasCoordinate) - Number(viewportStart)) / Number(scale) - 0.5;
+    }
+
+    function automaticKdeDotsVisible(zoom, threshold = 10) {
+        return Number(zoom) > Number(threshold);
+    }
+
+    return {
+        MIN_ZOOM,
+        MAX_ZOOM,
+        imageViewport,
+        centerForAnchor,
+        canvasCoordinateForPixelCenter,
+        pixelCenterForCanvasCoordinate,
+        automaticKdeDotsVisible,
+    };
 });

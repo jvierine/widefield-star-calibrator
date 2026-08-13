@@ -139,11 +139,29 @@
         const patchRadius = options.patchRadius ?? (Number.isFinite(fractionalPatchRadius) ? fractionalPatchRadius : 8);
         const gaussianSigmaFinePx = options.gaussianSigmaFinePx ?? 53.2;
         const gaussianSupportFinePx = options.gaussianSupportFinePx ?? 320;
+        const searchRadius = Math.max(0, Math.round(Number(options.searchRadius) || 0));
+        let patchCenterX = clickX;
+        let patchCenterY = clickY;
+        if (searchRadius > 0) {
+            const baseX = Math.round(clickX);
+            const baseY = Math.round(clickY);
+            let bestValue = -Infinity;
+            for (let dy = -searchRadius; dy <= searchRadius; dy++) {
+                for (let dx = -searchRadius; dx <= searchRadius; dx++) {
+                    const value = sample(baseX + dx, baseY + dy);
+                    if (value > bestValue) {
+                        bestValue = value;
+                        patchCenterX = baseX + dx;
+                        patchCenterY = baseY + dy;
+                    }
+                }
+            }
+        }
         const size = 2 * patchRadius + 1;
         const fineWidth = size * upsample;
         const fineHeight = size * upsample;
-        const originX = clickX - patchRadius;
-        const originY = clickY - patchRadius;
+        const originX = patchCenterX - patchRadius;
+        const originY = patchCenterY - patchRadius;
         const raw = new Float32Array(fineWidth * fineHeight);
         const bgSamples = [];
         for (let y = 0; y < fineHeight; y++) {

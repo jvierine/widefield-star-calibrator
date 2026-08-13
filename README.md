@@ -122,7 +122,8 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
 - Use the viewer's `-`, `Fit`, and `+` controls for persistent image zoom up to
   16x. Left-drag pans while zoomed; `Cmd/Ctrl` + mouse wheel zooms around the
   pointer. View zoom affects only display and never changes calibration pixels
-  or report framing.
+  or report framing. Above 10x, black dots automatically mark the exact picked
+  subpixel star positions while the green pairing circles remain visible.
 - `Cmd/Ctrl Z`: undo the most recent accepted fit.
 - `Esc`: cancel the current interaction or close the density popup.
 - `L` or `I'm feeling lucky...`: run automatic star finding, asterism
@@ -169,9 +170,14 @@ refine the selected model parameters.
 When `S` is held, a magnified view follows the mouse. Click near the image
 star; the magnifier disappears and a density-estimate popup is placed away from
 the click area. The selected star position is found from a 40x interpolated
-local image patch smoothed with a Gaussian kernel, and the popup shows the
-unfiltered interpolated bitmap underneath contour lines of the smoothed density
-estimate.
+local image patch smoothed with a Gaussian kernel. On low-resolution images,
+the picker first searches for the nearby intensity peak so a one-pixel click
+error cannot bias the small KDE patch. The popup shows the unfiltered
+interpolated bitmap underneath contour lines of the smoothed density estimate.
+
+Image-star coordinates use zero-based pixel centers: `(0, 0)` is the center of
+the upper-left pixel. Pixel-corner coordinates are used only by the separate
+pcolormesh-compatible az/el HDF5 grid.
 
 Press `K` to inspect only the picked subpixel image-star positions. In this
 KDE-dot mode all other overlays are hidden, which is useful for checking

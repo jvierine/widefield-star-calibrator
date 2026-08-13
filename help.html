@@ -85,7 +85,7 @@ code widefield-star-calibrator
 <li><code>H</code>: show or hide automatic star-detection markers.</li>
 <li><code>M</code> + click or drag: paint fast 128x128 black not-star mask tiles. Masked tiles are ignored by later star finding.</li>
 <li><code>Z</code>: show the zoom/magnifier view.</li>
-<li>Use the viewer's <code>-</code>, <code>Fit</code>, and <code>+</code> controls for persistent image zoom up to 16x. Left-drag pans while zoomed; <code>Cmd/Ctrl</code> + mouse wheel zooms around the pointer. View zoom affects only display and never changes calibration pixels or report framing.</li>
+<li>Use the viewer's <code>-</code>, <code>Fit</code>, and <code>+</code> controls for persistent image zoom up to 16x. Left-drag pans while zoomed; <code>Cmd/Ctrl</code> + mouse wheel zooms around the pointer. View zoom affects only display and never changes calibration pixels or report framing. Above 10x, black dots automatically mark the exact picked subpixel star positions while the green pairing circles remain visible.</li>
 <li><code>Cmd/Ctrl Z</code>: undo the most recent accepted fit.</li>
 <li><code>Esc</code>: cancel the current interaction or close the density popup.</li>
 <li><code>L</code> or <code>I'm feeling lucky...</code>: run automatic star finding, asterism identification, and staged lens fitting for the currently selected optical model.</li>
@@ -108,7 +108,8 @@ code widefield-star-calibrator
 <h2>Field Of View Adjustment</h2>
 <p>The first alignment step is meant to be visual and approximate. Drag with the left mouse button until the catalog zenith is near the image zenith. Shift-drag with the left mouse button, or drag with the right mouse button, to rotate the star field so bright catalog stars line up with the image orientation. Use the mouse wheel if the projected catalog field is too wide or too narrow. After the field is close, use <code>S</code> to create accurate star pairs and let the lens optimizer refine the selected model parameters.</p>
 <h2>Star Picking Details</h2>
-<p>When <code>S</code> is held, a magnified view follows the mouse. Click near the image star; the magnifier disappears and a density-estimate popup is placed away from the click area. The selected star position is found from a 40x interpolated local image patch smoothed with a Gaussian kernel, and the popup shows the unfiltered interpolated bitmap underneath contour lines of the smoothed density estimate.</p>
+<p>When <code>S</code> is held, a magnified view follows the mouse. Click near the image star; the magnifier disappears and a density-estimate popup is placed away from the click area. The selected star position is found from a 40x interpolated local image patch smoothed with a Gaussian kernel. On low-resolution images, the picker first searches for the nearby intensity peak so a one-pixel click error cannot bias the small KDE patch. The popup shows the unfiltered interpolated bitmap underneath contour lines of the smoothed density estimate.</p>
+<p>Image-star coordinates use zero-based pixel centers: <code>(0, 0)</code> is the center of the upper-left pixel. Pixel-corner coordinates are used only by the separate pcolormesh-compatible az/el HDF5 grid.</p>
 <p>Press <code>K</code> to inspect only the picked subpixel image-star positions. In this KDE-dot mode all other overlays are hidden, which is useful for checking whether centroiding is landing on the intended stars.</p>
 <h2>Residuals And Undo</h2>
 <p>Residual mode draws the fitted catalog location and the selected image location for each pair. The suggested removal marker is based on the star whose residual is furthest from the main residual pattern, rather than simply the largest absolute residual.</p>

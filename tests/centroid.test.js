@@ -38,6 +38,17 @@ test("density centroid recovers subpixel Gaussian star centers", () => {
     }
 });
 
+test("density centroid searches for the local peak before fitting a low-resolution star", () => {
+    const result = AidaCentroid.estimateCentroid(
+        23.4,
+        18.2,
+        gaussianStar(20.35, 21.65, 0.9),
+        {patchRadius: 3, searchRadius: 4},
+    );
+    assertNear(result.x, 20.35, 0.02, "searched low-resolution x");
+    assertNear(result.y, 21.65, 0.02, "searched low-resolution y");
+});
+
 test("density centroid stores the unfiltered interpolated patch for display", () => {
     const cx = 17.35;
     const cy = 18.65;
