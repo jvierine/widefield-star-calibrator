@@ -7110,7 +7110,7 @@ lens-model inverse.}
             `boresight az/el: ${boresightAzElFromCameraAngles(optpar[2], optpar[3]).az.toFixed(2)}, ` +
             `${boresightAzElFromCameraAngles(optpar[2], optpar[3]).el.toFixed(2)} deg\n` +
             `du/dv: ${optpar[5].toPrecision(12)}, ${optpar[6].toPrecision(12)}\n` +
-            `mouse drag: ${state.viewZoom > 1.0001 ? "pans zoomed image; Shift/right drag edits lens" : "edits lens parameters directly"}\n` +
+            "mouse gestures: wheel zooms and drag pans; Cmd/Ctrl + wheel/drag edits lens\n" +
             "model coordinates: raw zero-based pixel centers (flip buttons negate f1/f2)\n" +
             `image flip x/y: ${state.imageFlipX}/${state.imageFlipY}\n` +
             `image masks: ${state.maskRegions.length}\n` +
@@ -7188,14 +7188,14 @@ lens-model inverse.}
             return "Zoom mode: move the mouse over the image to inspect a 100 x 100 raw-pixel region.";
         }
         if (state.viewZoom > 1.0001) {
-            return `Image view zoom ${state.viewZoom.toFixed(1)}x: left-drag pans without changing calibration. ` +
-                "Use Fit to show the whole image; Shift-left/right drag still rotates the lens model.";
+            return `Image view zoom ${state.viewZoom.toFixed(1)}x: drag pans without changing calibration. ` +
+                "Use Fit to show the whole image; hold Cmd/Ctrl while dragging to adjust the lens model.";
         }
         if (!state.starMatchMode) {
             if (state.showKdePositionDots) {
                 return "KDE dot inspection: all other markings are hidden. Press k to return to the normal overlay.";
             }
-            return "Star pairing view: left-drag moves the view. Shift-left-drag or right-drag rotates the view. Wheel edits f1/f2 together. Press c for Stellarium view, x for pure image/Stellarium views, s to pick an image star, h to show/hide detected stars, k for KDE sub-pixel dots, n to show/hide star names, d to delete a star pairing, hold m to mark bad yellow detections, or z to zoom.";
+            return "Star pairing view: wheel zooms and drag pans the image. Cmd/Ctrl-wheel scales f1/f2; Cmd/Ctrl-drag adjusts the lens model (add Shift or use right-drag to rotate). Press c for Stellarium view, x for pure image/Stellarium views, s to pick an image star, h to show/hide detected stars, k for KDE sub-pixel dots, n to show/hide star names, d to delete a star pairing, hold m to mark bad yellow detections, or z to zoom.";
         }
         if (!state.pendingMatch) {
             return "Star pairing: hold s and click the image star. A KDE centroid fit will select the sub-pixel star position.";
@@ -14483,7 +14483,11 @@ lens-model inverse.}
             handleCatalogPairClick(event);
             return;
         }
-        if (state.viewZoom > 1.0001 && event.button === 0 && !event.shiftKey) {
+        const dragMode = WiscViewZoom.dragInteractionMode(event, usesRectilinearDragControls());
+        if (dragMode === "none") {
+            return;
+        }
+        if (dragMode === "viewPan") {
             event.preventDefault();
             state.dragging = true;
             state.lensDragMode = "viewPan";
@@ -14492,10 +14496,9 @@ lens-model inverse.}
             return;
         }
         playPingSound();
+        event.preventDefault();
         state.dragging = true;
-        state.lensDragMode = event.button === 0 && !event.shiftKey ?
-            (usesRectilinearDragControls() ? "rectilinearElevationRoll" : "zenithPosition") :
-            "azimuthGridRoll";
+        state.lensDragMode = dragMode;
         state.lastMouse = [event.clientX, event.clientY];
         canvas.setPointerCapture(event.pointerId);
     });
@@ -14587,7 +14590,10 @@ lens-model inverse.}
     });
     canvas.addEventListener("wheel", event => {
         event.preventDefault();
-        if ((event.ctrlKey || event.metaKey) && state.image) {
+        if (WiscViewZoom.wheelInteractionMode(event) === "viewZoom") {
+            if (!state.image) {
+                return;
+            }
             const factor = Math.exp(-event.deltaY * 0.002);
             setViewZoom(state.viewZoom * factor, eventToCanvasPixel(event));
             return;

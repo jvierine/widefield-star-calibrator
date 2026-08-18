@@ -85,7 +85,7 @@ code widefield-star-calibrator
 <li><code>H</code>: show or hide automatic star-detection markers.</li>
 <li><code>M</code> + click or drag: paint fast 128x128 black not-star mask tiles. Masked tiles are ignored by later star finding.</li>
 <li><code>Z</code>: show the zoom/magnifier view.</li>
-<li>Use the viewer's <code>-</code>, <code>Fit</code>, and <code>+</code> controls for persistent image zoom up to 16x. Left-drag pans while zoomed; <code>Cmd/Ctrl</code> + mouse wheel zooms around the pointer. View zoom affects only display and never changes calibration pixels or report framing. Above 10x, black dots automatically mark the exact picked subpixel star positions while the green pairing circles remain visible.</li>
+<li>Use the viewer's <code>-</code>, <code>Fit</code>, and <code>+</code> controls for persistent image zoom up to 16x. The mouse wheel zooms around the pointer and dragging pans the image. Hold <code>Cmd/Ctrl</code> while using the wheel or dragging to adjust the lens model. View zoom affects only display and never changes calibration pixels or report framing. Above 10x, black dots automatically mark the exact picked subpixel star positions while the green pairing circles remain visible.</li>
 <li><code>Cmd/Ctrl Z</code>: undo the most recent accepted fit.</li>
 <li><code>Esc</code>: cancel the current interaction or close the density popup.</li>
 <li><code>L</code> or <code>I'm feeling lucky...</code>: run automatic star finding, asterism identification, and staged lens fitting for the currently selected optical model.</li>
@@ -97,7 +97,7 @@ code widefield-star-calibrator
 <li>Load an image, or use the bundled default image.</li>
 <li>Check UTC time, latitude, longitude, and altitude.</li>
 <li>Select the optical model to fit: an AIDA radial model (<code>optmod 1</code>, <code>2</code>, <code>3</code>, <code>4</code>, <code>5</code>, <code>6</code>, or <code>12</code>) or Brown-Conrady.</li>
-<li>Roughly align the star field: left-drag to move the zenith point, Shift-left-drag or right-drag to rotate the field, and use the mouse wheel to scale <code>f1</code> and <code>f2</code> together.</li>
+<li>Roughly align the star field: hold <code>Cmd/Ctrl</code> and left-drag to move the zenith point, use <code>Cmd/Ctrl</code> + Shift-left-drag or right-drag to rotate the field, and use <code>Cmd/Ctrl</code> + mouse wheel to scale <code>f1</code> and <code>f2</code> together.</li>
 <li>Click <code>I'm feeling lucky...</code> or press <code>L</code> to run the automatic detector, asterism matcher, and staged lens fit. Re-running it respects any masked image tiles.</li>
 <li>To add or correct pairs manually, hold <code>S</code> and click an image star. The local star position is refined with the interpolated density estimate. Release <code>S</code>, then click the matching red catalog star.</li>
 <li>Repeat until several well-spread star pairs are available.</li>
@@ -106,7 +106,7 @@ code widefield-star-calibrator
 <li>Export the fitted model with the copy buttons.</li>
 </ol>
 <h2>Field Of View Adjustment</h2>
-<p>The first alignment step is meant to be visual and approximate. Drag with the left mouse button until the catalog zenith is near the image zenith. Shift-drag with the left mouse button, or drag with the right mouse button, to rotate the star field so bright catalog stars line up with the image orientation. Use the mouse wheel if the projected catalog field is too wide or too narrow. After the field is close, use <code>S</code> to create accurate star pairs and let the lens optimizer refine the selected model parameters.</p>
+<p>The first alignment step is meant to be visual and approximate. Hold <code>Cmd/Ctrl</code> and drag with the left mouse button until the catalog zenith is near the image zenith. Keep <code>Cmd/Ctrl</code> held and Shift-drag with the left mouse button, or drag with the right mouse button, to rotate the star field so bright catalog stars line up with the image orientation. Use <code>Cmd/Ctrl</code> + mouse wheel if the projected catalog field is too wide or too narrow. After the field is close, use <code>S</code> to create accurate star pairs and let the lens optimizer refine the selected model parameters.</p>
 <h2>Star Picking Details</h2>
 <p>When <code>S</code> is held, a magnified view follows the mouse. Click near the image star; the magnifier disappears and a density-estimate popup is placed away from the click area. The selected star position is found from a 40x interpolated local image patch smoothed with a Gaussian kernel. On low-resolution images, the picker first searches for the nearby intensity peak so a one-pixel click error cannot bias the small KDE patch. The popup shows the unfiltered interpolated bitmap underneath contour lines of the smoothed density estimate.</p>
 <p>Image-star coordinates use zero-based pixel centers: <code>(0, 0)</code> is the center of the upper-left pixel. Pixel-corner coordinates are used only by the separate pcolormesh-compatible az/el HDF5 grid.</p>

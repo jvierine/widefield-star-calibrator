@@ -47,3 +47,28 @@ test("picked-position dots turn on only above 10x zoom", () => {
     assert.equal(Zoom.automaticKdeDotsVisible(10.0001), true);
     assert.equal(Zoom.automaticKdeDotsVisible(16), true);
 });
+
+test("ordinary gestures control the view and Cmd/Ctrl gestures control the lens", () => {
+    assert.equal(Zoom.wheelInteractionMode({}), "viewZoom");
+    assert.equal(Zoom.wheelInteractionMode({ctrlKey: true}), "lensScale");
+    assert.equal(Zoom.wheelInteractionMode({metaKey: true}), "lensScale");
+
+    assert.equal(Zoom.dragInteractionMode({button: 0}), "viewPan");
+    assert.equal(Zoom.dragInteractionMode({button: 2}), "viewPan");
+    assert.equal(
+        Zoom.dragInteractionMode({button: 0, ctrlKey: true}),
+        "zenithPosition"
+    );
+    assert.equal(
+        Zoom.dragInteractionMode({button: 0, metaKey: true}, true),
+        "rectilinearElevationRoll"
+    );
+    assert.equal(
+        Zoom.dragInteractionMode({button: 0, ctrlKey: true, shiftKey: true}),
+        "azimuthGridRoll"
+    );
+    assert.equal(
+        Zoom.dragInteractionMode({button: 2, metaKey: true}),
+        "azimuthGridRoll"
+    );
+});

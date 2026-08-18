@@ -32,10 +32,10 @@
             <kbd>A</kbd> az/el grid,
             <kbd>R</kbd> residuals,
             <kbd>Cmd/Ctrl Z</kbd> undo,
-            <kbd>Left drag</kbd> move view,
-            <kbd>Shift-left/right drag</kbd> rotate view,
-            <kbd>Wheel</kbd> scale view,
-            <kbd>Cmd/Ctrl Wheel</kbd> zoom image,
+            <kbd>Drag</kbd> pan image,
+            <kbd>Wheel</kbd> zoom image,
+            <kbd>Cmd/Ctrl drag</kbd> adjust lens,
+            <kbd>Cmd/Ctrl Wheel</kbd> scale lens,
             <kbd>Esc</kbd> cancel.
         </div>
     </div>
@@ -80,7 +80,7 @@
                 You might need to scan around a bit to find the star you are looking for.
             </div>
             <div class="star-picking-help-line">
-                Left drag moves the view, Shift-left-drag or right-drag rotates it, and the wheel scales the view.
+                Wheel zooms and drag pans the image. Hold Cmd/Ctrl while using the wheel or dragging to adjust the lens model.
             </div>
             <div class="star-picking-help-line">
                 <kbd>X</kbd> toggles between the star catalogue view and the image, which is useful while checking a match.
@@ -306,7 +306,7 @@ window.MathJax = {
 <script src="js/star_detector.js?v=20260603-float32-dynamic-range"></script>
 <script src="js/auto_identifier.js?v=20260526a"></script>
 <script src="js/aida_config.js?v=20260603a"></script>
-<script src="js/view_zoom.js?v=20260813-pixel-centers"></script>
-<script src="js/app.js?v=0.3.60-raw-pixel-model"></script>
+<script src="js/view_zoom.js?v=20260818-gesture-modifiers"></script>
+<script src="js/app.js?v=20260818-gesture-modifiers"></script>
 </body>
 </html>

@@ -78,6 +78,27 @@
         return Number(zoom) > Number(threshold);
     }
 
+    function lensModifierActive(event) {
+        return Boolean(event && (event.ctrlKey || event.metaKey));
+    }
+
+    function wheelInteractionMode(event) {
+        return lensModifierActive(event) ? "lensScale" : "viewZoom";
+    }
+
+    function dragInteractionMode(event, rectilinearControls = false) {
+        if (!event || (event.button !== 0 && event.button !== 2)) {
+            return "none";
+        }
+        if (!lensModifierActive(event)) {
+            return "viewPan";
+        }
+        if (event.button === 0 && !event.shiftKey) {
+            return rectilinearControls ? "rectilinearElevationRoll" : "zenithPosition";
+        }
+        return "azimuthGridRoll";
+    }
+
     return {
         MIN_ZOOM,
         MAX_ZOOM,
@@ -86,5 +107,8 @@
         canvasCoordinateForPixelCenter,
         pixelCenterForCanvasCoordinate,
         automaticKdeDotsVisible,
+        lensModifierActive,
+        wheelInteractionMode,
+        dragInteractionMode,
     };
 });

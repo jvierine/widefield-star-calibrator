@@ -120,8 +120,9 @@ Kudos to the person who finds all the easter eggs hidden in the GUI.
   tiles are ignored by later star finding.
 - `Z`: show the zoom/magnifier view.
 - Use the viewer's `-`, `Fit`, and `+` controls for persistent image zoom up to
-  16x. Left-drag pans while zoomed; `Cmd/Ctrl` + mouse wheel zooms around the
-  pointer. View zoom affects only display and never changes calibration pixels
+  16x. The mouse wheel zooms around the pointer and dragging pans the image.
+  Hold `Cmd/Ctrl` while using the wheel or dragging to adjust the lens model.
+  View zoom affects only display and never changes calibration pixels
   or report framing. Above 10x, black dots automatically mark the exact picked
   subpixel star positions while the green pairing circles remain visible.
 - `Cmd/Ctrl Z`: undo the most recent accepted fit.
@@ -140,9 +141,9 @@ pairings after an automatic run.
 3. Check UTC time, latitude, longitude, and altitude.
 4. Select the optical model to fit: an AIDA radial model (`optmod 1`, `2`,
    `3`, `4`, `5`, `6`, or `12`) or Brown-Conrady.
-5. Roughly align the star field: left-drag to move the zenith point,
-   Shift-left-drag or right-drag to rotate the field, and use the mouse wheel
-   to scale `f1` and `f2` together.
+5. Roughly align the star field: hold `Cmd/Ctrl` and left-drag to move the
+   zenith point, use `Cmd/Ctrl` + Shift-left-drag or right-drag to rotate the
+   field, and use `Cmd/Ctrl` + mouse wheel to scale `f1` and `f2` together.
 6. Click `I'm feeling lucky...` or press `L` to run the automatic detector,
    asterism matcher, and staged lens fit. Re-running it respects any masked
    image tiles.
@@ -157,11 +158,12 @@ pairings after an automatic run.
 
 ## Field Of View Adjustment
 
-The first alignment step is meant to be visual and approximate. Drag with the
-left mouse button until the catalog zenith is near the image zenith. Shift-drag
-with the left mouse button, or drag with the right mouse button, to rotate the
-star field so bright catalog stars line up with the image orientation. Use the
-mouse wheel if the projected catalog field is too wide or too narrow. After the
+The first alignment step is meant to be visual and approximate. Hold
+`Cmd/Ctrl` and drag with the left mouse button until the catalog zenith is near
+the image zenith. Keep `Cmd/Ctrl` held and Shift-drag with the left mouse
+button, or drag with the right mouse button, to rotate the star field so bright
+catalog stars line up with the image orientation. Use `Cmd/Ctrl` + mouse wheel
+if the projected catalog field is too wide or too narrow. After the
 field is close, use `S` to create accurate star pairs and let the lens optimizer
 refine the selected model parameters.
 
