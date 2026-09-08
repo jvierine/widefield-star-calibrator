@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.62";
+    const APP_VERSION = "v0.3.63";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -4666,8 +4666,16 @@ end
                 throw new Error(await response.text() || `server returned ${response.status}`);
             }
             const blob = await response.blob();
+            const observed = response.headers.get("X-GAIA-Observation-UTC");
+            const latitude = Number(response.headers.get("X-GAIA-Latitude-Deg"));
+            const longitude = Number(response.headers.get("X-GAIA-Longitude-Deg"));
+            const altitude = Number(response.headers.get("X-GAIA-Altitude-M"));
             const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
             await loadImageFile(new File([blob], `${sourceId}-latest.${extension}`, {type: blob.type || "image/jpeg"}));
+            if (observed && !Number.isNaN(Date.parse(observed))) controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(new Date(observed));
+            if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
+            if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
+            if (Number.isFinite(altitude)) controls.altM.value = altitude.toFixed(1);
             state.fitMessage = `GAIA: loaded latest image for ${sourceId}; fit the lens, then send the calibration back`;
             render();
             return true;

@@ -125,6 +125,7 @@
             <label>Altitude m
                 <input id="altM" type="number" step="1" value="0">
             </label>
+            <button id="sendGaiaCalibration" class="primary-action" type="button" hidden>Save lens model to GAIA</button>
             <button id="luckyFit" class="primary-action" type="button">I'm feeling lucky... (L)</button>
             <label>Export language
                 <select id="exportLanguage">
@@ -142,7 +143,6 @@
                 <button id="downloadAzElHdf5" type="button">Download az/el HDF5</button>
                 <button id="downloadFitReport" type="button">Download results</button>
             </div>
-            <button id="sendGaiaCalibration" class="primary-action" type="button" hidden>Send calibration to GAIA</button>
         </section>
 
         <section>
@@ -308,6 +308,6 @@ window.MathJax = {
 <script src="js/auto_identifier.js?v=20260526a"></script>
 <script src="js/aida_config.js?v=20260603a"></script>
 <script src="js/view_zoom.js?v=20260818-gesture-modifiers"></script>
-<script src="js/app.js?v=20260818-gesture-modifiers"></script>
+<script src="js/app.js?v=20260908-gaia-063"></script>
 </body>
 </html>
