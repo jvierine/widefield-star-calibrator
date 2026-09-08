@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.60";
+    const APP_VERSION = "v0.3.62";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -135,6 +135,7 @@
         downloadFitHdf5: document.getElementById("downloadFitHdf5"),
         downloadAzElHdf5: document.getElementById("downloadAzElHdf5"),
         downloadFitReport: document.getElementById("downloadFitReport"),
+        sendGaiaCalibration: document.getElementById("sendGaiaCalibration"),
         localTestCaseTools: document.getElementById("localTestCaseTools"),
         submitPassKey: document.getElementById("submitPassKey"),
         submitTestCase: document.getElementById("submitTestCase"),
@@ -4612,6 +4613,69 @@ end
                 button.disabled = false;
             }
             render();
+        }
+    }
+
+    async function sendCalibrationToGaia() {
+        const params = new URLSearchParams(window.location.search);
+        const sourceId = params.get("source_id");
+        if (!sourceId || !state.image) {
+            state.fitMessage = "GAIA submission needs a camera source and a loaded image";
+            render();
+            return;
+        }
+        const button = controls.sendGaiaCalibration;
+        button.disabled = true;
+        try {
+            setLoadingProgress(10, "Preparing GAIA calibration...");
+            const rows = matchResidualRows();
+            const prefix = window.AidaMiracleExport.imagePrefix(state.imageName || "wisc");
+            const miracleProduct = miracleCalibrationProduct();
+            const starRows = selectedStarDataRows();
+            const metadata = reportMetadata(rows, miracleProduct);
+            const {h5wasm, FS} = await loadH5Wasm();
+            const filename = resultsHdf5Filename(prefix);
+            const bytes = writeResultsHdf5Bytes(h5wasm, FS, filename, prefix, metadata, miracleProduct, starRows);
+            const form = new FormData();
+            form.append("source_id", sourceId);
+            form.append("valid_from_utc", metadata.timestampUtc);
+            form.append("residual_px", String(metadata.residualSummary && metadata.residualSummary.rmsPx || ""));
+            form.append("calibration", new Blob([bytes], {type: "application/x-hdf5"}), filename);
+            const response = await fetch("/gaia/api/calibrations", {method: "POST", body: form});
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.error || result.message || `server returned ${response.status}`);
+            state.fitMessage = `GAIA: calibration saved for ${sourceId}`;
+            button.textContent = "Calibration saved in GAIA";
+        } catch (error) {
+            state.fitMessage = `GAIA submission failed: ${error && error.message ? error.message : error}`;
+        } finally {
+            hideLoadingProgress(); button.disabled = false; render();
+        }
+    }
+
+    async function loadGaiaSourceImage() {
+        const params = new URLSearchParams(window.location.search);
+        const sourceId = params.get("source_id");
+        if (params.get("gaia") !== "1" || !sourceId) {
+            return false;
+        }
+        try {
+            setLoadingProgress(8, `Loading latest GAIA image for ${sourceId}...`);
+            const response = await fetch(`/gaia/api/sources/${encodeURIComponent(sourceId)}/latest`, {cache: "no-store"});
+            if (!response.ok) {
+                throw new Error(await response.text() || `server returned ${response.status}`);
+            }
+            const blob = await response.blob();
+            const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+            await loadImageFile(new File([blob], `${sourceId}-latest.${extension}`, {type: blob.type || "image/jpeg"}));
+            state.fitMessage = `GAIA: loaded latest image for ${sourceId}; fit the lens, then send the calibration back`;
+            render();
+            return true;
+        } catch (error) {
+            state.fitMessage = `GAIA image load failed for ${sourceId}: ${error && error.message ? error.message : error}`;
+            hideLoadingProgress();
+            render();
+            return false;
         }
     }
 
@@ -14408,6 +14472,11 @@ lens-model inverse.}
     if (controls.downloadFitReport) {
         controls.downloadFitReport.addEventListener("click", downloadFitReportZip);
     }
+    if (controls.sendGaiaCalibration) {
+        const gaiaParams = new URLSearchParams(window.location.search);
+        controls.sendGaiaCalibration.hidden = gaiaParams.get("gaia") !== "1" || !gaiaParams.get("source_id");
+        controls.sendGaiaCalibration.addEventListener("click", sendCalibrationToGaia);
+    }
     if (controls.localTestCaseTools) {
         controls.localTestCaseTools.hidden = !TEST_CASES_ENABLED;
     }
@@ -14761,7 +14830,7 @@ lens-model inverse.}
         }
     });
 
-    function initializeApp() {
+    async function initializeApp() {
         if (initializeApp.done) {
             return;
         }
@@ -14772,6 +14841,8 @@ lens-model inverse.}
         const quickLinkToken = quickLinkTokenFromLocation();
         if (quickLinkToken) {
             loadQuickLinkTestCase();
+        } else if (!state.image && await loadGaiaSourceImage()) {
+            // The camera image is ready for star matching.
         } else if (!state.image) {
             resetForNewImage();
             loadImageSource(defaultImage.url, defaultImage.name, null, false, defaultImage.metadata, defaultImage.metadataName);
