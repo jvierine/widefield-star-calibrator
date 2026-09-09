@@ -4656,12 +4656,17 @@ end
     async function loadGaiaSourceImage() {
         const params = new URLSearchParams(window.location.search);
         const sourceId = params.get("source_id");
+        const imageId = params.get("image_id");
         if (params.get("gaia") !== "1" || !sourceId) {
             return false;
         }
         try {
-            setLoadingProgress(8, `Loading latest GAIA image for ${sourceId}...`);
-            const response = await fetch(`/gaia/api/sources/${encodeURIComponent(sourceId)}/latest`, {cache: "no-store"});
+            const selected = Boolean(imageId);
+            setLoadingProgress(8, `Loading ${selected ? "selected" : "latest"} GAIA image for ${sourceId}...`);
+            const endpoint = selected
+                ? `/gaia/api/images/${encodeURIComponent(imageId)}/original`
+                : `/gaia/api/sources/${encodeURIComponent(sourceId)}/latest`;
+            const response = await fetch(endpoint, {cache: selected ? "force-cache" : "no-store"});
             if (!response.ok) {
                 throw new Error(await response.text() || `server returned ${response.status}`);
             }
@@ -4671,12 +4676,12 @@ end
             const longitude = Number(response.headers.get("X-GAIA-Longitude-Deg"));
             const altitude = Number(response.headers.get("X-GAIA-Altitude-M"));
             const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-            await loadImageFile(new File([blob], `${sourceId}-latest.${extension}`, {type: blob.type || "image/jpeg"}));
+            await loadImageFile(new File([blob], `${sourceId}-${imageId || "latest"}.${extension}`, {type: blob.type || "image/jpeg"}));
             if (observed && !Number.isNaN(Date.parse(observed))) controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(new Date(observed));
             if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
             if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
             if (Number.isFinite(altitude)) controls.altM.value = altitude.toFixed(1);
-            state.fitMessage = `GAIA: loaded latest image for ${sourceId}; fit the lens, then send the calibration back`;
+            state.fitMessage = `GAIA: loaded ${selected ? `selected archived frame ${imageId}` : "latest image"} for ${sourceId}; fit the lens, then send the calibration back`;
             render();
             return true;
         } catch (error) {
