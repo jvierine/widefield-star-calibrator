@@ -1174,6 +1174,33 @@
         };
     }
 
+    // Explicit exclusions are not evidence of the physical fisheye horizon.
+    function gaiaMaskPredicate(settings, width, height) {
+        if (!settings) return () => false;
+        const crop = settings.crop || {};
+        const left = (crop.left ?? 0) * width, right = (crop.right ?? 1) * width;
+        const top = (crop.top ?? 0) * height, bottom = (crop.bottom ?? 1) * height;
+        const polygons = settings.mask_enabled !== false &&
+            settings.mask?.coordinate_system === "normalized_image"
+            ? (settings.mask.polygons || []).filter(p => p.length >= 3)
+                .map(p => p.map(([x, y]) => [x * width, y * height])) : [];
+        return (x, y, pad = 0) => {
+            if (x - pad < left || x + pad >= right || y - pad < top || y + pad >= bottom) return true;
+            for (const polygon of polygons) {
+                let inside = false;
+                for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                    const [ax, ay] = polygon[j], [bx, by] = polygon[i];
+                    if ((ay > y) !== (by > y) && x < (bx - ax) * (y - ay) / (by - ay) + ax) inside = !inside;
+                    const dx = bx - ax, dy = by - ay;
+                    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1)));
+                    if (Math.hypot(x - ax - t * dx, y - ay - t * dy) <= pad) return true;
+                }
+                if (inside) return true;
+            }
+            return false;
+        };
+    }
+
     function detectFisheyeAnnulus(imageData, options = {}) {
         const width = Number(imageData && imageData.width) || 0;
         const height = Number(imageData && imageData.height) || 0;
@@ -1703,6 +1730,7 @@
         dateToDatetimeLocal,
         datetimeLocalToDate,
         detectFisheyeAnnulus,
+        gaiaMaskPredicate,
         defaultOptparForImageSize,
         fisheyeOptparFromAnnulus,
         fisheyePreflattenFromAnnulus,

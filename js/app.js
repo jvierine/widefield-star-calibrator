@@ -207,6 +207,7 @@
         viewCenterX: null,
         viewCenterY: null,
         maskRegions: [],
+        gaiaMaskPredicate: null,
         junkStarFinderRegions: [],
         badStarFinderDetections: [],
         notStarTiles: [],
@@ -556,6 +557,7 @@
     }
 
     function isMaskedImagePixel(x, y, pad = 0) {
+        if (state.gaiaMaskPredicate?.(x, y, pad)) return true;
         for (const region of state.maskRegions) {
             const r = region.radius + pad;
             const dx = x - region.x;
@@ -4664,19 +4666,23 @@ end
             const selected = Boolean(imageId);
             setLoadingProgress(8, `Loading ${selected ? "selected" : "latest"} GAIA image for ${sourceId}...`);
             const endpoint = selected
-                ? `/gaia/api/images/${encodeURIComponent(imageId)}/original?calibration=true`
-                : `/gaia/api/sources/${encodeURIComponent(sourceId)}/latest?calibration=true`;
+                ? `/gaia/api/images/${encodeURIComponent(imageId)}/original`
+                : `/gaia/api/sources/${encodeURIComponent(sourceId)}/latest`;
             const response = await fetch(endpoint, {cache: "no-store"});
             if (!response.ok) {
                 throw new Error(await response.text() || `server returned ${response.status}`);
             }
+            // Preserve original pixels for horizon inference; exclude masks only in star search.
+            const settingsResponse = await fetch('/gaia/api/sources/' + encodeURIComponent(sourceId) + '/settings', {cache: "no-store"});
+            if (!settingsResponse.ok) throw new Error("Could not load GAIA star-search masks");
+            const gaiaSettings = await settingsResponse.json();
             const blob = await response.blob();
             const observed = response.headers.get("X-GAIA-Observation-UTC");
             const latitude = Number(response.headers.get("X-GAIA-Latitude-Deg"));
             const longitude = Number(response.headers.get("X-GAIA-Longitude-Deg"));
             const altitude = Number(response.headers.get("X-GAIA-Altitude-M"));
             const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-            await loadImageFile(new File([blob], `${sourceId}-${imageId || "latest"}.${extension}`, {type: blob.type || "image/jpeg"}));
+            await loadImageFile(new File([blob], `${sourceId}-${imageId || "latest"}.${extension}`, {type: blob.type || "image/jpeg"}), gaiaSettings);
             if (observed && !Number.isNaN(Date.parse(observed))) controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(new Date(observed));
             if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
             if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
@@ -12912,6 +12918,7 @@ lens-model inverse.}
         state.viewCenterX = null;
         state.viewCenterY = null;
         state.maskRegions = [];
+        state.gaiaMaskPredicate = null;
         state.junkStarFinderRegions = [];
         state.badStarFinderDetections = [];
         state.notStarTiles = [];
@@ -13109,6 +13116,7 @@ lens-model inverse.}
                 state.imageName = name;
                 state.currentImageMetadata = exifMetadata || null;
                 state.maskRegions = [];
+                state.gaiaMaskPredicate = AidaTools.gaiaMaskPredicate(exifMetadata?.gaiaSettings, img.width, img.height);
                 state.junkStarFinderRegions = [];
                 state.badStarFinderDetections = [];
                 state.notStarTiles = [];
@@ -13380,7 +13388,7 @@ lens-model inverse.}
         };
     }
 
-    async function loadImageFile(file) {
+    async function loadImageFile(file, gaiaSettings = null) {
         resetForNewImage();
         if (state.localImageUrl) {
             URL.revokeObjectURL(state.localImageUrl);
@@ -13388,7 +13396,7 @@ lens-model inverse.}
         try {
             const buffer = await file.arrayBuffer();
             const display = await displayBlobForImage(file, buffer);
-            const metadata = mergeMetadata(await readImageMetadata(file, buffer), display.metadata);
+            const metadata = {...mergeMetadata(await readImageMetadata(file, buffer), display.metadata), gaiaSettings};
             const fitsSubmitDataUrl = isFitsFile(file) ?
                 arrayBufferDataUrl(buffer, "application/fits") :
                 null;

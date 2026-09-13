@@ -916,3 +916,25 @@ fullTest("cameraModel matches Python and MATLAB parametric optmod reference coor
         assertNear(js.y + 1, matlab.y, 1e-9);
     }
 });
+
+
+test("GAIA exclusions preserve unmasked outer sky and original lens pixels", () => {
+    const tools = loadAidaTools();
+    const settings = {crop: {left: 0.05, top: 0, right: 1, bottom: 0.95}, mask_enabled: true,
+        mask: {coordinate_system: "normalized_image", polygons: [
+            [[0.8, 0.2], [1.1, 0.2], [1.1, 0.4], [0.8, 0.4]],
+            [[0.1, 0.7], [0.2, 0.7], [0.2, 0.8], [0.1, 0.8]]
+        ]}};
+    const excluded = tools.gaiaMaskPredicate(settings, 1000, 500);
+    assert.equal(excluded(950, 50), false, "outer sky remains searchable, no artificial circle");
+    assert.equal(excluded(900, 150), true);
+    assert.equal(excluded(150, 375), true);
+    assert.equal(excluded(20, 100), true);
+    assert.equal(excluded(500, 480), true);
+    assert.equal(excluded(797, 150, 4), true, "centroid footprint respects mask edge");
+    assert.equal(excluded(797, 150, 2), false);
+    const disabled = tools.gaiaMaskPredicate({...settings, mask_enabled: false}, 1000, 500);
+    assert.equal(disabled(900, 150), false);
+    assert.equal(disabled(20, 100), true, "crop remains active");
+    assert.equal(tools.gaiaMaskPredicate(null, 1000, 500)(900, 150), false);
+});
