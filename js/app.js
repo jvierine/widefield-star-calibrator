@@ -4664,9 +4664,9 @@ end
             const selected = Boolean(imageId);
             setLoadingProgress(8, `Loading ${selected ? "selected" : "latest"} GAIA image for ${sourceId}...`);
             const endpoint = selected
-                ? `/gaia/api/images/${encodeURIComponent(imageId)}/original`
-                : `/gaia/api/sources/${encodeURIComponent(sourceId)}/latest`;
-            const response = await fetch(endpoint, {cache: selected ? "force-cache" : "no-store"});
+                ? `/gaia/api/images/${encodeURIComponent(imageId)}/original?calibration=true`
+                : `/gaia/api/sources/${encodeURIComponent(sourceId)}/latest?calibration=true`;
+            const response = await fetch(endpoint, {cache: "no-store"});
             if (!response.ok) {
                 throw new Error(await response.text() || `server returned ${response.status}`);
             }
