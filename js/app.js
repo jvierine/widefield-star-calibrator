@@ -4682,13 +4682,14 @@ end
             const longitude = Number(response.headers.get("X-GAIA-Longitude-Deg"));
             const altitude = Number(response.headers.get("X-GAIA-Altitude-M"));
             const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-            await loadImageFile(new File([blob], `${sourceId}-${imageId || "latest"}.${extension}`, {type: blob.type || "image/jpeg"}), gaiaSettings);
+            await loadImageFile(new File([blob], `${sourceId}-${imageId || "latest"}.${extension}`, {type: blob.type || "image/jpeg"}), gaiaSettings, () => {
             if (observed && !Number.isNaN(Date.parse(observed))) controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(new Date(observed));
             if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
             if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
             if (Number.isFinite(altitude)) controls.altM.value = altitude.toFixed(1);
             state.fitMessage = `GAIA: loaded ${selected ? `selected archived frame ${imageId}` : "latest image"} for ${sourceId}; fit the lens, then send the calibration back`;
             render();
+            });
             return true;
         } catch (error) {
             state.fitMessage = `GAIA image load failed for ${sourceId}: ${error && error.message ? error.message : error}`;
@@ -7196,7 +7197,7 @@ lens-model inverse.}
             "mouse gestures: wheel zooms and drag pans; Cmd/Ctrl + wheel/drag edits lens\n" +
             "model coordinates: raw zero-based pixel centers (flip buttons negate f1/f2)\n" +
             `image flip x/y: ${state.imageFlipX}/${state.imageFlipY}\n` +
-            `image masks: ${state.maskRegions.length}\n` +
+            `image masks: ${state.maskRegions.length}; GAIA crop/polygon exclusions: ${state.currentImageMetadata?.gaiaSettings ? "loaded" : "none"}\n` +
             `bad star finder detections: ${state.badStarFinderDetections.length} in ${state.junkStarFinderRegions.length} marked regions\n` +
             `RA/Dec grid: ${state.showRaDecGrid ? "on" : "off"}\n` +
             `az/el grid: ${state.showAzElGrid ? "on" : "off"}\n` +
@@ -13388,7 +13389,7 @@ lens-model inverse.}
         };
     }
 
-    async function loadImageFile(file, gaiaSettings = null) {
+    async function loadImageFile(file, gaiaSettings = null, onLoaded = null) {
         resetForNewImage();
         if (state.localImageUrl) {
             URL.revokeObjectURL(state.localImageUrl);
@@ -13404,6 +13405,7 @@ lens-model inverse.}
             loadImageSource(state.localImageUrl, display.displayName, img => {
                 state.testCaseImageFile = file;
                 state.testCaseImageName = file.name;
+                if (onLoaded) onLoaded(img);
                 if (fitsSubmitDataUrl) {
                     state.testCaseImageDataUrl = fitsSubmitDataUrl;
                 }
