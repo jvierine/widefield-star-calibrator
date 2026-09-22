@@ -4699,6 +4699,46 @@ end
         }
     }
 
+    async function loadGaiaEventImage() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("gaia_event") !== "1") {
+            return false;
+        }
+        const eventId = params.get("event_id") || "";
+        const recordId = params.get("record_id") || "";
+        try {
+            if (!/^\d{8}$/.test(eventId) || !recordId) {
+                throw new Error("missing event or image identity");
+            }
+            const imageUrl = new URL(params.get("image_url") || "", window.location.origin);
+            const prefix = `/gaia/public/events/${eventId}/previews/`;
+            if (imageUrl.origin !== window.location.origin || !imageUrl.pathname.startsWith(prefix)) {
+                throw new Error("event image URL is outside the GAIA event archive");
+            }
+            setLoadingProgress(8, `Loading GAIA event image ${recordId}...`);
+            const response = await fetch(imageUrl, {cache: "no-store"});
+            if (!response.ok) throw new Error(`server returned ${response.status}`);
+            const blob = await response.blob();
+            const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+            await loadImageFile(new File([blob], `gaia-event-${eventId}-${safeCaseId(recordId)}.${extension}`, {type: blob.type || "image/jpeg"}), null, () => {
+                const observed = params.get("observation_utc");
+                const latitude = Number(params.get("latitude_deg"));
+                const longitude = Number(params.get("longitude_deg"));
+                if (observed && !Number.isNaN(Date.parse(observed))) controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(new Date(observed));
+                if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
+                if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
+                state.fitMessage = `GAIA event ${eventId}: loaded ${recordId}; fit the lens, then download the calibration HDF5`;
+                render();
+            });
+            return true;
+        } catch (error) {
+            state.fitMessage = `GAIA event image load failed: ${error && error.message ? error.message : error}`;
+            hideLoadingProgress();
+            render();
+            return false;
+        }
+    }
+
     function escapeTex(value) {
         return String(value ?? "")
             .replace(/\\/g, "\\textbackslash{}")
@@ -14864,7 +14904,7 @@ lens-model inverse.}
         const quickLinkToken = quickLinkTokenFromLocation();
         if (quickLinkToken) {
             loadQuickLinkTestCase();
-        } else if (!state.image && await loadGaiaSourceImage()) {
+        } else if (!state.image && (await loadGaiaEventImage() || await loadGaiaSourceImage())) {
             // The camera image is ready for star matching.
         } else if (!state.image) {
             resetForNewImage();
