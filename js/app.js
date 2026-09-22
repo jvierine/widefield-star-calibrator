@@ -4621,8 +4621,11 @@ end
     async function sendCalibrationToGaia() {
         const params = new URLSearchParams(window.location.search);
         const sourceId = params.get("source_id");
-        if (!sourceId || !state.image) {
-            state.fitMessage = "GAIA submission needs a camera source and a loaded image";
+        const eventId = params.get("event_id");
+        const recordId = params.get("record_id");
+        const eventMode = params.get("gaia_event") === "1";
+        if ((!eventMode && !sourceId || eventMode && (!/^\d{8}$/.test(eventId || "") || !recordId)) || !state.image) {
+            state.fitMessage = "GAIA submission needs an identified camera or event image and a loaded image";
             render();
             return;
         }
@@ -4639,15 +4642,33 @@ end
             const filename = resultsHdf5Filename(prefix);
             const bytes = writeResultsHdf5Bytes(h5wasm, FS, filename, prefix, metadata, miracleProduct, starRows);
             const form = new FormData();
-            form.append("source_id", sourceId);
-            form.append("valid_from_utc", metadata.timestampUtc);
+            if (eventMode) {
+                form.append("record_id", recordId);
+            } else {
+                form.append("source_id", sourceId);
+                form.append("valid_from_utc", metadata.timestampUtc);
+            }
             form.append("residual_px", String(metadata.residualSummary && metadata.residualSummary.rmsPx || ""));
+            form.append("star_count", String(starRows.filter(row => row.includedInFit).length));
             form.append("calibration", new Blob([bytes], {type: "application/x-hdf5"}), filename);
-            const response = await fetch("/gaia/api/calibrations", {method: "POST", body: form});
+            const endpoint = eventMode
+                ? `/gaia/api/events/${encodeURIComponent(eventId)}/calibrations`
+                : "/gaia/api/calibrations";
+            const response = await fetch(endpoint, {method: "POST", body: form});
             const result = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(result.error || result.message || `server returned ${response.status}`);
-            state.fitMessage = `GAIA: calibration saved for ${sourceId}`;
-            button.textContent = "Calibration saved in GAIA";
+            if (eventMode) {
+                state.fitMessage = result.projection_error
+                    ? `GAIA event: calibration saved, but projection failed: ${result.projection_error}`
+                    : `GAIA event: calibration saved and projected to 100 km for ${recordId}`;
+                button.textContent = result.projection_error ? "Calibration saved; projection failed" : "Saved and projected in GAIA";
+                if (!result.projection_error && window.opener) {
+                    window.opener.postMessage({type: "gaia-event-calibrated", eventId, recordId}, window.location.origin);
+                }
+            } else {
+                state.fitMessage = `GAIA: calibration saved for ${sourceId}`;
+                button.textContent = "Calibration saved in GAIA";
+            }
         } catch (error) {
             state.fitMessage = `GAIA submission failed: ${error && error.message ? error.message : error}`;
         } finally {
@@ -4710,24 +4731,25 @@ end
             if (!/^\d{8}$/.test(eventId) || !recordId) {
                 throw new Error("missing event or image identity");
             }
-            const imageUrl = new URL(params.get("image_url") || "", window.location.origin);
-            const prefix = `/gaia/public/events/${eventId}/previews/`;
-            if (imageUrl.origin !== window.location.origin || !imageUrl.pathname.startsWith(prefix)) {
-                throw new Error("event image URL is outside the GAIA event archive");
-            }
             setLoadingProgress(8, `Loading GAIA event image ${recordId}...`);
-            const response = await fetch(imageUrl, {cache: "no-store"});
+            const base = `/gaia/api/events/${encodeURIComponent(eventId)}/records/${encodeURIComponent(recordId)}`;
+            const [response, settingsResponse] = await Promise.all([
+                fetch(`${base}/image`, {cache: "no-store"}),
+                fetch(`${base}/settings`, {cache: "no-store"}),
+            ]);
             if (!response.ok) throw new Error(`server returned ${response.status}`);
+            if (!settingsResponse.ok) throw new Error("Could not load GAIA event crop and masks");
+            const gaiaSettings = await settingsResponse.json();
             const blob = await response.blob();
             const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-            await loadImageFile(new File([blob], `gaia-event-${eventId}-${safeCaseId(recordId)}.${extension}`, {type: blob.type || "image/jpeg"}), null, () => {
-                const observed = params.get("observation_utc");
-                const latitude = Number(params.get("latitude_deg"));
-                const longitude = Number(params.get("longitude_deg"));
+            await loadImageFile(new File([blob], `gaia-event-${eventId}-${safeCaseId(recordId)}.${extension}`, {type: blob.type || "image/jpeg"}), gaiaSettings, () => {
+                const observed = response.headers.get("X-GAIA-Observation-UTC") || params.get("observation_utc");
+                const latitude = Number(response.headers.get("X-GAIA-Latitude-Deg") || params.get("latitude_deg"));
+                const longitude = Number(response.headers.get("X-GAIA-Longitude-Deg") || params.get("longitude_deg"));
                 if (observed && !Number.isNaN(Date.parse(observed))) controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(new Date(observed));
                 if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
                 if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
-                state.fitMessage = `GAIA event ${eventId}: loaded ${recordId}; fit the lens, then download the calibration HDF5`;
+                state.fitMessage = `GAIA event ${eventId}: loaded ${recordId}; fit the lens, then save it back to GAIA for 100 km projection`;
                 render();
             });
             return true;
@@ -14537,7 +14559,9 @@ lens-model inverse.}
     }
     if (controls.sendGaiaCalibration) {
         const gaiaParams = new URLSearchParams(window.location.search);
-        controls.sendGaiaCalibration.hidden = gaiaParams.get("gaia") !== "1" || !gaiaParams.get("source_id");
+        const realtimeGaia = gaiaParams.get("gaia") === "1" && gaiaParams.get("source_id");
+        const eventGaia = gaiaParams.get("gaia_event") === "1" && gaiaParams.get("event_id") && gaiaParams.get("record_id");
+        controls.sendGaiaCalibration.hidden = !(realtimeGaia || eventGaia);
         controls.sendGaiaCalibration.addEventListener("click", sendCalibrationToGaia);
     }
     if (controls.localTestCaseTools) {
