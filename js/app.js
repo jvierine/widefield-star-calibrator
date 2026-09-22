@@ -4676,6 +4676,90 @@ end
         }
     }
 
+    // GAIA identifies stars by position -- its catalogue is Tycho-2, which
+    // carries no names -- so a name has to come from the bright-star list
+    // already loaded here. Nearest neighbour within an arcminute: the two
+    // catalogues agree to well inside that, and beyond it a match would be a
+    // different star rather than the same one measured differently.
+    function gaiaStarName(raHours, decDeg) {
+        const catalog = window.AIDA_STAR_CATALOG || [];
+        const cosDec = Math.cos(decDeg * Math.PI / 180);
+        const limit = 1 / 60;
+        let best = null;
+        let bestSeparation = Infinity;
+        for (const entry of catalog) {
+            if (!entry || entry.length < 4 || !entry[3]) continue;
+            const dDec = Number(entry[1]) - decDeg;
+            if (Math.abs(dDec) > limit) continue;
+            // Right ascension is in hours: fifteen degrees to the hour, and the
+            // sky narrows towards the pole.
+            const dRa = (Number(entry[0]) - raHours) * 15 * cosDec;
+            if (Math.abs(dRa) > limit) continue;
+            const separation = Math.hypot(dRa, dDec);
+            if (separation < bestSeparation) {
+                bestSeparation = separation;
+                best = String(entry[3]);
+            }
+        }
+        return bestSeparation <= limit ? best : null;
+    }
+
+    // Load a GAIA refit proposal: the eight optical parameters it fitted, and
+    // the identifications it fitted them through. Nothing has been written on
+    // the GAIA side. Some automatic identifications are dubious -- a hot pixel,
+    // a satellite, a star pulled onto its neighbour -- and the point of the
+    // handoff is that they are culled here before a calibration is sent back.
+    async function applyGaiaProposal(sourceId) {
+        try {
+            const response = await fetch(
+                `/gaia/api/sources/${encodeURIComponent(sourceId)}/calibration/refit-proposal`,
+                {cache: "no-store"});
+            if (!response.ok) {
+                throw new Error(await response.text() || `server returned ${response.status}`);
+            }
+            const proposal = await response.json();
+            if (Number.isFinite(Number(proposal.optmod))) {
+                controls.optmod.value = String(proposal.optmod);
+            }
+            const optpar = Array.isArray(proposal.optpar) ? proposal.optpar.map(Number) : [];
+            // applyFitVector writes the controls and state.modelOptpar together,
+            // so a proposed model arrives exactly as a fitted one does.
+            if (optpar.length >= 8) applyFitVector(optpar);
+            state.matches = (Array.isArray(proposal.matches) ? proposal.matches : [])
+                .map((match, index) => ({
+                    id: Number.isFinite(Number(match.id)) ? Number(match.id) : index + 1,
+                    image: {
+                        x: Number(match.image_x) || 0,
+                        y: Number(match.image_y) || 0,
+                        // Marked automatic so it is plain which pairings nobody
+                        // has vouched for yet.
+                        method: "gaia-auto",
+                    },
+                    catalog: {
+                        key: String(match.star_key || `gaia-${index}`),
+                        name: gaiaStarName(Number(match.ra_hours), Number(match.dec_deg))
+                            || String(match.star_key || ""),
+                        raHours: Number(match.ra_hours) || 0,
+                        decDeg: Number(match.dec_deg) || 0,
+                        mag: Number(match.mag) || 0,
+                        az: Number(match.azimuth_deg) || 0,
+                        ze: Number(match.zenith_deg) || 0,
+                    },
+                }));
+            const before = Number(proposal.residual_px_before);
+            const after = Number(proposal.residual_px_after);
+            state.fitMessage = `GAIA: ${state.matches.length} automatically identified stars and a `
+                + `proposed lens model loaded (${before.toFixed(2)} to ${after.toFixed(2)} px RMS). `
+                + `Check the identifications, discard any that are wrong, refit, and send the `
+                + `calibration back.`;
+            render();
+        } catch (error) {
+            state.fitMessage = `GAIA proposal load failed: `
+                + `${error && error.message ? error.message : error}`;
+            render();
+        }
+    }
+
     async function loadGaiaSourceImage() {
         const params = new URLSearchParams(window.location.search);
         const sourceId = params.get("source_id");
@@ -4708,6 +4792,10 @@ end
             if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
             if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
             if (Number.isFinite(altitude)) controls.altM.value = altitude.toFixed(1);
+            // A GAIA refit proposal: the stars it identified automatically and
+            // the lens model fitted through them, for checking before any of it
+            // becomes a calibration.
+            if (params.get("proposal") === "1") { void applyGaiaProposal(sourceId); }
             state.fitMessage = `GAIA: loaded ${selected ? `selected archived frame ${imageId}` : "latest image"} for ${sourceId}; fit the lens, then send the calibration back`;
             render();
             });
