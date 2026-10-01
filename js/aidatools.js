@@ -758,7 +758,7 @@
     }
 
     function fitCircleToEdgePoints(points) {
-        if (!Array.isArray(points) || points.length < 8) {
+        if (!Array.isArray(points) || points.length < 3) {
             return null;
         }
         const ata = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
@@ -1731,6 +1731,7 @@
         datetimeLocalToDate,
         detectFisheyeAnnulus,
         gaiaMaskPredicate,
+        fitCircleToEdgePoints,
         defaultOptparForImageSize,
         fisheyeOptparFromAnnulus,
         fisheyePreflattenFromAnnulus,
