@@ -50,6 +50,7 @@ test('nine real UV pairs fit the forward camera and retain a projected Earth lim
  console.log('real UV pairs RMS:',Math.sqrt(before/picks.length),'->',rms,'optpar',fit.x);
  assert.ok(rms<5,`UV fit RMS ${rms}`);
  assert.ok(fit.x[0]>0&&fit.x[1]>0);
+ assert.ok(Math.abs(fit.x[5]-start[5])<=.05&&Math.abs(fit.x[6]-start[6])<=.05);
  assert.deepEqual(Array.from(fit.x.slice(8)),[0,0,0,0]);
  const limb=S.projectEarthLimb([32842.59832894,56014.92525168,76368.44137199],fit.x,20,512,512,A);
  assert.ok(limb.filter(p=>p&&p.x>=0&&p.x<512&&p.y>=0&&p.y<512).length>250);
