@@ -1,10 +1,29 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.63";
+    const APP_VERSION = "v0.3.71";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
+    let spacecraftObservation = null;
+    let spacecraftDiscFit = null;
+    let spacecraftSessionLoading = false;
+    let earthLimbCache = {key: null, points: []};
+    const spacecraftMode = () => document.getElementById("observerMode").value === "spacecraft";
+    function spacecraftPosition() {
+        return ["spaceX","spaceY","spaceZ"].map(id => Number(document.getElementById(id).value));
+    }
+    function observerRaDec(raHours,decDeg,date,lat,lon) {
+        const ephemeris=spacecraftMode()?window.AidaSpacecraft.observationEphemeris(spacecraftObservation,date):null;
+        return ephemeris?.j2000_to_ecef ? window.AidaSpacecraft.starAzZe(raHours,decDeg,spacecraftPosition(),ephemeris.j2000_to_ecef) : AidaTools.radecToAzZe(raHours,decDeg,date,lat,lon);
+    }
+    function observerStars(catalog, date, lat, lon, magnitude, maxZenith) {
+        if(!spacecraftMode())return AidaTools.visibleStars(catalog,date,lat,lon,magnitude,maxZenith);
+        const ephemeris=window.AidaSpacecraft.observationEphemeris(spacecraftObservation,date);
+        return window.AidaSpacecraft.catalogStars(catalog,date,spacecraftPosition(),magnitude,AidaTools,{
+            hideOcculted:document.getElementById("hideOccultedStars").checked,rotation:ephemeris?.j2000_to_ecef
+        });
+    }
     const NOT_STAR_TILE_SIZE = 128;
     const MANUAL_CENTROID_PATCH_RADIUS_WIDTH_FRACTION = 8 / 4032;
     const MANUAL_CENTROID_PATCH_RADIUS_EXTRA_PX = 1;
@@ -1041,8 +1060,11 @@
                 optmod === BROWN_CONRADY_OPTMOD ? "Brown k1" : "Radial alpha";
         }
         if (optmodChanged) {
+            const previous = state.modelOptpar?.slice();
             state.baseOptpar = null;
-            applyOptpar(defaultOptparForImage(state.image, optmod));
+            const defaults = defaultOptparForImage(state.image, optmod);
+            applyOptpar(spacecraftMode() && previous && previousOptmod ?
+                window.AidaSpacecraft.changeLensModel(previous,previousOptmod,optmod,defaults,AidaTools) : defaults);
         } else if (!radialAlphaIsValidForOptmod(Number(controls.radialAlpha.value), optmod)) {
             controls.radialAlpha.value = defaultRadialAlphaForOptmod(optmod).toFixed(6);
             syncModelOptparFromControls();
@@ -1061,7 +1083,7 @@
         const applied = x.slice(0, requiredOptparLength(optmod));
         applied[0] = x[0];
         applied[1] = x[1];
-        applied[2] = Math.max(-90, Math.min(90, x[2]));
+        applied[2] = spacecraftMode() ? wrapDegrees180(x[2]) : Math.max(-90, Math.min(90, x[2]));
         applied[3] = Math.max(-90, Math.min(90, x[3]));
         applied[4] = wrapDegrees180(x[4]);
         applied[5] = Math.max(-0.5, Math.min(0.5, x[5]));
@@ -1617,7 +1639,7 @@
         const optpar = currentOptpar();
         const rows = [];
         for (const match of matches) {
-            const azze = AidaTools.radecToAzZe(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
+            const azze = observerRaDec(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
             const xy = AidaTools.cameraModel(azze.az, azze.ze, optpar, optmod, state.image.width, state.image.height);
             if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
                 continue;
@@ -2628,6 +2650,13 @@ end
         return controls.starCatalog ? controls.starCatalog.value : "tycho2";
     }
 
+    function updateMagnitudeLimitUi() {
+        const uv=selectedCatalogName()==="td1";
+        controls.maxMag.max=uv?"12":"8";
+        if(!uv && Number(controls.maxMag.value)>8)controls.maxMag.value="8";
+        controls.maxMag.parentElement.firstChild.textContent=uv?"Limiting UV magnitude (AB 156.5 nm) ":"Limiting magnitude ";
+    }
+
     function activeStarCatalogName() {
         const selected = selectedCatalogName();
         if (selected === "td1") return "td1";
@@ -2867,11 +2896,12 @@ end
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
-        const stars = AidaTools.visibleStars(activeStarCatalog(), date, lat, lon, 7, 88);
+        const stars = observerStars(activeStarCatalog(), date, lat, lon, Math.max(7,Number(controls.maxMag.value)||4), 88);
         const optpar = currentOptpar();
         const optmod = Number(controls.optmod.value);
         state.projected = [];
         for (const star of stars) {
+            if (spacecraftMode() && cameraFrameDirectionForAzEl(star.az*AidaTools.RAD,90-star.ze*AidaTools.RAD,optpar).z <= 0) continue;
             const xy = AidaTools.cameraModel(star.az, star.ze, optpar, optmod, state.image.width, state.image.height);
             if (Number.isFinite(xy.x) && Number.isFinite(xy.y)) {
                 state.projected.push({...star, x: xy.x, y: xy.y});
@@ -2949,7 +2979,8 @@ end
         const optpar = currentOptpar();
         const optmod = Number(controls.optmod.value);
         const rows = catalogRowsForName(catalogName);
-        return AidaTools.visibleStars(rows, date, lat, lon, maxMagnitude, 88)
+        return observerStars(rows, date, lat, lon, maxMagnitude, 88)
+            .filter(star => !spacecraftMode() || cameraFrameDirectionForAzEl(star.az*AidaTools.RAD,90-star.ze*AidaTools.RAD,optpar).z > 0)
             .map(star => {
                 const xy = AidaTools.cameraModel(
                     star.az,
@@ -2974,7 +3005,7 @@ end
         const maxZenithDeg = Number.isFinite(options.maxZenithDeg) ?
             options.maxZenithDeg :
             Number.isFinite(options.catalogMaxZenithDeg) ? options.catalogMaxZenithDeg : 88;
-        return AidaTools.visibleStars(catalogRowsForName(catalogName), date, lat, lon, maxMag, maxZenithDeg)
+        return observerStars(catalogRowsForName(catalogName), date, lat, lon, maxMag, maxZenithDeg)
             .map(star => ({...star, key: catalogKey(star)}));
     }
 
@@ -3765,10 +3796,11 @@ end
     }
 
     function projectRaDec(raHours, decDeg, date, lat, lon, optpar, optmod, clipToCanvas = true) {
-        const azze = AidaTools.radecToAzZe(raHours, decDeg, date, lat, lon);
-        if (!Number.isFinite(azze.az) || !Number.isFinite(azze.ze) || azze.ze > 88 * AidaTools.DEG) {
+        const azze = observerRaDec(raHours,decDeg,date,lat,lon);
+        if (!Number.isFinite(azze.az) || !Number.isFinite(azze.ze) || (!spacecraftMode() && azze.ze > 88 * AidaTools.DEG)) {
             return null;
         }
+        if (spacecraftMode() && ((document.getElementById("hideOccultedStars").checked&&!window.AidaSpacecraft.starVisible(azze.az,azze.ze,spacecraftPosition())) || cameraFrameDirectionForAzEl(azze.az*AidaTools.RAD,90-azze.ze*AidaTools.RAD,optpar).z <= 0)) return null;
         const xy = AidaTools.cameraModel(azze.az, azze.ze, optpar, optmod, state.image.width, state.image.height);
         if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
             return null;
@@ -4235,7 +4267,7 @@ end
         );
         const fitIds = new Set(fittingMatches().map(match => String(match.id)));
         return state.matches.map((match, index) => {
-            const azze = AidaTools.radecToAzZe(
+            const azze = observerRaDec(
                 match.catalog.raHours,
                 match.catalog.decDeg,
                 date,
@@ -4482,6 +4514,12 @@ end
         file.create_attribute("image_width", new Int32Array([metadata.imageWidth]));
         file.create_attribute("image_height", new Int32Array([metadata.imageHeight]));
         file.create_attribute("timestamp_utc", metadata.timestampUtc);
+        if (spacecraftMode()) {
+            file.create_attribute("observer_mode", "spacecraft");
+            file.create_attribute("observer_position_frame", "ECEF / ITRS");
+            file.create_dataset({name:"observer_position_ecef_km",data:new Float64Array(spacecraftPosition()),shape:[3],dtype:"<d"});
+            file.create_attribute("spacecraft_observation", JSON.stringify(spacecraftObservation || {}));
+        }
         file.create_attribute("site_lat_deg", new Float64Array([metadata.site.latDeg]));
         file.create_attribute("site_lon_deg", new Float64Array([metadata.site.lonDeg]));
         file.create_attribute("site_alt_m", new Float64Array([metadata.site.altM]));
@@ -4709,6 +4747,150 @@ end
         }
     }
 
+    function initializeSpacecraftLens() {
+        const readVector = id => document.getElementById(id).value.trim().split(/[\s,]+/).map(Number);
+        const position = spacecraftPosition(), site = window.AidaSpacecraft.siteFromEcef(position);
+        controls.latDeg.value = site.latDeg; controls.lonDeg.value = site.lonDeg; controls.altM.value = site.altM;
+        const optpar = window.AidaSpacecraft.seed(position,readVector("spaceLook"),readVector("spaceUp"),Number(document.getElementById("spaceFov").value),state.image?.width || 512,state.image?.height || 512,AidaTools);
+        controls.optmod.value = "1";
+        state.showAzElGrid = false;
+        controls.toggleAzElGrid.textContent = "Show az/el grid";
+        updateOptmodUi(); applyOptpar(optpar); recomputeAndRender();
+        document.getElementById("spacecraftStatus").textContent = "Initial geometry; star fit required";
+    }
+
+    function fitSpacecraftDisc() {
+        if(!spacecraftMode()||!state.imagePixels)return;
+        try {
+            const fit=window.AidaSpacecraft.fitEarthDisc(state.imagePixels,spacecraftPosition(),currentOptpar(),Number(controls.optmod.value),AidaTools,{flipX:state.imageFlipX,flipY:state.imageFlipY,altitudeKm:spacecraftObservation?.emission_altitude_km||0});
+            rememberFitState("Earth disc fit");applyOptpar(fit.optpar);spacecraftDiscFit=fit;
+            recomputeAndRender();
+            document.getElementById("spacecraftStatus").textContent=`Disc fit: ${fit.beforeRmsPx.toFixed(2)} to ${fit.rmsPx.toFixed(2)} px RMS; roll unchanged`;
+        } catch(error) {document.getElementById("spacecraftStatus").textContent=String(error);}
+    }
+
+    function updateObserverMode() {
+        const space = spacecraftMode();
+        canvas.title = space ? "Drag: pan image; scroll: zoom image; Cmd/Ctrl-drag: point camera; Cmd/Ctrl-Shift-drag: roll; Cmd/Ctrl-scroll: lens FOV" : "";
+        const alpha=currentOptpar()[2];
+        controls.rotAlpha.min=space ? "-180" : "-90";
+        controls.rotAlpha.max=space ? "180" : "90";
+        controls.rotAlpha.value=space ? wrapDegrees180(alpha) : Math.max(-90,Math.min(90,alpha));
+        document.getElementById("spacecraftControls").hidden = !space;
+        for (const input of [controls.latDeg,controls.lonDeg,controls.altM]) input.readOnly = space;
+    }
+
+    async function loadSpacecraftImage() {
+        const params = new URLSearchParams(location.search), token = params.get("handoff");
+        if (params.get("spacecraft") !== "1" || !token) return false;
+        spacecraftSessionLoading = true;
+        try {
+            const observation = window.AidaSpacecraft.validateObservation(JSON.parse(localStorage.getItem(`aida-handoff:${token}`)));
+            const url = new URL(observation.image_url,location.href);
+            if (url.origin !== location.origin) throw Error("Spacecraft frame must be on this origin");
+            const response = await fetch(url);
+            if(!response.ok)throw Error(`Image HTTP ${response.status}`);
+            const blob = await response.blob();
+            const loaded=await loadImageFile(new File([blob],observation.frame_id+'.png',{type:blob.type}),{skipFisheye:true});
+            if(!loaded)throw Error('Could not decode spacecraft image');
+            spacecraftObservation = observation;
+            spacecraftDiscFit=observation.limb_fit?{...observation.limb_fit,optpar:observation.optpar}:null;
+            document.getElementById("observerMode").value = "spacecraft";
+            ["spaceX","spaceY","spaceZ"].forEach((id,i)=>document.getElementById(id).value=observation.position_ecef_km[i]);
+            document.getElementById("spaceLook").value=observation.look_ecef.join(" ");
+            document.getElementById("spaceUp").value=observation.up_ecef.join(" ");
+            document.getElementById("spaceFov").value=observation.fov_deg;
+            controls.timestampUtc.value=AidaTools.dateToDatetimeLocal(new Date(observation.utc));
+            updateObserverMode();initializeSpacecraftLens();
+            state.imageFlipX=Boolean(observation.image_flip_x);state.imageFlipY=Boolean(observation.image_flip_y);
+            if(observation.optpar){controls.optmod.value=String(observation.optmod||1);updateOptmodUi();applyOptpar(observation.optpar);recomputeAndRender();}
+            const saved=JSON.parse(localStorage.getItem(`aida-spacecraft-session:${observation.frame_id}`)||"null");
+            if(saved && saved.width===state.image.width && saved.height===state.image.height && saved.utc===observation.utc) {
+                controls.optmod.value=String(saved.optmod);updateOptmodUi();applyOptpar(saved.optpar);
+                state.matches=cloneMatches(saved.matches||[]);updateAutoMatches();
+                state.imageFlipX=Boolean(saved.flipX);state.imageFlipY=Boolean(saved.flipY);
+                controls.starCatalog.value=saved.catalog||"td1";
+                updateMagnitudeLimitUi();
+                controls.maxMag.value=String(saved.maxMag||12);
+                if(saved.catalog==="td1" && !state.catalogs.td1)await loadTd1Catalog();
+                recomputeAndRender();
+            }
+            spacecraftSessionLoading=false;
+            document.getElementById("returnSpacecraft").hidden=false;
+            state.fitMessage="SMILE spacecraft frame ready for calibration";render();
+            if(spacecraftDiscFit)document.getElementById("spacecraftStatus").textContent=`Disc fit: ${spacecraftDiscFit.rmsPx.toFixed(2)} px RMS; roll unchanged`;
+            return true;
+        } catch(error) {
+            spacecraftSessionLoading=false;
+            document.getElementById("spacecraftStatus").textContent=String(error);
+            state.fitMessage=`Spacecraft image load failed: ${error}`;render();
+            // Do not silently substitute an unrelated ground-camera photograph.
+            return true;
+        }
+    }
+
+    function saveSpacecraftSession() {
+        if(!spacecraftMode() || !spacecraftObservation || !state.image || spacecraftSessionLoading)return;
+        try {
+            localStorage.setItem(`aida-spacecraft-session:${spacecraftObservation.frame_id}`,JSON.stringify({
+                width:state.image.width,height:state.image.height,utc:spacecraftObservation.utc,
+                optmod:Number(controls.optmod.value),optpar:currentOptpar(),matches:cloneMatches(),
+                flipX:state.imageFlipX,flipY:state.imageFlipY,catalog:selectedCatalogName(),maxMag:Number(controls.maxMag.value)
+            }));
+        } catch(error) {console.warn("Spacecraft session could not be saved locally",error.name);}
+    }
+
+    async function restoreSpacecraftStars(event) {
+        const file=event.target.files[0];
+        if(!file || !spacecraftObservation || !state.image)return;
+        let h,FS,filename;
+        try {
+            let bytes=new Uint8Array(await file.arrayBuffer());
+            if(/\.zip$/i.test(file.name)) {
+                const Zip=await loadJsZip(),zip=await Zip.loadAsync(bytes);
+                const entries=Object.values(zip.files).filter(f=>!f.dir&&/_calibration\.h5$/i.test(f.name));
+                if(entries.length!==1)throw Error("Expected one compact calibration HDF5 in results ZIP");
+                bytes=await entries[0].async("uint8array");
+            }
+            const loaded=await loadH5Wasm();FS=loaded.FS;filename=`/spacecraft-stars-${Date.now()}.h5`;
+            FS.writeFile(filename,bytes);h=new loaded.h5wasm.File(filename,"r");
+            const attr=name=>h.attrs[name]?.value;
+            const observation=JSON.parse(attr("spacecraft_observation")||"null");
+            if(observation?.frame_id!==spacecraftObservation.frame_id || Number(attr("image_width"))!==state.image.width || Number(attr("image_height"))!==state.image.height)throw Error("Picked stars belong to a different frame");
+            const dataset=h.get("selected_stars"),columns=String(attr("selected_star_columns")).split(" ");
+            const names=JSON.parse(attr("selected_star_names")||"[]"),data=dataset.value;
+            const column=name=>{const i=columns.indexOf(name);if(i<0)throw Error(`Missing ${name}`);return i;};
+            const xi=column("star_col_px_1based"),yi=column("star_row_px_1based"),ra=column("ra_hours_j2000"),dec=column("dec_deg_j2000"),mag=column("magnitude");
+            if(dataset.shape.length!==2 || dataset.shape[1]!==columns.length || dataset.shape[0]>10000)throw Error("Invalid star table");
+            const matches=Array.from({length:dataset.shape[0]},(_,i)=>{
+                const row=Array.from(data.slice(i*columns.length,(i+1)*columns.length));
+                if(![row[xi],row[yi],row[ra],row[dec],row[mag]].every(Number.isFinite))throw Error("Non-finite star coordinate");
+                return {id:i+1,image:{x:row[xi]-1,y:row[yi]-1,method:"restored HDF5"},catalog:{raHours:row[ra],decDeg:row[dec],mag:row[mag],name:names[i]||`Star ${i+1}`}};
+            });
+            rememberUndoState(autoPairingUndoSnapshot("restore spacecraft stars"));
+            state.matches=matches;updateAutoMatches();
+            state.imageFlipX=Boolean(Number(attr("flip_image_x")));state.imageFlipY=Boolean(Number(attr("flip_image_y")));
+            controls.starCatalog.value="td1";updateMagnitudeLimitUi();controls.maxMag.value="12";
+            if(!state.catalogs.td1)await loadTd1Catalog();
+            state.fitMessage=`Restored ${matches.length} picked stars; current lens geometry retained`;
+            recomputeAndRender();
+        } catch(error) {state.fitMessage=`Could not restore stars: ${error.message}`;render();}
+        finally {h?.close();if(FS&&filename)FS.unlink(filename);event.target.value="";}
+    }
+
+    function returnSpacecraftCalibration() {
+        if(!spacecraftObservation || !state.image)return;
+        const token=new URLSearchParams(location.search).get("handoff");
+        const rows=matchResidualRows();
+        const position=spacecraftPosition(),optpar=currentOptpar(),axes=window.AidaSpacecraft.cameraAxes(position,optpar,AidaTools);
+        const discCurrent=spacecraftDiscFit&&optpar.every((v,i)=>Math.abs(v-spacecraftDiscFit.optpar[i])<1e-6);
+        const limbFit=discCurrent?{...spacecraftDiscFit,optpar:undefined}:undefined;
+        const calibration=window.AidaSpacecraft.validateObservation({...spacecraftObservation,utc:AidaTools.datetimeLocalToDate(controls.timestampUtc.value).toISOString(),position_ecef_km:position,look_ecef:axes[2],up_ecef:axes[1].map(x=>-x),fov_deg:2*Math.atan(0.5/Math.abs(optpar[0]))*180/Math.PI,optmod:Number(controls.optmod.value),optpar,matches:rows.length,residual:residualSummary(rows),image_flip_x:state.imageFlipX,image_flip_y:state.imageFlipY,limb_fit:limbFit,quality:rows.length>=3?"star-fit-candidate":discCurrent?"limb-fit":"manual-geometry",updated_utc:new Date().toISOString()});
+        localStorage.setItem(`smile-calibration:${calibration.frame_id}`,JSON.stringify(calibration));
+        if(window.opener)window.opener.postMessage({type:"aida-spacecraft-calibration",token,calibration},location.origin);
+        document.getElementById("spacecraftStatus").textContent="Calibration returned to SMILE";
+    }
+
     function escapeTex(value) {
         return String(value ?? "")
             .replace(/\\/g, "\\textbackslash{}")
@@ -4737,6 +4919,8 @@ end
             imageWidth: state.image ? state.image.width : null,
             imageHeight: state.image ? state.image.height : null,
             timestampUtc: AidaTools.datetimeLocalToDate(controls.timestampUtc.value).toISOString(),
+            observerMode: spacecraftMode() ? "spacecraft" : "ground",
+            ...(spacecraftMode() ? {observerPositionEcefKm: spacecraftPosition()} : {}),
             site: {
                 latDeg: Number(controls.latDeg.value) || 0,
                 lonDeg: Number(controls.lonDeg.value) || 0,
@@ -4837,7 +5021,7 @@ end
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
         return matches.map(match => {
-            const azze = AidaTools.radecToAzZe(
+            const azze = observerRaDec(
                 match.catalog.raHours,
                 match.catalog.decDeg,
                 date,
@@ -5314,7 +5498,7 @@ ${circles}
         const optpar = currentOptpar();
         const out = [];
         for (const star of yaleBrightCatalog(maxMag)) {
-            const azze = AidaTools.radecToAzZe(star.raHours, star.decDeg, date, lat, lon);
+            const azze = observerRaDec(star.raHours, star.decDeg, date, lat, lon);
             if (!Number.isFinite(azze.az) || !Number.isFinite(azze.ze)) {
                 continue;
             }
@@ -7064,7 +7248,7 @@ lens-model inverse.}
             ["S", 180], ["SW", 225], ["W", 270], ["NW", 315],
         ];
 
-        for (const [label, azDeg] of directions) {
+        for (const [label, azDeg] of spacecraftMode() ? [] : directions) {
             const backingPixel = horizonPointForAz(azDeg, optpar, optmod);
             if (backingPixel) {
                 addOverlayLabel(label, backingPixel, "", true);
@@ -7103,7 +7287,48 @@ lens-model inverse.}
         starPickingLegend.hidden = !visible;
     }
 
+    function drawEarthLimb() {
+        if(!state.image||!spacecraftMode())return;
+        const position=spacecraftPosition(),optpar=currentOptpar(),optmod=Number(controls.optmod.value);
+        const ephemeris=window.AidaSpacecraft.observationEphemeris(spacecraftObservation,AidaTools.datetimeLocalToDate(controls.timestampUtc.value));
+        const key=JSON.stringify([position,optpar,optmod,state.image.width,state.image.height,ephemeris?.sun_ecef]);
+        if(earthLimbCache.key!==key){
+            try {
+                earthLimbCache={key,points:window.AidaSpacecraft.projectEarthLimb(position,optpar,optmod,state.image.width,state.image.height,AidaTools),
+                    terminator:ephemeris?.sun_ecef?window.AidaSpacecraft.projectEcefPoints(window.AidaSpacecraft.earthTerminator(ephemeris.sun_ecef,position),position,optpar,optmod,state.image.width,state.image.height,AidaTools):[]};
+            } catch {return;} // Position fields can be incomplete while editing.
+        }
+        const overlays=[];
+        if(document.getElementById("showEarthLimb").checked)overlays.push(["earth-limb",earthLimbCache.points,"#63ffdf"]);
+        overlays.push(["earth-terminator",earthLimbCache.terminator,"#ffe17d"]);
+        for(const [name,points,color] of overlays)drawSpacecraftPolyline(name,points,color);
+    }
+
+    function drawSpacecraftPolyline(name,points,color) {
+        const segments=[];
+        addGridPolyline(points.map(p=>p?canvasPixelFromImagePixel(p.x,p.y):null),segments);
+        if(!segments.length)return;
+        const ns="http://www.w3.org/2000/svg",svg=document.createElementNS(ns,"svg");
+        svg.setAttribute("class",`asterism-line-layer ${name}-layer`);
+        svg.setAttribute("viewBox",`0 0 ${canvas.clientWidth} ${canvas.clientHeight}`);
+        const defs=document.createElementNS(ns,"defs"),clip=document.createElementNS(ns,"clipPath"),rect=document.createElementNS(ns,"rect");
+        const vp=imageViewport(),dpr=window.devicePixelRatio||1;
+        clip.id=`${name}-image-clip`;
+        for(const [name,value] of Object.entries({x:vp.x/dpr,y:vp.y/dpr,width:vp.w/dpr,height:vp.h/dpr}))rect.setAttribute(name,String(value));
+        clip.append(rect);defs.append(clip);svg.append(defs);
+        let pathData="";
+        for(let i=0;i<segments.length;i+=4)pathData+=`M${segments[i]/dpr},${segments[i+1]/dpr}L${segments[i+2]/dpr},${segments[i+3]/dpr}`;
+        for(const [stroke,width] of [["#071a22",3.5],[color,1.5]]){
+            const path=document.createElementNS(ns,"path");
+            path.setAttribute("d",pathData);path.setAttribute("fill","none");path.setAttribute("stroke",stroke);
+            path.setAttribute("stroke-width",String(width));path.setAttribute("stroke-linecap","round");
+            path.setAttribute("clip-path",`url(#${clip.id})`);svg.append(path);
+        }
+        cardinalLayer.append(svg);
+    }
+
     function render() {
+        saveSpacecraftSession();
         resizeCanvas();
         resetWebglAnnotations();
         canvas.classList.toggle("match-mode", state.starMatchMode);
@@ -7146,6 +7371,7 @@ lens-model inverse.}
                 drawQueuedAnnotations();
             }
         }
+        drawEarthLimb();
         updateTriangleDebugPlot();
         updateStarPickingLegend();
         controls.brightnessValue.textContent = Number(controls.brightness.value).toFixed(2);
@@ -8252,7 +8478,7 @@ lens-model inverse.}
         const lon = Number(controls.lonDeg.value) || 0;
         const optmod = Number(controls.optmod.value);
         const optpar = currentOptpar();
-        const azze = AidaTools.radecToAzZe(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
+        const azze = observerRaDec(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
         const xy = AidaTools.cameraModel(azze.az, azze.ze, optpar, optmod, state.image.width, state.image.height);
         if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
             return null;
@@ -9210,7 +9436,7 @@ lens-model inverse.}
                 bestIndex = i;
             }
 
-            const azze = AidaTools.radecToAzZe(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
+            const azze = observerRaDec(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
             const xy = AidaTools.cameraModel(azze.az, azze.ze, optpar, optmod, state.image.width, state.image.height);
             if (Number.isFinite(xy.x) && Number.isFinite(xy.y)) {
                 const catalogPoint = canvasPixelFromImagePixel(xy.x, xy.y);
@@ -9343,7 +9569,7 @@ lens-model inverse.}
         const bounds = Array.from({length}, () => ({lo: -Infinity, hi: Infinity, strict: false}));
         bounds[0] = {lo: -10, hi: 10, minAbs: 0.05, strict: false};
         bounds[1] = {lo: -10, hi: 10, minAbs: 0.05, strict: false};
-        bounds[2] = {lo: -90, hi: 90, strict: false};
+        bounds[2] = {lo: spacecraftMode() ? -720 : -90, hi: spacecraftMode() ? 720 : 90, strict: false};
         bounds[3] = {lo: -90, hi: 90, strict: false};
         bounds[4] = {lo: -720, hi: 720, strict: false};
         bounds[5] = {lo: -0.5, hi: 0.5, strict: false};
@@ -9354,6 +9580,19 @@ lens-model inverse.}
             bounds[9] = {lo: -5, hi: 5, strict: false};
             bounds[10] = {lo: -1, hi: 1, strict: false};
             bounds[11] = {lo: -1, hi: 1, strict: false};
+        }
+        if (spacecraftMode()) {
+            // Refine the manually aligned camera, retaining its handedness.
+            // A narrow UV field cannot constrain every Brown coefficient.
+            const start = currentFitVector();
+            for (const i of [0,1]) {
+                const a=start[i]*0.5,b=start[i]*2;
+                bounds[i]={lo:Math.min(a,b),hi:Math.max(a,b),minAbs:0.05};
+            }
+            if (optmod === 1 || optmod === 6) bounds[7]={lo:start[7],hi:start[7]};
+            if (optmod === BROWN_CONRADY_OPTMOD) {
+                for (const i of [8,9,10,11]) bounds[i]={lo:start[i]||0,hi:start[i]||0};
+            }
         }
         return bounds;
     }
@@ -9411,7 +9650,7 @@ lens-model inverse.}
         const lon = Number(controls.lonDeg.value) || 0;
         const optmod = Number(controls.optmod.value);
         const rows = matchesForFit.map(match => {
-            const azze = AidaTools.radecToAzZe(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
+            const azze = observerRaDec(match.catalog.raHours, match.catalog.decDeg, date, lat, lon);
             return {az: azze.az, ze: azze.ze, image: match.image};
         });
         return x => {
@@ -9421,6 +9660,10 @@ lens-model inverse.}
             const optpar = optparFromFitVector(x);
             const residuals = [];
             for (const row of rows) {
+                // Pinhole/Brown projections are also finite for rays behind
+                // the camera. Such fits hid the Earth while matching stars.
+                if (spacecraftMode() && cameraFrameDirectionForAzEl(
+                    row.az*AidaTools.RAD,90-row.ze*AidaTools.RAD,optpar).z <= 1e-6) return null;
                 const xy = AidaTools.cameraModel(row.az, row.ze, optpar, optmod, state.image.width, state.image.height);
                 if (!Number.isFinite(xy.x) || !Number.isFinite(xy.y)) {
                     return null;
@@ -10110,7 +10353,8 @@ lens-model inverse.}
         const resultSse = residualSumSquares(residualFn(acceptedVector));
         const rmsBefore = Math.sqrt(startSse / fitCount);
         const rmsAfter = Math.sqrt(resultSse / fitCount);
-        if (!Number.isFinite(rmsAfter) || rmsAfter > Math.max(50, rmsBefore * 1.25)) {
+        if (!residualFn(acceptedVector) || !Number.isFinite(rmsAfter) ||
+                rmsAfter > (spacecraftMode() ? rmsBefore + 1e-6 : Math.max(50, rmsBefore * 1.25))) {
             state.fitMessage = `${methodLabel} rejected: RMS ${rmsBefore.toFixed(2)} -> ${rmsAfter.toFixed(2)} px`;
             render();
             return {
@@ -10134,7 +10378,8 @@ lens-model inverse.}
             "";
         state.fitMessage = `${methodLabel}: RMS ${rmsBefore.toFixed(2)} -> ${rmsAfter.toFixed(2)} px, ` +
             `${detail}; ${objectiveLabel}; fitted all ${result.x.length} optpar values using ${fitCount}/${state.matches.length} pairs ` +
-            `${scopeText}${recenterText}`;
+            `${scopeText}${recenterText}` + (spacecraftMode() && Number(controls.optmod.value) === BROWN_CONRADY_OPTMOD ?
+                "; spacecraft fit: k2/k3/p1/p2 held fixed" : "");
         recomputeAndRender();
         return {
             accepted: true,
@@ -10979,8 +11224,8 @@ lens-model inverse.}
             if (!row || row[2] > maxMag) {
                 continue;
             }
-            const azze = AidaTools.radecToAzZe(row[0], row[1], date, lat, lon);
-            if (Number.isFinite(azze.az) && Number.isFinite(azze.ze) && azze.ze * AidaTools.RAD <= maxZenithDeg) {
+            const azze = observerRaDec(row[0], row[1], date, lat, lon);
+            if (Number.isFinite(azze.az) && Number.isFinite(azze.ze) && (spacecraftMode() || azze.ze * AidaTools.RAD <= maxZenithDeg)) {
                 visible.add(index);
             }
         }
@@ -11008,7 +11253,7 @@ lens-model inverse.}
             if (!row || !Number.isFinite(mag) || mag > maxMag) {
                 continue;
             }
-            const azze = AidaTools.radecToAzZe(row[0], row[1], date, lat, lon);
+            const azze = observerRaDec(row[0], row[1], date, lat, lon);
             if (!Number.isFinite(azze.az) || !Number.isFinite(azze.ze) ||
                     azze.ze * AidaTools.RAD > maxZenithDeg) {
                 continue;
@@ -11104,7 +11349,7 @@ lens-model inverse.}
             if (!row) {
                 continue;
             }
-            const azze = AidaTools.radecToAzZe(row[0], row[1], date, lat, lon);
+            const azze = observerRaDec(row[0], row[1], date, lat, lon);
             if (!Number.isFinite(azze.az) || !Number.isFinite(azze.ze)) {
                 continue;
             }
@@ -13099,6 +13344,7 @@ lens-model inverse.}
         exifMetadata = null,
         metadataName = name,
         floatPixels = null,
+        options = {},
     ) {
         const loadId = ++state.imageLoadId;
         const img = new Image();
@@ -13178,7 +13424,7 @@ lens-model inverse.}
                 }
                 hint.style.display = "none";
                 setLoadingProgress(88, "Checking for fisheye horizon annulus...");
-                const fisheyeDetection = detectAndApplyFisheyeInitialGuess(metadataName, exifMetadata);
+                const fisheyeDetection = options.skipFisheye ? null : detectAndApplyFisheyeInitialGuess(metadataName, exifMetadata);
                 if (metadataLooksLikeIphone(exifMetadata)) {
                     controls.optmod.value = String(BROWN_CONRADY_OPTMOD);
                     state.baseOptpar = null;
@@ -13231,6 +13477,7 @@ lens-model inverse.}
                 URL.revokeObjectURL(downloadedImageUrl);
             }
             state.fitMessage = `image load failed: ${name}. If using a web server, serve the WISC repository root.`;
+            options.onError?.(new Error(state.fitMessage));
             hideLoadingProgress();
             render();
         };
@@ -13252,6 +13499,7 @@ lens-model inverse.}
                     return;
                 }
                 state.fitMessage = `image download failed: ${name}: ${error.message || error}`;
+                options.onError?.(error);
                 hideLoadingProgress();
                 render();
             }
@@ -13397,7 +13645,7 @@ lens-model inverse.}
         };
     }
 
-    async function loadImageFile(file) {
+    async function loadImageFile(file, options = {}) {
         resetForNewImage();
         if (state.localImageUrl) {
             URL.revokeObjectURL(state.localImageUrl);
@@ -13410,7 +13658,7 @@ lens-model inverse.}
                 arrayBufferDataUrl(buffer, "application/fits") :
                 null;
             state.localImageUrl = URL.createObjectURL(display.blob);
-            loadImageSource(state.localImageUrl, display.displayName, img => {
+            return await new Promise((resolve,reject)=>loadImageSource(state.localImageUrl, display.displayName, img => {
                 state.testCaseImageFile = file;
                 state.testCaseImageName = file.name;
                 if (fitsSubmitDataUrl) {
@@ -13419,11 +13667,13 @@ lens-model inverse.}
                 if (display.message) {
                     state.fitMessage = state.fitMessage ? `${state.fitMessage}; ${display.message}` : display.message;
                 }
-            }, false, metadata, file.name, display.floatPixels || null);
+                resolve(true);
+            }, false, metadata, file.name, display.floatPixels || null, {...options,onError:reject}));
         } catch (error) {
             state.fitMessage = `image load failed: ${file.name}; ${error.message || error}`;
             hideLoadingProgress();
             render();
+            return false;
         }
     }
 
@@ -14294,7 +14544,7 @@ lens-model inverse.}
     });
 
     for (const el of document.querySelectorAll(".controls input, .controls select")) {
-        if (el !== controls.file &&
+        if (el !== controls.file && !el.closest("#spacecraftControls") && el.id !== "observerMode" &&
                 el !== controls.highPassImage && el !== controls.highPassWidth &&
                 el !== controls.displayClipMax &&
                 el !== controls.maxMag && el !== controls.optmod && el !== controls.starCatalog &&
@@ -14321,9 +14571,7 @@ lens-model inverse.}
     if (controls.starCatalog) {
         controls.starCatalog.addEventListener("change", () => {
             const uv = selectedCatalogName() === "td1";
-            controls.maxMag.max = uv ? "12" : "8";
-            if (!uv && Number(controls.maxMag.value) > 8) controls.maxMag.value = "8";
-            controls.maxMag.parentElement.firstChild.textContent = uv ? "Limiting UV magnitude (AB 156.5 nm) " : "Limiting magnitude ";
+            updateMagnitudeLimitUi();
             state.pendingMatch = null;
             state.automaticMatchingStatus = `star catalogue switched to ${activeStarCatalogName()}`;
             playInteractionSound("mode");
@@ -14476,6 +14724,20 @@ lens-model inverse.}
         playInteractionSound("mode");
         recomputeAndRender();
     });
+    document.getElementById("observerMode").addEventListener("change",()=>{updateObserverMode();recomputeAndRender();});
+    document.getElementById("showEarthLimb").addEventListener("change",render);
+    document.getElementById("restoreSpacecraftStars").addEventListener("change",restoreSpacecraftStars);
+    document.getElementById("fitSpacecraftDisc").addEventListener("click",fitSpacecraftDisc);
+    document.getElementById("hideOccultedStars").addEventListener("change",recomputeAndRender);
+    for(const id of ["spaceX","spaceY","spaceZ"])document.getElementById(id).addEventListener("change",()=>{
+        try {
+            const site=window.AidaSpacecraft.siteFromEcef(spacecraftPosition());
+            controls.latDeg.value=site.latDeg;controls.lonDeg.value=site.lonDeg;controls.altM.value=site.altM;
+            recomputeAndRender();
+        } catch(error){document.getElementById("spacecraftStatus").textContent=String(error);render();}
+    });
+    document.getElementById("initializeSpacecraft").addEventListener("click",()=>{try{initializeSpacecraftLens();}catch(error){document.getElementById("spacecraftStatus").textContent=String(error);}});
+    document.getElementById("returnSpacecraft").addEventListener("click",returnSpacecraftCalibration);
     controls.fitLens.addEventListener("click", () => {
         playInteractionSound("fit");
         runManualLensFit("nm");
@@ -14560,9 +14822,20 @@ lens-model inverse.}
         });
     }
 
+    let spacecraftDrag = null;
+    function spacecraftDragPoint(event, optpar) {
+        const [cx,cy]=eventToCanvasPixel(event),vp=imageViewport();
+        let x=WiscViewZoom.pixelCenterForCanvasCoordinate(cx,vp.x,vp.scale);
+        let y=WiscViewZoom.pixelCenterForCanvasCoordinate(cy,vp.y,vp.scale);
+        if(state.imageFlipX)x=state.image.width-1-x;
+        if(state.imageFlipY)y=state.image.height-1-y;
+        const ray=cameraVectorFromModelImagePixel(x,y,optpar,Number(controls.optmod.value));
+        return ray ? [ray.s1,ray.s2,ray.s3] : null;
+    }
     canvas.addEventListener("pointerdown", event => {
         focusImageWindow();
-        if (state.maskMode && event.button === 0) {
+        const spaceLens=spacecraftMode() && WiscViewZoom.lensModifierActive(event);
+        if (state.maskMode && event.button === 0 && !spaceLens) {
             event.preventDefault();
             state.notStarTilePaintActive = true;
             state.lastNotStarTilePaintPoint = null;
@@ -14571,26 +14844,34 @@ lens-model inverse.}
             canvas.setPointerCapture(event.pointerId);
             return;
         }
-        if (state.deleteDetectionMode && event.button === 0) {
+        if (state.deleteDetectionMode && event.button === 0 && !spaceLens) {
             event.preventDefault();
             handleDeletePairingClick(event);
             playInteractionSound("delete");
             return;
         }
-        if (state.displayMode === "pairing" && state.starMatchMode && event.button === 0) {
+        if (state.displayMode === "pairing" && state.starMatchMode && event.button === 0 && !spaceLens) {
             event.preventDefault();
             handleStarMatchClick(event);
             playInteractionSound("pick");
             return;
         }
-        if (state.displayMode === "pairing" && state.pendingMatch && event.button === 0) {
+        if (state.displayMode === "pairing" && state.pendingMatch && event.button === 0 && !spaceLens) {
             event.preventDefault();
             handleCatalogPairClick(event);
             return;
         }
-        const dragMode = WiscViewZoom.dragInteractionMode(event, usesRectilinearDragControls());
+        let dragMode = WiscViewZoom.dragInteractionMode(event, usesRectilinearDragControls());
         if (dragMode === "none") {
             return;
+        }
+        spacecraftDrag = null;
+        if(spaceLens && state.image){
+            const optpar=currentOptpar(),ray=spacecraftDragPoint(event,optpar);
+            if(!ray)return;
+            spacecraftDrag={optpar,ray,x:event.clientX};
+            dragMode=event.shiftKey || event.button===2 ? "spacecraftRoll" : "spacecraftPoint";
+            rememberFitState("camera pointing");
         }
         if (dragMode === "viewPan") {
             event.preventDefault();
@@ -14637,6 +14918,21 @@ lens-model inverse.}
             state.lastMouse = [event.clientX, event.clientY];
             render();
             return;
+        } else if (spacecraftDrag && (state.lensDragMode === "spacecraftPoint" || state.lensDragMode === "spacecraftRoll")) {
+            const ray=spacecraftDragPoint(event,spacecraftDrag.optpar);
+            if(!ray)return;
+            let optpar;
+            if(state.lensDragMode === "spacecraftPoint"){
+                optpar=window.AidaSpacecraft.dragCamera(spacecraftDrag.optpar,spacecraftDrag.ray,ray,AidaTools);
+            }else{
+                const start=spacecraftDrag.ray;
+                const angle=Math.hypot(start[0],start[1])>0.001 ?
+                    Math.atan2(start[0]*ray[1]-start[1]*ray[0],start[0]*ray[0]+start[1]*ray[1]) :
+                    (event.clientX-spacecraftDrag.x)*Math.PI/900;
+                optpar=window.AidaSpacecraft.rollCamera(spacecraftDrag.optpar,-angle,AidaTools);
+            }
+            applyFitVector(optpar);
+            recomputeAndRender();
         } else if (state.lensDragMode === "zenithPosition") {
             const zenith = zenithCanvasPixelForCameraAngles(alpha, beta, gamma);
             if (!zenith) {
@@ -14652,7 +14948,7 @@ lens-model inverse.}
             recomputeAndRender();
         } else if (state.lensDragMode === "rectilinearElevationRoll") {
             const boresight = boresightAzElFromCameraAngles(alpha, beta);
-            const newEl = clamp(boresight.el + dyCss * 0.06, -5, 90);
+            const newEl = clamp(boresight.el + dyCss * 0.06, spacecraftMode() ? -90 : -5, 90);
             const newGamma = wrapDegrees180(gamma - dxCss * 0.06);
             setCameraAnglesFromBoresightAzEl(boresight.az, newEl);
             controls.rotGamma.value = newGamma.toPrecision(12);
@@ -14671,7 +14967,8 @@ lens-model inverse.}
         }
         state.lastMouse = [event.clientX, event.clientY];
     });
-    canvas.addEventListener("pointerup", event => {
+    const finishPointerDrag = event => {
+        spacecraftDrag = null;
         state.notStarTilePaintActive = false;
         state.lastNotStarTilePaintPoint = null;
         state.junkStarFinderPaintActive = false;
@@ -14681,7 +14978,10 @@ lens-model inverse.}
         if (canvas.hasPointerCapture(event.pointerId)) {
             canvas.releasePointerCapture(event.pointerId);
         }
-    });
+    };
+    canvas.addEventListener("pointerup", finishPointerDrag);
+    canvas.addEventListener("pointercancel", finishPointerDrag);
+    canvas.addEventListener("lostpointercapture", finishPointerDrag);
     canvas.addEventListener("contextmenu", event => {
         event.preventDefault();
     });
@@ -14877,6 +15177,8 @@ lens-model inverse.}
         const quickLinkToken = quickLinkTokenFromLocation();
         if (quickLinkToken) {
             loadQuickLinkTestCase();
+        } else if (!state.image && await loadSpacecraftImage()) {
+            // Spacecraft timestamp, observer and image arrive together.
         } else if (!state.image && await loadGaiaSourceImage()) {
             // The camera image is ready for star matching.
         } else if (!state.image) {
