@@ -222,6 +222,7 @@
         catalogs: {
             yale: window.AIDA_STAR_CATALOG || [],
             tycho2: null,
+            td1: null,
         },
         catalogStatus: "Tycho-2 catalogue loading...",
         yaleAsterismIndex: null,
@@ -2629,6 +2630,7 @@ end
 
     function activeStarCatalogName() {
         const selected = selectedCatalogName();
+        if (selected === "td1") return "td1";
         if (selected === "tycho2" && Array.isArray(state.catalogs.tycho2)) {
             return "tycho2";
         }
@@ -2636,14 +2638,17 @@ end
     }
 
     function activeStarCatalog() {
+        if (selectedCatalogName() === "td1") return state.catalogs.td1 || [];
         return state.catalogs[activeStarCatalogName()] || state.catalogs.yale || [];
     }
 
     function fittingStarCatalogName() {
+        if (selectedCatalogName() === "td1") return "td1";
         return FITTING_CATALOG_NAME;
     }
 
     function catalogRowsForName(name) {
+        if (name === "td1") return state.catalogs.td1 || [];
         if (name === "tycho2" && Array.isArray(state.catalogs.tycho2)) {
             return state.catalogs.tycho2;
         }
@@ -2730,6 +2735,23 @@ end
             row[3] = best && best.distanceDeg <= 0.08 ? best.name : "";
         }
         return rows;
+    }
+
+    async function loadTd1Catalog() {
+        if (state.catalogs.td1) return;
+        state.catalogStatus = "TD-1 far-UV catalogue loading...";
+        render();
+        try {
+            const response = await fetch("data/td1_uv.json?v=20261001", {cache: "force-cache"});
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const payload = await response.json();
+            if (!Array.isArray(payload.rows) || !payload.rows.length) throw new Error("Empty TD-1 catalogue");
+            state.catalogs.td1 = payload.rows;
+            state.catalogStatus = `TD-1: ${payload.rows.length} stars; 156.5 nm AB magnitudes, S/N ≥ 5; J2000`;
+        } catch (error) {
+            state.catalogStatus = `TD-1 unavailable (${error.message}); no UV stars displayed`;
+        }
+        if (selectedCatalogName() === "td1") recomputeAndRender();
     }
 
     async function loadTycho2Catalog() {
@@ -14298,10 +14320,16 @@ lens-model inverse.}
     }
     if (controls.starCatalog) {
         controls.starCatalog.addEventListener("change", () => {
+            const uv = selectedCatalogName() === "td1";
+            controls.maxMag.max = uv ? "12" : "8";
+            if (!uv && Number(controls.maxMag.value) > 8) controls.maxMag.value = "8";
+            controls.maxMag.parentElement.firstChild.textContent = uv ? "Limiting UV magnitude (AB 156.5 nm) " : "Limiting magnitude ";
             state.pendingMatch = null;
             state.automaticMatchingStatus = `star catalogue switched to ${activeStarCatalogName()}`;
             playInteractionSound("mode");
-            if (selectedCatalogName() === "tycho2" && !state.catalogs.tycho2) {
+            if (uv && !state.catalogs.td1) {
+                loadTd1Catalog();
+            } else if (selectedCatalogName() === "tycho2" && !state.catalogs.tycho2) {
                 loadTycho2Catalog().then(recomputeAndRender);
             } else {
                 recomputeAndRender();
