@@ -226,6 +226,7 @@
         viewCenterX: null,
         viewCenterY: null,
         maskRegions: [],
+        gaiaMaskPredicate: null,
         junkStarFinderRegions: [],
         badStarFinderDetections: [],
         notStarTiles: [],
@@ -576,6 +577,7 @@
     }
 
     function isMaskedImagePixel(x, y, pad = 0) {
+        if (state.gaiaMaskPredicate?.(x, y, pad)) return true;
         for (const region of state.maskRegions) {
             const r = region.radius + pad;
             const dx = x - region.x;
@@ -4679,8 +4681,11 @@ end
     async function sendCalibrationToGaia() {
         const params = new URLSearchParams(window.location.search);
         const sourceId = params.get("source_id");
-        if (!sourceId || !state.image) {
-            state.fitMessage = "GAIA submission needs a camera source and a loaded image";
+        const eventId = params.get("event_id");
+        const recordId = params.get("record_id");
+        const eventMode = params.get("gaia_event") === "1";
+        if ((!eventMode && !sourceId || eventMode && (!/^\d{8}$/.test(eventId || "") || !recordId)) || !state.image) {
+            state.fitMessage = "GAIA submission needs an identified camera or event image and a loaded image";
             render();
             return;
         }
@@ -4697,15 +4702,33 @@ end
             const filename = resultsHdf5Filename(prefix);
             const bytes = writeResultsHdf5Bytes(h5wasm, FS, filename, prefix, metadata, miracleProduct, starRows);
             const form = new FormData();
-            form.append("source_id", sourceId);
-            form.append("valid_from_utc", metadata.timestampUtc);
+            if (eventMode) {
+                form.append("record_id", recordId);
+            } else {
+                form.append("source_id", sourceId);
+                form.append("valid_from_utc", metadata.timestampUtc);
+            }
             form.append("residual_px", String(metadata.residualSummary && metadata.residualSummary.rmsPx || ""));
+            form.append("star_count", String(starRows.filter(row => row.includedInFit).length));
             form.append("calibration", new Blob([bytes], {type: "application/x-hdf5"}), filename);
-            const response = await fetch("/gaia/api/calibrations", {method: "POST", body: form});
+            const endpoint = eventMode
+                ? `/gaia/api/events/${encodeURIComponent(eventId)}/calibrations`
+                : "/gaia/api/calibrations";
+            const response = await fetch(endpoint, {method: "POST", body: form});
             const result = await response.json().catch(() => ({}));
             if (!response.ok) throw new Error(result.error || result.message || `server returned ${response.status}`);
-            state.fitMessage = `GAIA: calibration saved for ${sourceId}`;
-            button.textContent = "Calibration saved in GAIA";
+            if (eventMode) {
+                state.fitMessage = result.projection_error
+                    ? `GAIA event: calibration saved, but projection failed: ${result.projection_error}`
+                    : `GAIA event: calibration saved and projected to 100 km for ${recordId}`;
+                button.textContent = result.projection_error ? "Calibration saved; projection failed" : "Saved and projected in GAIA";
+                if (!result.projection_error && window.opener) {
+                    window.opener.postMessage({type: "gaia-event-calibrated", eventId, recordId}, window.location.origin);
+                }
+            } else {
+                state.fitMessage = `GAIA: calibration saved for ${sourceId}`;
+                button.textContent = "Calibration saved in GAIA";
+            }
         } catch (error) {
             state.fitMessage = `GAIA submission failed: ${error && error.message ? error.message : error}`;
         } finally {
@@ -4713,34 +4736,173 @@ end
         }
     }
 
+    // GAIA identifies stars by position -- its catalogue is Tycho-2, which
+    // carries no names -- so a name has to come from the bright-star list
+    // already loaded here. Nearest neighbour within an arcminute: the two
+    // catalogues agree to well inside that, and beyond it a match would be a
+    // different star rather than the same one measured differently.
+    function gaiaStarName(raHours, decDeg) {
+        const catalog = window.AIDA_STAR_CATALOG || [];
+        const cosDec = Math.cos(decDeg * Math.PI / 180);
+        const limit = 1 / 60;
+        let best = null;
+        let bestSeparation = Infinity;
+        for (const entry of catalog) {
+            if (!entry || entry.length < 4 || !entry[3]) continue;
+            const dDec = Number(entry[1]) - decDeg;
+            if (Math.abs(dDec) > limit) continue;
+            // Right ascension is in hours: fifteen degrees to the hour, and the
+            // sky narrows towards the pole.
+            const dRa = (Number(entry[0]) - raHours) * 15 * cosDec;
+            if (Math.abs(dRa) > limit) continue;
+            const separation = Math.hypot(dRa, dDec);
+            if (separation < bestSeparation) {
+                bestSeparation = separation;
+                best = String(entry[3]);
+            }
+        }
+        return bestSeparation <= limit ? best : null;
+    }
+
+    // Load a GAIA refit proposal: the eight optical parameters it fitted, and
+    // the identifications it fitted them through. Nothing has been written on
+    // the GAIA side. Some automatic identifications are dubious -- a hot pixel,
+    // a satellite, a star pulled onto its neighbour -- and the point of the
+    // handoff is that they are culled here before a calibration is sent back.
+    async function applyGaiaProposal(sourceId) {
+        try {
+            const response = await fetch(
+                `/gaia/api/sources/${encodeURIComponent(sourceId)}/calibration/refit-proposal`,
+                {cache: "no-store"});
+            if (!response.ok) {
+                throw new Error(await response.text() || `server returned ${response.status}`);
+            }
+            const proposal = await response.json();
+            if (Number.isFinite(Number(proposal.optmod))) {
+                controls.optmod.value = String(proposal.optmod);
+            }
+            const optpar = Array.isArray(proposal.optpar) ? proposal.optpar.map(Number) : [];
+            // applyFitVector writes the controls and state.modelOptpar together,
+            // so a proposed model arrives exactly as a fitted one does.
+            if (optpar.length >= 8) applyFitVector(optpar);
+            state.matches = (Array.isArray(proposal.matches) ? proposal.matches : [])
+                .map((match, index) => ({
+                    id: Number.isFinite(Number(match.id)) ? Number(match.id) : index + 1,
+                    image: {
+                        x: Number(match.image_x) || 0,
+                        y: Number(match.image_y) || 0,
+                        // Marked automatic so it is plain which pairings nobody
+                        // has vouched for yet.
+                        method: "gaia-auto",
+                    },
+                    catalog: {
+                        key: String(match.star_key || `gaia-${index}`),
+                        name: gaiaStarName(Number(match.ra_hours), Number(match.dec_deg))
+                            || String(match.star_key || ""),
+                        raHours: Number(match.ra_hours) || 0,
+                        decDeg: Number(match.dec_deg) || 0,
+                        mag: Number(match.mag) || 0,
+                        az: Number(match.azimuth_deg) || 0,
+                        ze: Number(match.zenith_deg) || 0,
+                    },
+                }));
+            const before = Number(proposal.residual_px_before);
+            const after = Number(proposal.residual_px_after);
+            state.fitMessage = `GAIA: ${state.matches.length} automatically identified stars and a `
+                + `proposed lens model loaded (${before.toFixed(2)} to ${after.toFixed(2)} px RMS). `
+                + `Check the identifications, discard any that are wrong, refit, and send the `
+                + `calibration back.`;
+            render();
+        } catch (error) {
+            state.fitMessage = `GAIA proposal load failed: `
+                + `${error && error.message ? error.message : error}`;
+            render();
+        }
+    }
+
     async function loadGaiaSourceImage() {
         const params = new URLSearchParams(window.location.search);
         const sourceId = params.get("source_id");
+        const imageId = params.get("image_id");
         if (params.get("gaia") !== "1" || !sourceId) {
             return false;
         }
         try {
-            setLoadingProgress(8, `Loading latest GAIA image for ${sourceId}...`);
-            const response = await fetch(`/gaia/api/sources/${encodeURIComponent(sourceId)}/latest`, {cache: "no-store"});
+            const selected = Boolean(imageId);
+            setLoadingProgress(8, `Loading ${selected ? "selected" : "latest"} GAIA image for ${sourceId}...`);
+            const endpoint = selected
+                ? `/gaia/api/images/${encodeURIComponent(imageId)}/original`
+                : `/gaia/api/sources/${encodeURIComponent(sourceId)}/latest`;
+            const response = await fetch(endpoint, {cache: "no-store"});
             if (!response.ok) {
                 throw new Error(await response.text() || `server returned ${response.status}`);
             }
+            // Preserve original pixels for horizon inference; exclude masks only in star search.
+            const settingsResponse = await fetch('/gaia/api/sources/' + encodeURIComponent(sourceId) + '/settings', {cache: "no-store"});
+            if (!settingsResponse.ok) throw new Error("Could not load GAIA star-search masks");
+            const gaiaSettings = await settingsResponse.json();
             const blob = await response.blob();
             const observed = response.headers.get("X-GAIA-Observation-UTC");
             const latitude = Number(response.headers.get("X-GAIA-Latitude-Deg"));
             const longitude = Number(response.headers.get("X-GAIA-Longitude-Deg"));
             const altitude = Number(response.headers.get("X-GAIA-Altitude-M"));
             const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
-            await loadImageFile(new File([blob], `${sourceId}-latest.${extension}`, {type: blob.type || "image/jpeg"}));
+            await loadImageFile(new File([blob], `${sourceId}-${imageId || "latest"}.${extension}`, {type: blob.type || "image/jpeg"}), gaiaSettings, () => {
             if (observed && !Number.isNaN(Date.parse(observed))) controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(new Date(observed));
             if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
             if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
             if (Number.isFinite(altitude)) controls.altM.value = altitude.toFixed(1);
-            state.fitMessage = `GAIA: loaded latest image for ${sourceId}; fit the lens, then send the calibration back`;
+            // A GAIA refit proposal: the stars it identified automatically and
+            // the lens model fitted through them, for checking before any of it
+            // becomes a calibration.
+            if (params.get("proposal") === "1") { void applyGaiaProposal(sourceId); }
+            state.fitMessage = `GAIA: loaded ${selected ? `selected archived frame ${imageId}` : "latest image"} for ${sourceId}; fit the lens, then send the calibration back`;
             render();
+            });
             return true;
         } catch (error) {
             state.fitMessage = `GAIA image load failed for ${sourceId}: ${error && error.message ? error.message : error}`;
+            hideLoadingProgress();
+            render();
+            return false;
+        }
+    }
+
+    async function loadGaiaEventImage() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("gaia_event") !== "1") {
+            return false;
+        }
+        const eventId = params.get("event_id") || "";
+        const recordId = params.get("record_id") || "";
+        try {
+            if (!/^\d{8}$/.test(eventId) || !recordId) {
+                throw new Error("missing event or image identity");
+            }
+            setLoadingProgress(8, `Loading GAIA event image ${recordId}...`);
+            const base = `/gaia/api/events/${encodeURIComponent(eventId)}/records/${encodeURIComponent(recordId)}`;
+            const [response, settingsResponse] = await Promise.all([
+                fetch(`${base}/image`, {cache: "no-store"}),
+                fetch(`${base}/settings`, {cache: "no-store"}),
+            ]);
+            if (!response.ok) throw new Error(`server returned ${response.status}`);
+            if (!settingsResponse.ok) throw new Error("Could not load GAIA event crop and masks");
+            const gaiaSettings = await settingsResponse.json();
+            const blob = await response.blob();
+            const extension = blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+            await loadImageFile(new File([blob], `gaia-event-${eventId}-${safeCaseId(recordId)}.${extension}`, {type: blob.type || "image/jpeg"}), gaiaSettings, () => {
+                const observed = response.headers.get("X-GAIA-Observation-UTC") || params.get("observation_utc");
+                const latitude = Number(response.headers.get("X-GAIA-Latitude-Deg") || params.get("latitude_deg"));
+                const longitude = Number(response.headers.get("X-GAIA-Longitude-Deg") || params.get("longitude_deg"));
+                if (observed && !Number.isNaN(Date.parse(observed))) controls.timestampUtc.value = AidaTools.dateToDatetimeLocal(new Date(observed));
+                if (Number.isFinite(latitude)) controls.latDeg.value = latitude.toFixed(6);
+                if (Number.isFinite(longitude)) controls.lonDeg.value = longitude.toFixed(6);
+                state.fitMessage = `GAIA event ${eventId}: loaded ${recordId}; fit the lens, then save it back to GAIA for 100 km projection`;
+                render();
+            });
+            return true;
+        } catch (error) {
+            state.fitMessage = `GAIA event image load failed: ${error && error.message ? error.message : error}`;
             hideLoadingProgress();
             render();
             return false;
@@ -4791,7 +4953,7 @@ end
             const response = await fetch(url);
             if(!response.ok)throw Error(`Image HTTP ${response.status}`);
             const blob = await response.blob();
-            const loaded=await loadImageFile(new File([blob],observation.frame_id+'.png',{type:blob.type}),{skipFisheye:true});
+            const loaded=await loadImageFile(new File([blob],observation.frame_id+'.png',{type:blob.type}),null,null,{skipFisheye:true});
             if(!loaded)throw Error('Could not decode spacecraft image');
             spacecraftObservation = observation;
             spacecraftDiscFit=observation.limb_fit?{...observation.limb_fit,optpar:observation.optpar}:null;
@@ -7433,7 +7595,7 @@ lens-model inverse.}
             "mouse gestures: wheel zooms and drag pans; Cmd/Ctrl + wheel/drag edits lens\n" +
             "model coordinates: raw zero-based pixel centers (flip buttons negate f1/f2)\n" +
             `image flip x/y: ${state.imageFlipX}/${state.imageFlipY}\n` +
-            `image masks: ${state.maskRegions.length}\n` +
+            `image masks: ${state.maskRegions.length}; GAIA crop/polygon exclusions: ${state.currentImageMetadata?.gaiaSettings ? "loaded" : "none"}\n` +
             `bad star finder detections: ${state.badStarFinderDetections.length} in ${state.junkStarFinderRegions.length} marked regions\n` +
             `RA/Dec grid: ${state.showRaDecGrid ? "on" : "off"}\n` +
             `az/el grid: ${state.showAzElGrid ? "on" : "off"}\n` +
@@ -9589,6 +9751,9 @@ lens-model inverse.}
                 const a=start[i]*0.5,b=start[i]*2;
                 bounds[i]={lo:Math.min(a,b),hi:Math.max(a,b),minAbs:0.05};
             }
+            // Principal point and pointing are nearly degenerate in this
+            // small field. Do not trade an off-sensor centre for tiny RMS gains.
+            for (const i of [5,6]) bounds[i]={lo:Math.max(-.5,start[i]-.05),hi:Math.min(.5,start[i]+.05)};
             if (optmod === 1 || optmod === 6) bounds[7]={lo:start[7],hi:start[7]};
             if (optmod === BROWN_CONRADY_OPTMOD) {
                 for (const i of [8,9,10,11]) bounds[i]={lo:start[i]||0,hi:start[i]||0};
@@ -10376,8 +10541,9 @@ lens-model inverse.}
             `; recentered du/dv mean residual ${recentered.before.meanDx.toFixed(2)}/${recentered.before.meanDy.toFixed(2)} -> ` +
             `${recentered.after.meanDx.toFixed(2)}/${recentered.after.meanDy.toFixed(2)} px` :
             "";
+        const parameterText=spacecraftMode() ? `${fitParameterBounds().filter(b=>b.lo!==b.hi).length} free optpar values` : `all ${result.x.length} optpar values`;
         state.fitMessage = `${methodLabel}: RMS ${rmsBefore.toFixed(2)} -> ${rmsAfter.toFixed(2)} px, ` +
-            `${detail}; ${objectiveLabel}; fitted all ${result.x.length} optpar values using ${fitCount}/${state.matches.length} pairs ` +
+            `${detail}; ${objectiveLabel}; fitted ${parameterText} using ${fitCount}/${state.matches.length} pairs ` +
             `${scopeText}${recenterText}` + (spacecraftMode() && Number(controls.optmod.value) === BROWN_CONRADY_OPTMOD ?
                 "; spacecraft fit: k2/k3/p1/p2 held fixed" : "");
         recomputeAndRender();
@@ -13174,6 +13340,7 @@ lens-model inverse.}
         state.viewCenterX = null;
         state.viewCenterY = null;
         state.maskRegions = [];
+        state.gaiaMaskPredicate = null;
         state.junkStarFinderRegions = [];
         state.badStarFinderDetections = [];
         state.notStarTiles = [];
@@ -13372,6 +13539,7 @@ lens-model inverse.}
                 state.imageName = name;
                 state.currentImageMetadata = exifMetadata || null;
                 state.maskRegions = [];
+                state.gaiaMaskPredicate = AidaTools.gaiaMaskPredicate(exifMetadata?.gaiaSettings, img.width, img.height);
                 state.junkStarFinderRegions = [];
                 state.badStarFinderDetections = [];
                 state.notStarTiles = [];
@@ -13645,7 +13813,7 @@ lens-model inverse.}
         };
     }
 
-    async function loadImageFile(file, options = {}) {
+    async function loadImageFile(file, gaiaSettings = null, onLoaded = null, options = {}) {
         resetForNewImage();
         if (state.localImageUrl) {
             URL.revokeObjectURL(state.localImageUrl);
@@ -13653,7 +13821,7 @@ lens-model inverse.}
         try {
             const buffer = await file.arrayBuffer();
             const display = await displayBlobForImage(file, buffer);
-            const metadata = mergeMetadata(await readImageMetadata(file, buffer), display.metadata);
+            const metadata = {...mergeMetadata(await readImageMetadata(file, buffer), display.metadata), gaiaSettings};
             const fitsSubmitDataUrl = isFitsFile(file) ?
                 arrayBufferDataUrl(buffer, "application/fits") :
                 null;
@@ -13661,6 +13829,7 @@ lens-model inverse.}
             return await new Promise((resolve,reject)=>loadImageSource(state.localImageUrl, display.displayName, img => {
                 state.testCaseImageFile = file;
                 state.testCaseImageName = file.name;
+                if (onLoaded) onLoaded(img);
                 if (fitsSubmitDataUrl) {
                     state.testCaseImageDataUrl = fitsSubmitDataUrl;
                 }
@@ -14772,7 +14941,9 @@ lens-model inverse.}
     }
     if (controls.sendGaiaCalibration) {
         const gaiaParams = new URLSearchParams(window.location.search);
-        controls.sendGaiaCalibration.hidden = gaiaParams.get("gaia") !== "1" || !gaiaParams.get("source_id");
+        const realtimeGaia = gaiaParams.get("gaia") === "1" && gaiaParams.get("source_id");
+        const eventGaia = gaiaParams.get("gaia_event") === "1" && gaiaParams.get("event_id") && gaiaParams.get("record_id");
+        controls.sendGaiaCalibration.hidden = !(realtimeGaia || eventGaia);
         controls.sendGaiaCalibration.addEventListener("click", sendCalibrationToGaia);
     }
     if (controls.localTestCaseTools) {
@@ -15179,7 +15350,7 @@ lens-model inverse.}
             loadQuickLinkTestCase();
         } else if (!state.image && await loadSpacecraftImage()) {
             // Spacecraft timestamp, observer and image arrive together.
-        } else if (!state.image && await loadGaiaSourceImage()) {
+        } else if (!state.image && (await loadGaiaEventImage() || await loadGaiaSourceImage())) {
             // The camera image is ready for star matching.
         } else if (!state.image) {
             resetForNewImage();
