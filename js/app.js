@@ -9751,6 +9751,9 @@ lens-model inverse.}
                 const a=start[i]*0.5,b=start[i]*2;
                 bounds[i]={lo:Math.min(a,b),hi:Math.max(a,b),minAbs:0.05};
             }
+            // Principal point and pointing are nearly degenerate in this
+            // small field. Do not trade an off-sensor centre for tiny RMS gains.
+            for (const i of [5,6]) bounds[i]={lo:Math.max(-.5,start[i]-.05),hi:Math.min(.5,start[i]+.05)};
             if (optmod === 1 || optmod === 6) bounds[7]={lo:start[7],hi:start[7]};
             if (optmod === BROWN_CONRADY_OPTMOD) {
                 for (const i of [8,9,10,11]) bounds[i]={lo:start[i]||0,hi:start[i]||0};
@@ -10538,8 +10541,9 @@ lens-model inverse.}
             `; recentered du/dv mean residual ${recentered.before.meanDx.toFixed(2)}/${recentered.before.meanDy.toFixed(2)} -> ` +
             `${recentered.after.meanDx.toFixed(2)}/${recentered.after.meanDy.toFixed(2)} px` :
             "";
+        const parameterText=spacecraftMode() ? `${fitParameterBounds().filter(b=>b.lo!==b.hi).length} free optpar values` : `all ${result.x.length} optpar values`;
         state.fitMessage = `${methodLabel}: RMS ${rmsBefore.toFixed(2)} -> ${rmsAfter.toFixed(2)} px, ` +
-            `${detail}; ${objectiveLabel}; fitted all ${result.x.length} optpar values using ${fitCount}/${state.matches.length} pairs ` +
+            `${detail}; ${objectiveLabel}; fitted ${parameterText} using ${fitCount}/${state.matches.length} pairs ` +
             `${scopeText}${recenterText}` + (spacecraftMode() && Number(controls.optmod.value) === BROWN_CONRADY_OPTMOD ?
                 "; spacecraft fit: k2/k3/p1/p2 held fixed" : "");
         recomputeAndRender();
