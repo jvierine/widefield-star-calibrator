@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.71";
+    const APP_VERSION = "v0.3.72";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -4674,6 +4674,42 @@ end
             if (button) {
                 button.disabled = false;
             }
+            render();
+        }
+    }
+
+    async function downloadSpacecraftSessions() {
+        let file;
+        try {
+            saveSpacecraftSession();
+            const frames = window.AidaSpacecraftSessions.collect(localStorage);
+            if (!frames.length) throw new Error('No saved spacecraft star picks');
+            const {h5wasm, FS} = await loadH5Wasm();
+            const filename = 'wisc-spacecraft-star-picks.h5';
+            file = new h5wasm.File(filename, 'w');
+            file.create_attribute('schema', 'aida.spacecraft-star-sequence/v1');
+            file.create_attribute('creator', 'WISC '+APP_VERSION);
+            for (const frame of frames) {
+                const g = file.create_group(frame.frameId);
+                g.create_attribute('utc', frame.session.utc);
+                g.create_attribute('session_metadata', JSON.stringify({
+                    width:frame.session.width,height:frame.session.height,
+                    optmod:frame.session.optmod,flipX:frame.session.flipX,
+                    flipY:frame.session.flipY,catalog:frame.session.catalog,maxMag:frame.session.maxMag}));
+                g.create_attribute('star_names', JSON.stringify(frame.names));
+                g.create_attribute('spacecraft_observation', JSON.stringify(frame.observation));
+                g.create_dataset({name:'optpar',data:new Float64Array(frame.session.optpar),shape:[frame.session.optpar.length],dtype:'<d'});
+                g.create_dataset({name:'star_picks',data:new Float64Array(frame.rows.flat()),shape:[frame.rows.length,5],dtype:'<d'});
+                g.create_attribute('star_columns','x_px_0based y_px_0based ra_hours_j2000 dec_deg_j2000 magnitude');
+            }
+            file.close(); file=null;
+            const bytes=FS.readFile(filename).slice(); FS.unlink(filename);
+            downloadBlob(new Blob([bytes],{type:'application/x-hdf5'}),filename);
+            state.fitMessage=`Exported ${frames.length} saved spacecraft frames; original picks preserved`;
+        } catch(error) {
+            state.fitMessage='Sequence export failed: '+error.message;
+        } finally {
+            if(file)file.close();
             render();
         }
     }
@@ -14933,6 +14969,7 @@ lens-model inverse.}
     if (controls.downloadFitHdf5) {
         controls.downloadFitHdf5.addEventListener("click", downloadFitHdf5);
     }
+    document.getElementById('downloadSpacecraftSessions')?.addEventListener('click',downloadSpacecraftSessions);
     if (controls.downloadAzElHdf5) {
         controls.downloadAzElHdf5.addEventListener("click", downloadAzElHdf5);
     }
