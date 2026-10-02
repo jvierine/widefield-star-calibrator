@@ -37,3 +37,15 @@ test('TD-1 loads on demand without silently substituting optical stars on failur
     assert.equal(context.state.catalogs.td1, null);
     assert.match(context.state.catalogStatus, /unavailable/);
 });
+
+test('UV magnitude control includes measured 12–13 entries without changing catalogue cuts',()=>{
+    const source=fs.readFileSync(path.join(root,'js/app.js'),'utf8');
+    const body=source.slice(source.indexOf('    function updateMagnitudeLimitUi()'),source.indexOf('    function activeStarCatalogName()'));
+    const controls={maxMag:{value:'12.5',parentElement:{firstChild:{textContent:''}}}};
+    let name='td1';const context={controls,selectedCatalogName:()=>name};
+    vm.createContext(context);vm.runInContext(body,context);context.updateMagnitudeLimitUi();
+    assert.equal(controls.maxMag.max,'13');assert.equal(controls.maxMag.value,'12.5');
+    assert.equal(payload.rows.filter(r=>r[2]>12&&r[2]<=13).length,152);
+    name='tycho2';context.updateMagnitudeLimitUi();
+    assert.equal(controls.maxMag.max,'8');assert.equal(controls.maxMag.value,'8');
+});

@@ -1011,6 +1011,22 @@ pre {
 
     .topbar {
         align-items: flex-start;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .topbar > div:first-child {
+        width: 100%;
+    }
+
+    .topbar .subtle {
+        max-height: 4.5em;
+        overflow: auto;
+    }
+
+    .top-actions {
+        flex-wrap: wrap;
+        width: 100%;
     }
 
     .viewer-panel {

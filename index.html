@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WISC - Widefield Star Calibrator</title>
-<link rel="stylesheet" href="style.css?v=20260810-zoom-controls-left">
+<link rel="stylesheet" href="style.css?v=20261002-mobile-radec">
 </head>
 <body>
 <header class="topbar">
@@ -211,7 +211,7 @@
                 <button id="flipImageX" type="button">Flip image horizontally</button>
                 <button id="flipImageY" type="button">Flip image vertically</button>
             </div>
-            <button id="toggleRaDecGrid" type="button">Show RA/Dec grid</button>
+            <button id="toggleRaDecGrid" type="button" title="Celestial coordinate grid using the same pointing, lens and frame ephemeris as the stars">Show RA/Dec grid</button>
             <button id="toggleAzElGrid" type="button">Hide az/el grid</button>
             <button id="toggleDetectionCircles" type="button">Stellarium view (C)</button>
             <button id="toggleStarNames" type="button">Show star names (N)</button>
@@ -330,6 +330,7 @@ window.MathJax = {
 <script src="js/centroid.js?v=20260813-low-resolution-selection"></script>
 <script src="js/display_stretch.js?v=20260710-percentile-clipping"></script>
 <script src="js/az_el_grid.js?v=20260710-pixel-corners"></script>
+<script src="js/celestial_grid.js?v=20261002-spacecraft-radec"></script>
 <script src="js/miracle_export.js?v=20260810-equisolid-parameter-row"></script>
 <script src="js/export_generators.js?v=20260810-equisolid-optmod6"></script>
 <script src="js/catalogs.js?v=20260527a"></script>
@@ -340,6 +341,6 @@ window.MathJax = {
 <script src="js/view_zoom.js?v=20260818-gesture-modifiers"></script>
 <script src="js/spacecraft.js?v=20261001-forward-fit-071"></script>
 <script src="js/spacecraft_sessions.js?v=20261002-sequence-export"></script>
-<script src="js/app.js?v=20261002-sequence-export"></script>
+<script src="js/app.js?v=20261002-spacecraft-radec-uv13"></script>
 </body>
 </html>

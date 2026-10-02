@@ -1,7 +1,7 @@
 (function () {
     "use strict";
 
-    const APP_VERSION = "v0.3.72";
+    const APP_VERSION = "v0.3.73";
     const TEST_CASES_ENABLED = location.protocol === "http:" || location.protocol === "https:" ||
         location.protocol === "file:";
     const FITTING_CATALOG_NAME = "yale";
@@ -2654,7 +2654,7 @@ end
 
     function updateMagnitudeLimitUi() {
         const uv=selectedCatalogName()==="td1";
-        controls.maxMag.max=uv?"12":"8";
+        controls.maxMag.max=uv?"13":"8";
         if(!uv && Number(controls.maxMag.value)>8)controls.maxMag.value="8";
         controls.maxMag.parentElement.firstChild.textContent=uv?"Limiting UV magnitude (AB 156.5 nm) ":"Limiting magnitude ";
     }
@@ -6829,6 +6829,22 @@ lens-model inverse.}
         gl.disable(gl.BLEND);
     }
 
+    let celestialGridCache = {key: null, lines: []};
+    function spacecraftRaDecGrid(optpar) {
+        if (!spacecraftMode()) return null;
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const ephemeris = window.AidaSpacecraft.observationEphemeris(spacecraftObservation, date);
+        if (!ephemeris?.j2000_to_ecef) return null;
+        const key = JSON.stringify([optpar, spacecraftPosition(), ephemeris.j2000_to_ecef]);
+        if (celestialGridCache.key !== key) {
+            const direction = window.AidaSpacecraft.cameraAxes(spacecraftPosition(), optpar, AidaTools)[2];
+            const center = window.AidaCelestialGrid.inertialDirection(direction, ephemeris.j2000_to_ecef);
+            const radius = 1.5 * Math.atan(Math.hypot(.5 / optpar[0], .5 / optpar[1])) * AidaTools.RAD;
+            celestialGridCache = {key, lines: window.AidaCelestialGrid.localLines(center.raHours, center.decDeg, radius)};
+        }
+        return celestialGridCache.lines;
+    }
+
     function drawRaDecGrid() {
         if (state.showKdePositionDots || !state.showRaDecGrid || !state.image) {
             return;
@@ -6840,20 +6856,24 @@ lens-model inverse.}
         const optmod = Number(controls.optmod.value);
         const segments = [];
 
-        for (let ra = 0; ra < 24; ra += 2) {
-            const points = [];
-            for (let dec = -80; dec <= 85; dec += 2.5) {
-                points.push(projectRaDec(ra, dec, date, lat, lon, optpar, optmod));
+        const local = spacecraftRaDecGrid(optpar);
+        if (local) {
+            for (const line of local) addGridPolyline(line.points.map(([ra, dec]) => projectRaDec(ra, dec, date, lat, lon, optpar, optmod)), segments);
+        } else {
+            for (let ra = 0; ra < 24; ra += 2) {
+                const points = [];
+                for (let dec = -80; dec <= 85; dec += 2.5) {
+                    points.push(projectRaDec(ra, dec, date, lat, lon, optpar, optmod));
+                }
+                addGridPolyline(points, segments);
             }
-            addGridPolyline(points, segments);
-        }
-
-        for (const dec of [-60, -30, 0, 30, 60, 80]) {
-            const points = [];
-            for (let ra = 0; ra <= 24; ra += 0.25) {
-                points.push(projectRaDec(ra === 24 ? 0 : ra, dec, date, lat, lon, optpar, optmod));
+            for (const dec of [-60, -30, 0, 30, 60, 80]) {
+                const points = [];
+                for (let ra = 0; ra <= 24; ra += 0.25) {
+                    points.push(projectRaDec(ra === 24 ? 0 : ra, dec, date, lat, lon, optpar, optmod));
+                }
+                addGridPolyline(points, segments);
             }
-            addGridPolyline(points, segments);
         }
 
         if (segments.length === 0) {
@@ -7184,6 +7204,23 @@ lens-model inverse.}
         const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
         const lat = Number(controls.latDeg.value) || 0;
         const lon = Number(controls.lonDeg.value) || 0;
+        const local = spacecraftRaDecGrid(optpar);
+        if (local) {
+            const vp = imageViewport(), inset = 26 * (window.devicePixelRatio || 1), occupied = [];
+            const bounds = [Math.max(inset, vp.x+inset), Math.min(canvas.width-inset, vp.x+vp.w-inset), Math.max(inset, vp.y+inset), Math.min(canvas.height-inset, vp.y+vp.h-inset)];
+            for (const line of local) {
+                const points = line.points.map(([ra, dec]) => projectRaDec(ra, dec, date, lat, lon, optpar, optmod))
+                    .filter(p => p && p[0] > bounds[0] && p[0] < bounds[1] && p[1] > bounds[2] && p[1] < bounds[3]);
+                if (!points.length) continue;
+                // Label the grid where it is actually visible, not at dec=0
+                // or RA=0, which lie outside a narrow UVI field of view.
+                const edgeDistance = p => Math.min(p[0]-bounds[0], bounds[1]-p[0], p[1]-bounds[2], bounds[3]-p[1]);
+                points.sort((a, b) => edgeDistance(a)-edgeDistance(b));
+                const point = points.find(p => occupied.every(q => Math.abs(p[0]-q[0]) > 70 * (window.devicePixelRatio||1) || Math.abs(p[1]-q[1]) > 22 * (window.devicePixelRatio||1)));
+                if (point) {occupied.push(point);addOverlayLabel(line.label, point, "grid-label radec-label", true);}
+            }
+            return;
+        }
 
         for (let ra = 0; ra < 24; ra += 4) {
             const point = projectRaDec(ra, 0, date, lat, lon, optpar, optmod, false);
@@ -14830,6 +14867,7 @@ lens-model inverse.}
     controls.toggleRaDecGrid.addEventListener("click", () => {
         state.showRaDecGrid = !state.showRaDecGrid;
         controls.toggleRaDecGrid.textContent = state.showRaDecGrid ? "Hide RA/Dec grid" : "Show RA/Dec grid";
+        controls.toggleRaDecGrid.classList.toggle("toggle-on", state.showRaDecGrid);
         playInteractionSound("mode");
         render();
     });
