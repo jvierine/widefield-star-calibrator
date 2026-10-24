@@ -6,6 +6,7 @@ npm-debug.log*
 /.latex-cache/
 /web/pkg/
 /web/help.html
+/web/docs/
 
 __pycache__/
 *.pyc

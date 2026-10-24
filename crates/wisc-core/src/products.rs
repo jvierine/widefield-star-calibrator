@@ -147,19 +147,205 @@ pub fn azel_hdf5(
 pub fn import_job(bytes: &[u8]) -> Result<FitJob, String> {
     if bytes.starts_with(b"\x89HDF\r\n\x1a\n") {
         let file = File::from_bytes(bytes.to_vec()).map_err(|error| error.to_string())?;
-        let json = file
-            .dataset("calibration_json")
-            .and_then(|dataset| dataset.read_u8())
-            .map_err(|error| format!("not a Rust WISC calibration HDF5: {error}"))?;
-        parse_job(std::str::from_utf8(&json).map_err(|error| error.to_string())?)
+        if let Ok(dataset) = file.dataset("calibration_json") {
+            let json = dataset.read_u8().map_err(|error| error.to_string())?;
+            parse_job(std::str::from_utf8(&json).map_err(|error| error.to_string())?)
+        } else {
+            import_legacy_hdf5(&file)
+        }
     } else {
         parse_job(std::str::from_utf8(bytes).map_err(|error| error.to_string())?)
     }
 }
 
+/// Legacy compact products contain measured one-based row/column positions,
+/// not the model positions. Preserve that distinction and trust named columns,
+/// never their accidental order in a particular writer version.
+fn import_legacy_hdf5(file: &File) -> Result<FitJob, String> {
+    let attrs = file.root().attrs().map_err(|error| error.to_string())?;
+    let text = |key: &str| attrs.get(key).and_then(AttrValue::as_str);
+    let number = |key: &str| -> Result<f64, String> {
+        attrs
+            .get(key)
+            .and_then(|value| {
+                value
+                    .as_f64()
+                    .or_else(|| value.as_i64().map(|v| v as f64))
+                    .or_else(|| value.as_u64().map(|v| v as f64))
+            })
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| format!("missing or invalid HDF5 {key}"))
+    };
+    let dimension = |key: &str| -> Result<u32, String> {
+        let n = number(key)?;
+        if n < 1.0 || n > u32::MAX as f64 || n.fract() != 0.0 {
+            return Err(format!("invalid HDF5 {key}"));
+        }
+        Ok(n as u32)
+    };
+    if text("observer_mode") == Some("spacecraft") || attrs.contains_key("spacecraft_observation") {
+        return Err("spacecraft HDF5 requires the spacecraft workflow; refusing a ground-observer conversion".into());
+    }
+    if text("model_coordinates") != Some("raw_image_pixel_centers") {
+        return Err(
+            "legacy HDF5 lacks an unambiguous raw-image model coordinate convention".into(),
+        );
+    }
+    let mut parameters = match file.dataset("best_fit_wisc_optpar_with_optmod") {
+        Ok(dataset) => dataset.read_f64().map_err(|error| error.to_string())?,
+        Err(_) => match file.dataset("wisc_optpar_with_optmod") {
+            Ok(dataset) => dataset.read_f64().map_err(|error| error.to_string())?,
+            Err(_) => {
+                let mut parameters = vec![number("optmod")?];
+                parameters.extend(
+                    file.dataset("wisc_optpar")
+                        .and_then(|d| d.read_f64())
+                        .map_err(|error| error.to_string())?,
+                );
+                parameters
+            }
+        },
+    };
+    if parameters.is_empty()
+        || !parameters[0].is_finite()
+        || parameters[0].fract() != 0.0
+        || !(1.0..=255.0).contains(&parameters[0])
+    {
+        return Err("invalid HDF5 optical model".into());
+    }
+    let model = crate::OpticalModel::try_from(parameters.remove(0) as u8)?;
+    let observation = if let Some(timestamp) = text("timestamp_utc").filter(|s| !s.is_empty()) {
+        Some(Observation {
+            unix_millis: chrono::DateTime::parse_from_rfc3339(timestamp)
+                .map_err(|error| error.to_string())?
+                .timestamp_millis(),
+            latitude_deg: number("site_lat_deg")?,
+            longitude_deg: number("site_lon_deg")?,
+        })
+    } else {
+        None
+    };
+    let mut pairs = Vec::new();
+    if let Ok(dataset) = file.dataset("selected_stars") {
+        let columns: Vec<_> = text("selected_star_columns")
+            .ok_or("missing HDF5 selected_star_columns")?
+            .split_whitespace()
+            .collect();
+        let column = |key: &str| {
+            columns
+                .iter()
+                .position(|name| *name == key)
+                .ok_or_else(|| format!("missing selected-star column {key}"))
+        };
+        let (x, y, az, alt) = (
+            column("star_col_px_1based")?,
+            column("star_row_px_1based")?,
+            column("azimuth_deg")?,
+            column("altitude_deg")?,
+        );
+        let included = columns.iter().position(|key| *key == "included_in_fit");
+        let shape = dataset.shape().map_err(|error| error.to_string())?;
+        if shape.len() != 2 || shape[1] != columns.len() as u64 || shape[0] > 10_000 {
+            return Err("invalid HDF5 selected-star table shape".into());
+        }
+        let values = dataset.read_f64().map_err(|error| error.to_string())?;
+        if values.len() != shape[0] as usize * columns.len() {
+            return Err("truncated HDF5 selected-star table".into());
+        }
+        for row in values.chunks_exact(columns.len()) {
+            if let Some(index) = included {
+                if row[index] != 0.0 && row[index] != 1.0 {
+                    return Err("invalid HDF5 included_in_fit flag".into());
+                }
+                if row[index] == 0.0 {
+                    continue;
+                }
+            }
+            if ![row[x], row[y], row[az], row[alt]]
+                .iter()
+                .all(|v| v.is_finite())
+                || !(-90.0..=90.0).contains(&row[alt])
+            {
+                return Err("invalid HDF5 selected-star coordinates".into());
+            }
+            pairs.push(crate::StarPair {
+                x_px: row[x] - 1.0,
+                y_px: row[y] - 1.0,
+                azimuth_rad: row[az] * crate::DEG,
+                zenith_rad: (90.0 - row[alt]) * crate::DEG,
+            });
+        }
+    }
+    let job = FitJob {
+        initial: Calibration {
+            width: dimension("image_width")?,
+            height: dimension("image_height")?,
+            model,
+            optpar: parameters,
+        },
+        pairs,
+        observation,
+    };
+    // Use the same scientific validation as JSON and Rust-HDF5 imports.
+    parse_job(&serde_json::to_string(&job).map_err(|error| error.to_string())?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn legacy_fixture(coordinates: &str, spacecraft: bool) -> Vec<u8> {
+        let mut builder = FileBuilder::new();
+        builder.set_attr("image_width", AttrValue::I32Array(vec![1024]));
+        builder.set_attr("image_height", AttrValue::I32Array(vec![768]));
+        builder.set_attr("model_coordinates", AttrValue::String(coordinates.into()));
+        builder.set_attr(
+            "timestamp_utc",
+            AttrValue::String("2020-02-18T01:07:31Z".into()),
+        );
+        builder.set_attr("site_lat_deg", AttrValue::F64Array(vec![78.9]));
+        builder.set_attr("site_lon_deg", AttrValue::F64Array(vec![11.9]));
+        if spacecraft {
+            builder.set_attr("observer_mode", AttrValue::String("spacecraft".into()));
+        }
+        let mut parameters = vec![2.0];
+        parameters.extend(crate::default_optpar(1024, 768, crate::OpticalModel::Sine));
+        builder
+            .create_dataset("wisc_optpar_with_optmod")
+            .with_f64_data(&parameters);
+        builder.set_attr(
+            "selected_star_columns",
+            AttrValue::String(
+                "star_col_px_1based altitude_deg included_in_fit star_row_px_1based azimuth_deg"
+                    .into(),
+            ),
+        );
+        builder
+            .create_dataset("selected_stars")
+            .with_f64_data(&[
+                101.25, 45.0, 1.0, 201.75, 180.0, 400.0, 50.0, 0.0, 300.0, 270.0,
+            ])
+            .with_shape(&[2, 5]);
+        builder.finish().unwrap()
+    }
+    #[test]
+    fn legacy_hdf5_import_uses_named_measured_columns_and_one_based_pixels() {
+        let job = import_job(&legacy_fixture("raw_image_pixel_centers", false)).unwrap();
+        assert_eq!((job.initial.width, job.initial.height), (1024, 768));
+        assert_eq!(job.pairs.len(), 1);
+        assert_eq!([job.pairs[0].x_px, job.pairs[0].y_px], [100.25, 200.75]);
+        assert!((job.pairs[0].azimuth_rad - std::f64::consts::PI).abs() < 1e-12);
+        assert!((job.pairs[0].zenith_rad - std::f64::consts::FRAC_PI_4).abs() < 1e-12);
+        assert_eq!(job.observation.unwrap().latitude_deg, 78.9);
+    }
+    #[test]
+    fn legacy_hdf5_rejects_ambiguous_coordinates_and_spacecraft_frames() {
+        assert!(import_job(&legacy_fixture("display", false))
+            .unwrap_err()
+            .contains("coordinate convention"));
+        assert!(import_job(&legacy_fixture("raw_image_pixel_centers", true))
+            .unwrap_err()
+            .contains("spacecraft"));
+    }
     #[test]
     fn compact_hdf5_roundtrips_full_precision_model_and_measurements() {
         let job = parse_job(include_str!(

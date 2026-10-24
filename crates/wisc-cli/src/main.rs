@@ -39,6 +39,19 @@ impl From<ByteOrder> for FitsByteOrder {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Measure a star with the same 40× KDE picker used by the Rust browser.
+    Centroid {
+        image: PathBuf,
+        /// Raw zero-based image pixel centre.
+        #[arg(long, allow_hyphen_values = true)]
+        x: f64,
+        #[arg(long, allow_hyphen_values = true)]
+        y: f64,
+        #[arg(long, value_enum, default_value = "auto")]
+        fits_byte_order: ByteOrder,
+        #[arg(short, long, default_value = "centroid.json")]
+        output: PathBuf,
+    },
     /// Export azimuth/elevation as FITS planes or an HDF5 pixel-corner grid.
     Map {
         calibration: PathBuf,
@@ -97,6 +110,9 @@ enum Command {
         residual_plot: Option<PathBuf>,
         #[arg(long, default_value_t = 2000)]
         max_iterations: usize,
+        /// Use Levenberg–Marquardt instead of Nelder–Mead.
+        #[arg(long)]
+        lm: bool,
     },
     /// Project azimuth/zenith samples through an existing calibration.
     Project {
@@ -193,6 +209,25 @@ fn residual_plot(path: &Path, residuals: &[[f64; 2]], rms: f64) -> Result<()> {
 
 fn run() -> Result<()> {
     match Cli::parse().command {
+        Command::Centroid {
+            image,
+            x,
+            y,
+            fits_byte_order,
+            output,
+        } => {
+            let image =
+                decode(&fs::read(image)?, fits_byte_order.into()).map_err(anyhow::Error::msg)?;
+            let centroid = wisc_core::inspection::kde_centroid(
+                &image.luminance,
+                image.width as usize,
+                image.height as usize,
+                [x, y],
+            )
+            .map_err(anyhow::Error::msg)?;
+            let result = serde_json::json!({"x_px":centroid.position[0],"y_px":centroid.position[1],"background":centroid.background,"method":"40x upsampled KDE","sigma_px":53.2/40.0});
+            fs::write(output, serde_json::to_vec_pretty(&result)?)?;
+        }
         Command::Map {
             calibration,
             output,
@@ -305,10 +340,16 @@ fn run() -> Result<()> {
             output,
             residual_plot: plot,
             max_iterations,
+            lm,
         } => {
             let job = read_job(&input)?;
+            let solver = if lm {
+                wisc_core::optimization::fit_lm
+            } else {
+                fit
+            };
             let result =
-                fit(&job.initial, &job.pairs, max_iterations).map_err(anyhow::Error::msg)?;
+                solver(&job.initial, &job.pairs, max_iterations).map_err(anyhow::Error::msg)?;
             save_fit(&output, plot.as_deref(), &result, &job)?;
         }
         Command::Project {

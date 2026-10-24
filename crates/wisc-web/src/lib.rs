@@ -11,6 +11,7 @@ use wisc_core::imaging::{decode, FitsByteOrder};
 use wisc_core::{detect_stars, fit, DetectorConfig, FitResult, StarPair};
 
 mod ui;
+mod viewer;
 
 thread_local! {
     static APP: RefCell<Option<Rc<RefCell<App>>>> = const { RefCell::new(None) };
@@ -91,6 +92,17 @@ struct App {
     pair_points: Vec<[f32; 2]>,
     history: Vec<wisc_core::workflow::FitJob>,
     fitted: Option<wisc_core::workflow::CalibrationDocument>,
+    viewport: wisc_core::inspection::Viewport,
+    luminance: Vec<f32>,
+    original_rgba: Vec<u8>,
+    masked_tiles: Vec<[u32; 2]>,
+    drag: Option<[f64; 2]>,
+    drag_distance: f64,
+    suppress_click: bool,
+    show_image: bool,
+    show_markers: bool,
+    image_metadata: wisc_core::metadata::ImageMetadata,
+    density_plot: Option<rustplotlib_web::HeatmapView>,
 }
 
 impl App {
@@ -111,28 +123,37 @@ impl App {
             r#"#version 300 es
             precision highp float;
             uniform sampler2D image_texture;
+            uniform vec3 view; // centre x/y (top-down), zoom
+            uniform vec3 display; // brightness, contrast, gamma
             in vec2 uv;
             out vec4 color;
-            void main() { color = texture(image_texture, vec2(uv.x, 1.0 - uv.y)); }"#,
+            void main() {
+                vec2 q = view.xy + (vec2(uv.x, 1.0-uv.y)-0.5)/view.z;
+                vec3 rgb = texture(image_texture, q).rgb;
+                rgb = clamp((rgb-0.5)*display.y + 0.5 + display.x, 0.0, 1.0);
+                color = vec4(pow(rgb, vec3(1.0/display.z)), 1.0);
+            }"#,
         )?;
         let point_program = program(
             &gl,
             r#"#version 300 es
             in vec2 point_px;
             uniform vec2 image_size;
+            uniform vec3 view;
             void main() {
-                vec2 clip = vec2(2.0 * (point_px.x + 0.5) / image_size.x - 1.0,
-                                 1.0 - 2.0 * (point_px.y + 0.5) / image_size.y);
+                vec2 q = ((point_px+0.5)/image_size-view.xy)*view.z;
+                vec2 clip = vec2(2.0*q.x, -2.0*q.y);
                 gl_Position = vec4(clip, 0.0, 1.0);
                 gl_PointSize = 7.0;
             }"#,
             r#"#version 300 es
             precision highp float;
             uniform vec3 point_color;
+            uniform bool line_mode;
             out vec4 color;
             void main() {
                 vec2 d = gl_PointCoord - vec2(0.5);
-                if (dot(d,d) > 0.25 || dot(d,d) < 0.12) discard;
+                if (!line_mode && (dot(d,d) > 0.25 || dot(d,d) < 0.12)) discard;
                 color = vec4(point_color, 1.0);
             }"#,
         )?;
@@ -162,6 +183,17 @@ impl App {
             pair_points: Vec::new(),
             history: Vec::new(),
             fitted: None,
+            viewport: Default::default(),
+            luminance: Vec::new(),
+            original_rgba: Vec::new(),
+            masked_tiles: Vec::new(),
+            drag: None,
+            drag_distance: 0.0,
+            suppress_click: false,
+            show_image: true,
+            show_markers: true,
+            image_metadata: Default::default(),
+            density_plot: None,
         })
     }
 
@@ -172,7 +204,7 @@ impl App {
         }
     }
 
-    fn load_image(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
+    fn load_image(&mut self, bytes: &[u8], filename: &str) -> Result<(), JsValue> {
         let order = element::<web_sys::HtmlSelectElement>("fitsByteOrder")?.value();
         let order = match order.as_str() {
             "big" => FitsByteOrder::Big,
@@ -180,8 +212,13 @@ impl App {
             _ => FitsByteOrder::Auto,
         };
         let image = decode(bytes, order).map_err(js_error)?;
+        self.image_metadata = wisc_core::metadata::read(bytes, filename);
         self.width = image.width;
         self.height = image.height;
+        self.viewport = Default::default();
+        self.masked_tiles.clear();
+        self.luminance.clone_from(&image.luminance);
+        self.original_rgba.clone_from(&image.rgba);
         self.canvas.set_width(self.width);
         self.canvas.set_height(self.height);
         self.gl.bind_texture(Gl::TEXTURE_2D, Some(&self.texture));
@@ -204,7 +241,7 @@ impl App {
             DetectorConfig::default(),
         );
         ui::image_loaded(self, &image)?;
-        self.draw();
+        viewer::update_texture(self)?;
         status(&format!(
             "Loaded {} × {} image; {} detections. Import a saved calibration or set time and site.",
             self.width,
@@ -215,6 +252,15 @@ impl App {
     }
 
     fn draw(&self) {
+        if let Ok(output) = element::<web_sys::HtmlElement>("viewStatus") {
+            output.set_text_content(Some(&format!(
+                "Zoom {:.2}× · centre {:.4}, {:.4} · {} masked tiles",
+                self.viewport.zoom,
+                self.viewport.center[0],
+                self.viewport.center[1],
+                self.masked_tiles.len()
+            )));
+        }
         self.gl
             .viewport(0, 0, self.width as i32, self.height as i32);
         self.gl.clear_color(0.02, 0.025, 0.04, 1.0);
@@ -222,13 +268,35 @@ impl App {
         if self.width == 0 || self.height == 0 {
             return;
         }
-        self.gl.use_program(Some(&self.image_program));
-        self.gl.bind_texture(Gl::TEXTURE_2D, Some(&self.texture));
-        self.gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+        if self.show_image {
+            self.gl.use_program(Some(&self.image_program));
+            self.set_view(&self.image_program);
+            let number = |id, fallback| {
+                element::<HtmlInputElement>(id)
+                    .ok()
+                    .map(|input| input.value_as_number())
+                    .filter(|v| v.is_finite())
+                    .unwrap_or(fallback)
+            };
+            self.gl.uniform3f(
+                self.gl
+                    .get_uniform_location(&self.image_program, "display")
+                    .as_ref(),
+                number("brightness", 0.0) as f32,
+                number("contrast", 1.0) as f32,
+                number("gammaDisplay", 1.0) as f32,
+            );
+            self.gl.bind_texture(Gl::TEXTURE_2D, Some(&self.texture));
+            self.gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+        }
+        if !self.show_markers {
+            return;
+        }
 
         let points: Vec<f32> = self
             .detections
             .iter()
+            .filter(|d| !self.is_masked([d.x, d.y]))
             .flat_map(|detection| [detection.x as f32, detection.y as f32])
             .collect();
         self.draw_points(&points, [0.3, 1.0, 0.45]);
@@ -250,10 +318,38 @@ impl App {
                 .collect::<Vec<_>>(),
             [0.3, 0.65, 1.0],
         );
+        viewer::draw_diagnostics(self);
     }
 
     fn draw_points(&self, points: &[f32], color: [f32; 3]) {
+        self.draw_geometry(points, color, Gl::POINTS);
+    }
+
+    fn set_view(&self, program: &WebGlProgram) {
+        self.gl.uniform3f(
+            self.gl.get_uniform_location(program, "view").as_ref(),
+            self.viewport.center[0] as f32,
+            self.viewport.center[1] as f32,
+            self.viewport.zoom as f32,
+        );
+    }
+
+    fn is_masked(&self, point: [f64; 2]) -> bool {
+        self.masked_tiles.contains(&[
+            (point[0].max(0.0) as u32) / 128,
+            (point[1].max(0.0) as u32) / 128,
+        ])
+    }
+
+    fn draw_geometry(&self, points: &[f32], color: [f32; 3], mode: u32) {
         self.gl.use_program(Some(&self.point_program));
+        self.set_view(&self.point_program);
+        self.gl.uniform1i(
+            self.gl
+                .get_uniform_location(&self.point_program, "line_mode")
+                .as_ref(),
+            i32::from(mode != Gl::POINTS),
+        );
         self.gl.uniform3f(
             self.gl
                 .get_uniform_location(&self.point_program, "point_color")
@@ -284,8 +380,7 @@ impl App {
             self.width as f32,
             self.height as f32,
         );
-        self.gl
-            .draw_arrays(Gl::POINTS, 0, (points.len() / 2) as i32);
+        self.gl.draw_arrays(mode, 0, (points.len() / 2) as i32);
     }
 }
 
@@ -346,13 +441,14 @@ fn connect_file_input(app: Rc<RefCell<App>>, id: &str, job_file: bool) -> Result
         };
         let loaded_reader = reader.clone();
         let loaded_app = app.clone();
+        let filename = file.name();
         let loaded = Closure::<dyn FnMut(Event)>::once(move |_| {
             let result = loaded_reader.result().and_then(|value| {
                 let bytes = Uint8Array::new(&value).to_vec();
                 if job_file {
                     ui::import_job(&mut loaded_app.borrow_mut(), &bytes)
                 } else {
-                    loaded_app.borrow_mut().load_image(&bytes)
+                    loaded_app.borrow_mut().load_image(&bytes, &filename)
                 }
             });
             if let Err(error) = result {
@@ -377,6 +473,7 @@ pub fn start() -> Result<(), JsValue> {
     connect_file_input(app.clone(), "imageFile", false)?;
     connect_file_input(app.clone(), "jobFile", true)?;
     ui::connect(app.clone())?;
+    viewer::connect(app.clone())?;
     APP.with(|slot| *slot.borrow_mut() = Some(app));
     status("Load a PNG, JPEG, HEIC/HEIF, or FITS image to begin");
     Ok(())

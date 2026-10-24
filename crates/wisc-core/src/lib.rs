@@ -8,6 +8,9 @@ use std::f64::consts::PI;
 pub mod asterism;
 pub mod geometry;
 pub mod imaging;
+pub mod inspection;
+pub mod metadata;
+pub mod optimization;
 pub mod products;
 pub mod workflow;
 

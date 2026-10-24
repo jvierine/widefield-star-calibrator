@@ -17,6 +17,22 @@
       <label>FITS byte order (on load) <select id="fitsByteOrder"><option value="auto">Automatic legacy detection</option><option value="big">Standard big endian</option><option value="little">Nonstandard little endian (16-bit)</option></select></label>
       <output id="status" aria-live="polite">Loading Rust/WASM…</output>
       <canvas id="glCanvas" width="960" height="540" aria-label="WebGL calibration image"></canvas>
+      <output id="viewStatus">Zoom 1.00×</output>
+      <output id="imageMetadata"></output>
+      <p>Wheel: zoom at cursor (1–16×). Drag: pan. Click: pair. Shift-click: remove pair.</p>
+      <div class="actions"><button id="resetView" type="button">Reset view (0)</button><button id="toggleImage" type="button">Image / sky (C)</button><button id="toggleMarkers" type="button">Markers (H)</button><button id="clearMask" type="button">Clear detection mask</button></div>
+      <div class="controls">
+        <label>Brightness <input id="brightness" type="range" min="-1" max="1" step="0.01" value="0"></label>
+        <label>Contrast <input id="contrast" type="range" min="0.1" max="10" step="0.1" value="1"></label>
+        <label>Display gamma <input id="gammaDisplay" type="range" min="0.1" max="4" step="0.1" value="1"></label>
+        <label><input id="highPass" type="checkbox">High-pass display</label>
+        <label>Gaussian width [px] <input id="highPassSigma" type="number" min="0.1" max="256" step="0.1" value="8"></label>
+        <label><input id="showGrid" type="checkbox">Azimuth/zenith grid (A)</label>
+        <label><input id="showResiduals" type="checkbox">Residual vectors ×20 (R)</label>
+        <label><input id="maskMode" type="checkbox">Click to mask 128×128 detection tiles</label>
+        <label><input id="kdePick" type="checkbox" checked>40× KDE subpixel picking</label>
+      </div>
+      <details><summary>KDE star inspection</summary><output id="densityInfo">Pick a star to inspect its density.</output><div class="density-panel"><canvas id="densityPlot" aria-label="Rustplotlib 40 times upsampled KDE star density"></canvas><canvas id="densityAxes" aria-label="KDE pixel coordinates and colorbar"></canvas></div></details>
     </section>
     <section class="fit">
       <h2>Camera calibration</h2>
@@ -32,7 +48,13 @@
         <label>α [°] <input id="alpha" type="number" step="any" value="0"></label>
         <label>β [°] <input id="beta" type="number" step="any" value="0"></label>
         <label>γ [°] <input id="gamma" type="number" step="any" value="0"></label>
+        <label>Centre offset X <input id="offsetX" type="number" step="any" value="0"></label>
+        <label>Centre offset Y <input id="offsetY" type="number" step="any" value="0"></label>
         <label>Radial α / Brown k₁ <input id="radial" type="number" step="any" value="0.35"></label>
+        <label>Brown k₂ <input id="brownK2" type="number" step="any" value="0"></label>
+        <label>Brown k₃ <input id="brownK3" type="number" step="any" value="0"></label>
+        <label>Brown p₁ <input id="brownP1" type="number" step="any" value="0"></label>
+        <label>Brown p₂ <input id="brownP2" type="number" step="any" value="0"></label>
         <label>Magnitude limit <input id="magnitude" type="number" step="0.1" value="5" min="-2" max="8"></label>
         <label>Match radius [px] <input id="matchRadius" type="number" step="1" value="12" min="1"></label>
       </div>
@@ -42,6 +64,7 @@
       <output id="pairCount">0 pairs</output>
       <div class="actions">
         <button id="fitPairs" type="button">Fit pairs</button>
+        <button id="fitPairsLm" type="button">Fit pairs (Levenberg–Marquardt)</button>
         <button id="autoFit" type="button">Match stars and fit</button>
         <button id="triangleFit" type="button">Find pointing with triangles</button>
         <button id="undo" type="button">Undo</button>

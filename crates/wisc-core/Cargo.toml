@@ -11,6 +11,7 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 heic-rs = { version = "=0.1.4", default-features = false }
 hdf5-pure = "=0.47.0"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+kamadak-exif = "=0.6.1"
 nalgebra = "0.33"
 ndarray = "0.16"
 serde = { version = "1", features = ["derive"] }

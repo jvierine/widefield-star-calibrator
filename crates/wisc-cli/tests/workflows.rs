@@ -24,6 +24,42 @@ fn as_str(path: &Path) -> &str {
 }
 
 #[test]
+fn native_lm_and_kde_commands_use_the_shared_scientific_core() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let case = root.join("test_cases/BACC_NYA_20200218_010731/case.json");
+    let output = directory.path().join("lm.json");
+    run(&[
+        "fit",
+        as_str(&case),
+        "--lm",
+        "--max-iterations",
+        "200",
+        "--output",
+        as_str(&output),
+    ]);
+    let result: serde_json::Value = serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
+    assert!(result["rms_px"].as_f64().unwrap() < 1.4);
+    let job = parse_job(&fs::read_to_string(&case).unwrap()).unwrap();
+    let first = &job.pairs[0];
+    let image = root.join("test_cases/BACC_NYA_20200218_010731/BACC_NYA_20200218_010731.png");
+    let output = directory.path().join("centroid.json");
+    run(&[
+        "centroid",
+        as_str(&image),
+        "--x",
+        &first.x_px.to_string(),
+        "--y",
+        &first.y_px.to_string(),
+        "--output",
+        as_str(&output),
+    ]);
+    let result: serde_json::Value = serde_json::from_slice(&fs::read(&output).unwrap()).unwrap();
+    assert!((result["x_px"].as_f64().unwrap() - first.x_px).abs() < 2.0);
+    assert!((result["y_px"].as_f64().unwrap() - first.y_px).abs() < 2.0);
+}
+
+#[test]
 fn saved_case_fit_export_is_directly_usable_by_project_and_fit() {
     let directory = tempfile::tempdir().unwrap();
     let saved = directory.path().join("saved.json");

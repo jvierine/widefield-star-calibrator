@@ -21,6 +21,7 @@ features = [
   "Blob", "Document", "DomRect", "Event", "File", "FileList", "FileReader",
   "HtmlAnchorElement", "HtmlOptionElement", "HtmlSelectElement", "MouseEvent", "Url",
   "HtmlButtonElement", "HtmlCanvasElement", "HtmlElement", "HtmlInputElement",
-  "HtmlTextAreaElement", "WebGl2RenderingContext", "WebGlBuffer", "WebGlProgram",
+  "HtmlTextAreaElement", "WheelEvent", "AddEventListenerOptions", "KeyboardEvent",
+  "CanvasRenderingContext2d", "ImageData", "WebGl2RenderingContext", "WebGlBuffer", "WebGlProgram",
   "WebGlShader", "WebGlTexture", "Window", "console"
 ]

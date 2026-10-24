@@ -77,14 +77,31 @@ python3 -m http.server 8000
    HDF5 map export always uses the full grid, independent of the FITS step.
 
 Green rings show detections, orange rings show projected catalogue stars, and
-blue rings show measured pairs. Loading another image clears old pairings and
-observation metadata; FITS observation headers populate time/site controls when
-available. No image or calibration is uploaded by this Rust interface.
+blue rings show measured pairs. Wheel zoom is cursor-anchored (1–16×); drag pans
+without adding pairs. Brightness/contrast/gamma and Gaussian high-pass controls
+affect display only, never scientific pixels. Azimuth/zenith grids and ×20
+residual vectors can be toggled. Click-mask mode toggles 128×128 detection tiles;
+automatic association ignores masked detections but preserves manual pairs.
+The default manual picker uses the shared Rust 40× KDE estimator; its density
+panel and the residual plot are rendered by Rustplotlib. Both Nelder–Mead and
+Levenberg–Marquardt fitting are available. Every lens coefficient has a control.
 
-The Rust interface currently supports ground-based camera calibration. Spacecraft/
-UV workflows, legacy HDF5 import and report bundles, and the legacy
-40× KDE picker are still being ported. The sections below describing those
-features and keyboard shortcuts refer to the legacy root `index.html` interface.
+Loading another image clears old pairings and observation metadata. EXIF
+time/GPS and known station/filename fallbacks populate controls; FITS headers
+take precedence when available. An EXIF timestamp without an offset is assumed
+UTC for legacy compatibility and explicitly flagged for verification.
+No image or calibration is uploaded by this Rust interface.
+
+The Rust interface currently supports ground-based camera calibration. Legacy
+compact ground HDF5 files with an explicit raw-image coordinate convention can
+also be imported: named measured-star columns are converted from one-based
+rows/columns, and excluded stars are not added to the fitting set. Ambiguous
+coordinate conventions and spacecraft products are rejected rather than guessed.
+Full parity is required before the public UI is switched; the detailed
+[feature checklist](docs/rust-feature-parity.md) tracks the still-unported
+hosted/GAIA/SMILE workflows, report/MIRACLE products, full lucky search, and
+remaining inspection/session controls. The sections below describing those
+features and their shortcuts still refer to the legacy root `index.html`.
 
 ## Legacy Browser Reference
 
@@ -288,6 +305,8 @@ native executable:
 
 ```bash
 wisc detect image.jpg --output detections.json --threshold-sigma 5
+wisc centroid image.jpg --x 123.4 --y 567.8 --output centroid.json
+wisc fit saved-case.json --lm --output calibration.json --residual-plot residuals.svg
 ```
 
 FITS images and stacks use the same decoder as the browser, including unsigned

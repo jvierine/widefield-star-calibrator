@@ -83,3 +83,9 @@ jobs:
 
       - name: Build Rust/WASM WebGL application
         run: scripts/build_web.sh
+
+      - name: Test Rust browser workflows in Chromium/WebGL
+        run: |
+          npm install --prefix "$RUNNER_TEMP/wisc-browser-tests" --no-save playwright@1.62.1
+          "$RUNNER_TEMP/wisc-browser-tests/node_modules/.bin/playwright" install --with-deps chromium
+          NODE_PATH="$RUNNER_TEMP/wisc-browser-tests/node_modules" node tests/rust_web_browser.cjs

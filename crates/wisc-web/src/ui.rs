@@ -6,7 +6,7 @@ use wisc_core::workflow::{
 };
 use wisc_core::{default_optpar, OpticalModel};
 
-fn read_job() -> Result<FitJob, JsValue> {
+pub(super) fn read_job() -> Result<FitJob, JsValue> {
     parse_job(&element::<HtmlTextAreaElement>("fitJob")?.value()).map_err(js_error)
 }
 
@@ -41,9 +41,26 @@ fn controls_from_job(job: &FitJob) -> Result<(), JsValue> {
         ("alpha", 2),
         ("beta", 3),
         ("gamma", 4),
+        ("offsetX", 5),
+        ("offsetY", 6),
         ("radial", 7),
     ] {
         element::<HtmlInputElement>(id)?.set_value(&job.initial.optpar[index].to_string());
+    }
+    for (id, index) in [
+        ("brownK2", 8),
+        ("brownK3", 9),
+        ("brownP1", 10),
+        ("brownP2", 11),
+    ] {
+        element::<HtmlInputElement>(id)?.set_value(
+            &job.initial
+                .optpar
+                .get(index)
+                .copied()
+                .unwrap_or(0.0)
+                .to_string(),
+        );
     }
     Ok(())
 }
@@ -167,6 +184,30 @@ pub(super) fn image_loaded(
     for id in ["utc", "latitude", "longitude"] {
         element::<HtmlInputElement>(id)?.set_value("");
     }
+    if let Some(timestamp) = app.image_metadata.unix_millis {
+        let iso =
+            String::from(js_sys::Date::new(&JsValue::from_f64(timestamp as f64)).to_iso_string());
+        element::<HtmlInputElement>("utc")?.set_value(iso.trim_end_matches('Z'));
+    }
+    for (id, value) in [
+        ("latitude", app.image_metadata.latitude_deg),
+        ("longitude", app.image_metadata.longitude_deg),
+    ] {
+        if let Some(value) = value {
+            element::<HtmlInputElement>(id)?.set_value(&value.to_string());
+        }
+    }
+    element::<web_sys::HtmlElement>("imageMetadata")?.set_text_content(Some(&format!(
+        "{} {} {}{}",
+        app.image_metadata.camera_make.as_deref().unwrap_or(""),
+        app.image_metadata.camera_model.as_deref().unwrap_or(""),
+        app.image_metadata.station.as_deref().unwrap_or(""),
+        if app.image_metadata.assumed_utc {
+            " · EXIF timezone absent: assuming UTC; verify time"
+        } else {
+            ""
+        }
+    )));
     if let Some(timestamp) = image.fits_header.get("DATE-OBS") {
         element::<HtmlInputElement>("utc")?
             .set_value(timestamp.trim_end_matches('Z').replace(' ', "T").as_str());
@@ -213,9 +254,21 @@ fn apply_controls(app: &mut App) -> Result<(), JsValue> {
         ("alpha", 2),
         ("beta", 3),
         ("gamma", 4),
+        ("offsetX", 5),
+        ("offsetY", 6),
         ("radial", 7),
     ] {
         job.initial.optpar[index] = input_number(id)?;
+    }
+    if model == OpticalModel::BrownConrady {
+        for (id, index) in [
+            ("brownK2", 8),
+            ("brownK3", 9),
+            ("brownP1", 10),
+            ("brownP2", 11),
+        ] {
+            job.initial.optpar[index] = input_number(id)?;
+        }
     }
     sync_observation(&mut job)?;
     job.initial.validate().map_err(js_error)?;
@@ -232,7 +285,9 @@ fn run_fit(app: &mut App, mode: u8) -> Result<(), JsValue> {
     ensure_dimensions(app, &job)?;
     sync_observation(&mut job)?;
     let previous = job.clone();
-    let result = if mode > 0 {
+    let result = if mode == 3 {
+        wisc_core::optimization::fit_lm(&job.initial, &job.pairs, 200).map_err(js_error)?
+    } else if mode > 0 {
         if app.width == 0 {
             return Err(js_error("load an image before automatic matching"));
         }
@@ -253,7 +308,11 @@ fn run_fit(app: &mut App, mode: u8) -> Result<(), JsValue> {
         };
         let (result, pairs) = matcher(
             &job.initial,
-            &app.detections,
+            &app.detections
+                .iter()
+                .filter(|d| !app.is_masked([d.x, d.y]))
+                .cloned()
+                .collect::<Vec<_>>(),
             &sky,
             &job.pairs,
             input_number("matchRadius")?,
@@ -354,6 +413,7 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
     controls_from_job(&read_job()?)?;
     action(app.clone(), "applyControls", apply_controls)?;
     action(app.clone(), "fitPairs", |app| run_fit(app, 0))?;
+    action(app.clone(), "fitPairsLm", |app| run_fit(app, 3))?;
     action(app.clone(), "autoFit", |app| run_fit(app, 1))?;
     action(app.clone(), "triangleFit", |app| run_fit(app, 2))?;
     action(app.clone(), "downloadMap", |app| {
@@ -440,17 +500,31 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
     let picked = Closure::<dyn FnMut(MouseEvent)>::new(move |event: MouseEvent| {
         let result = (|| -> Result<(), JsValue> {
             let mut app = app.borrow_mut();
+            if app.suppress_click {
+                app.suppress_click = false;
+                return Ok(());
+            }
             if app.width == 0 {
                 return Err(js_error("load an image first"));
             }
             let mut job = read_job()?;
-            let rect = app.canvas.get_bounding_client_rect();
-            let point = [
-                (f64::from(event.client_x()) - rect.left()) * f64::from(app.width) / rect.width()
-                    - 0.5,
-                (f64::from(event.client_y()) - rect.top()) * f64::from(app.height) / rect.height()
-                    - 0.5,
-            ];
+            let point = app
+                .viewport
+                .image_coordinate(viewer::screen(&app, &event), [app.width, app.height]);
+            if element::<HtmlInputElement>("maskMode")?.checked() {
+                let tile = [
+                    (point[0].max(0.0) as u32) / 128,
+                    (point[1].max(0.0) as u32) / 128,
+                ];
+                if app.masked_tiles.contains(&tile) {
+                    app.masked_tiles.retain(|t| *t != tile);
+                } else {
+                    app.masked_tiles.push(tile);
+                }
+                app.draw();
+                status("128×128 detection mask toggled; existing manual pairs are preserved");
+                return Ok(());
+            }
             if event.shift_key() {
                 let nearest = job
                     .pairs
@@ -492,9 +566,20 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
                     .filter(|detection| {
                         (detection.x - point[0]).hypot(detection.y - point[1]) <= 12.0
                     });
-                let xy = picked
+                let mut xy = picked
                     .map(|detection| [detection.x, detection.y])
                     .unwrap_or(point);
+                if element::<HtmlInputElement>("kdePick")?.checked() {
+                    let centroid = wisc_core::inspection::kde_centroid(
+                        &app.luminance,
+                        app.width as usize,
+                        app.height as usize,
+                        xy,
+                    )
+                    .map_err(js_error)?;
+                    xy = centroid.position;
+                    viewer::show_density(&mut app, &centroid)?;
+                }
                 app.history.push(job.clone());
                 job.pairs.retain(|pair| {
                     (pair.azimuth_rad - star.azimuth_rad).abs() > 1e-10
