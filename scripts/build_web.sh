@@ -39,6 +39,7 @@ fi
 
 (cd "$repo_root" && "$cargo_bin" build --locked --release -p wisc-web --target wasm32-unknown-unknown)
 mkdir -p "$repo_root/web/pkg"
+cp "$repo_root/help.html" "$repo_root/web/help.html"
 "$wasm_bindgen_bin" \
     --target web \
     --out-dir "$repo_root/web/pkg" \

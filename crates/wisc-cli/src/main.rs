@@ -4,10 +4,15 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use rustplotlib::{Axes, Figure, IntendedUse, Layer, Line, MarkerShape, MarkerStyle};
-use serde::{Deserialize, Serialize};
-use wisc_core::{detect_stars, fit, Calibration, DetectorConfig, FitResult, StarPair};
+use serde::Deserialize;
+use wisc_core::imaging::{decode, FitsByteOrder};
+use wisc_core::workflow::{
+    automatic_fit_preserving, parse_job, tycho_catalog, visible_catalog, CalibrationDocument,
+    FitJob,
+};
+use wisc_core::{detect_stars, fit, DetectorConfig, FitResult};
 
 #[derive(Debug, Parser)]
 #[command(name = "wisc", version, about = "WISC wide-field star calibration")]
@@ -16,11 +21,63 @@ struct Cli {
     command: Command,
 }
 
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum ByteOrder {
+    Auto,
+    Big,
+    Little,
+}
+
+impl From<ByteOrder> for FitsByteOrder {
+    fn from(value: ByteOrder) -> Self {
+        match value {
+            ByteOrder::Auto => Self::Auto,
+            ByteOrder::Big => Self::Big,
+            ByteOrder::Little => Self::Little,
+        }
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Detect stellar point sources in a PNG or JPEG image.
+    /// Export azimuth/elevation maps as two FITS planes in degrees.
+    Map {
+        calibration: PathBuf,
+        #[arg(short, long, default_value = "azel.fits")]
+        output: PathBuf,
+        /// Sampling step in raw image pixels (1 writes every pixel centre).
+        #[arg(long,default_value_t=1,value_parser=clap::value_parser!(u32).range(1..))]
+        step: u32,
+    },
+    /// Detect, associate catalogue stars, and fit from a roughly aligned model.
+    Solve {
+        image: PathBuf,
+        /// Byte order for 16-bit FITS data; auto uses the legacy smoothness test.
+        #[arg(long, value_enum, default_value = "auto")]
+        fits_byte_order: ByteOrder,
+        /// Saved test case or fit job with initial model, site, and UTC time.
+        #[arg(long)]
+        initial: PathBuf,
+        #[arg(short, long, default_value = "calibration.json")]
+        output: PathBuf,
+        #[arg(long, default_value_t = 12.0)]
+        match_radius: f64,
+        #[arg(long, default_value_t = 5.0)]
+        max_magnitude: f64,
+        #[arg(long, default_value_t = 2000)]
+        max_iterations: usize,
+        #[arg(long)]
+        residual_plot: Option<PathBuf>,
+        /// Recover pointing with triangles; approximate lens intrinsics required.
+        #[arg(long)]
+        triangles: bool,
+    },
+    /// Detect stellar point sources in a PNG, JPEG, or FITS image.
     Detect {
         image: PathBuf,
+        /// Explicit override for nonstandard 16-bit FITS files.
+        #[arg(long, value_enum, default_value = "auto")]
+        fits_byte_order: ByteOrder,
         /// Machine-readable detection list.
         #[arg(short, long, default_value = "detections.json")]
         output: PathBuf,
@@ -51,22 +108,6 @@ enum Command {
 }
 
 #[derive(Debug, Deserialize)]
-struct FitJob {
-    initial: Calibration,
-    pairs: Vec<StarPair>,
-}
-
-#[derive(Debug, Serialize)]
-struct FitOutput {
-    schema: &'static str,
-    solved: bool,
-    rms_px: f64,
-    iterations: usize,
-    calibration: Calibration,
-    residuals_px: Vec<[f64; 2]>,
-}
-
-#[derive(Debug, Deserialize)]
 struct SkyPosition {
     azimuth_rad: f64,
     zenith_rad: f64,
@@ -77,17 +118,26 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
         .with_context(|| format!("parsing {}", path.display()))
 }
 
-fn residuals(result: &FitResult, pairs: &[StarPair]) -> Result<Vec<[f64; 2]>> {
-    pairs
-        .iter()
-        .map(|pair| {
-            result
-                .calibration
-                .project(pair.azimuth_rad, pair.zenith_rad)
-                .map(|pixel| [pixel[0] - pair.x_px, pixel[1] - pair.y_px])
-                .context("fitted model produced a non-finite projection")
-        })
-        .collect()
+fn read_job(path: &Path) -> Result<FitJob> {
+    parse_job(&fs::read_to_string(path)?)
+        .map_err(anyhow::Error::msg)
+        .with_context(|| format!("importing {}", path.display()))
+}
+
+fn save_fit(output: &Path, plot: Option<&Path>, result: &FitResult, job: &FitJob) -> Result<()> {
+    let document = CalibrationDocument::from_fit(result, job).map_err(anyhow::Error::msg)?;
+    if let Some(path) = plot {
+        residual_plot(path, &document.residuals_px, result.rms_px)
+            .with_context(|| format!("writing residual plot {}", path.display()))?;
+    }
+    fs::write(output, serde_json::to_vec_pretty(&document)?)?;
+    println!(
+        "{}: {} pairs, RMS {:.4} px",
+        output.display(),
+        job.pairs.len(),
+        document.rms_px
+    );
+    Ok(())
 }
 
 fn residual_plot(path: &Path, residuals: &[[f64; 2]], rms: f64) -> Result<()> {
@@ -133,31 +183,87 @@ fn residual_plot(path: &Path, residuals: &[[f64; 2]], rms: f64) -> Result<()> {
 
 fn run() -> Result<()> {
     match Cli::parse().command {
+        Command::Map {
+            calibration,
+            output,
+            step,
+        } => {
+            let job = read_job(&calibration)?;
+            let mut writer = std::io::BufWriter::new(fs::File::create(&output)?);
+            wisc_core::imaging::write_azel_fits(&mut writer, &job.initial, step)
+                .map_err(anyhow::Error::msg)?;
+            std::io::Write::flush(&mut writer)?;
+            println!(
+                "{}: azimuth/elevation in degrees, step {} px",
+                output.display(),
+                step
+            );
+        }
+        Command::Solve {
+            image,
+            fits_byte_order,
+            initial,
+            output,
+            match_radius,
+            max_magnitude,
+            max_iterations,
+            residual_plot,
+            triangles,
+        } => {
+            let mut job = read_job(&initial)?;
+            let observation = job
+                .observation
+                .as_ref()
+                .context("automatic association needs observation time and site")?;
+            let decoded =
+                decode(&fs::read(&image)?, fits_byte_order.into()).map_err(anyhow::Error::msg)?;
+            anyhow::ensure!(
+                decoded.width == job.initial.width && decoded.height == job.initial.height,
+                "image dimensions differ from the initial calibration"
+            );
+            let detections = detect_stars(
+                &decoded.luminance,
+                decoded.width,
+                decoded.height,
+                DetectorConfig::default(),
+            );
+            let sky = visible_catalog(
+                &tycho_catalog().map_err(anyhow::Error::msg)?,
+                observation,
+                max_magnitude,
+            )
+            .map_err(anyhow::Error::msg)?;
+            let matcher = if triangles {
+                wisc_core::asterism::triangle_fit
+            } else {
+                automatic_fit_preserving
+            };
+            let (result, pairs) = matcher(
+                &job.initial,
+                &detections,
+                &sky,
+                &job.pairs,
+                match_radius,
+                max_iterations,
+            )
+            .map_err(anyhow::Error::msg)?;
+            job.pairs = pairs;
+            save_fit(&output, residual_plot.as_deref(), &result, &job)?;
+        }
         Command::Detect {
             image,
+            fits_byte_order,
             output,
             threshold_sigma,
             max_stars,
         } => {
-            let decoded = image::ImageReader::open(&image)
-                .with_context(|| format!("opening {}", image.display()))?
-                .with_guessed_format()
-                .context("identifying image format")?
-                .decode()
-                .with_context(|| format!("decoding {}", image.display()))?
-                .to_rgba8();
-            let luminance: Vec<f32> = decoded
-                .pixels()
-                .map(|pixel| {
-                    0.2126 * f32::from(pixel[0])
-                        + 0.7152 * f32::from(pixel[1])
-                        + 0.0722 * f32::from(pixel[2])
-                })
-                .collect();
+            let decoded = decode(&fs::read(&image)?, fits_byte_order.into())
+                .map_err(anyhow::Error::msg)
+                .with_context(|| format!("decoding {}", image.display()))?;
             let detections = detect_stars(
-                &luminance,
-                decoded.width(),
-                decoded.height(),
+                &decoded.luminance,
+                decoded.width,
+                decoded.height,
                 DetectorConfig {
                     threshold_sigma,
                     max_stars,
@@ -170,8 +276,8 @@ fn run() -> Result<()> {
                 "{}: {} detections in {} × {} image",
                 output.display(),
                 detections.len(),
-                decoded.width(),
-                decoded.height()
+                decoded.width,
+                decoded.height
             );
         }
         Command::Fit {
@@ -180,32 +286,16 @@ fn run() -> Result<()> {
             residual_plot: plot,
             max_iterations,
         } => {
-            let job: FitJob = read_json(&input)?;
+            let job = read_job(&input)?;
             let result =
                 fit(&job.initial, &job.pairs, max_iterations).map_err(anyhow::Error::msg)?;
-            let residuals = residuals(&result, &job.pairs)?;
-            if let Some(path) = plot {
-                residual_plot(&path, &residuals, result.rms_px).with_context(|| {
-                    format!("writing rustplotlib residual plot {}", path.display())
-                })?;
-            }
-            let document = FitOutput {
-                schema: "wisc.calibration/v1",
-                solved: true,
-                rms_px: result.rms_px,
-                iterations: result.iterations,
-                calibration: result.calibration,
-                residuals_px: residuals,
-            };
-            fs::write(&output, serde_json::to_vec_pretty(&document)?)
-                .with_context(|| format!("writing {}", output.display()))?;
-            println!("{}: RMS {:.4} px", output.display(), document.rms_px);
+            save_fit(&output, plot.as_deref(), &result, &job)?;
         }
         Command::Project {
             calibration,
             samples,
         } => {
-            let calibration: Calibration = read_json(&calibration)?;
+            let calibration = read_job(&calibration)?.initial;
             calibration.validate().map_err(anyhow::Error::msg)?;
             let samples: Vec<SkyPosition> = read_json(&samples)?;
             let projected: Vec<Option<[f64; 2]>> = samples

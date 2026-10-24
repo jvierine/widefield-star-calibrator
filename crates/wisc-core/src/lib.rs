@@ -5,6 +5,11 @@ use ndarray::ArrayView2;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
+pub mod asterism;
+pub mod geometry;
+pub mod imaging;
+pub mod workflow;
+
 pub const DEG: f64 = PI / 180.0;
 pub const RAD: f64 = 180.0 / PI;
 
@@ -55,7 +60,7 @@ impl OpticalModel {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Calibration {
     pub width: u32,
     pub height: u32,
@@ -244,7 +249,7 @@ pub fn project(
     pixel.iter().all(|value| value.is_finite()).then_some(pixel)
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Serialize)]
 pub struct StarPair {
     pub azimuth_rad: f64,
     pub zenith_rad: f64,
@@ -342,6 +347,9 @@ pub fn fit(
     max_iterations: usize,
 ) -> Result<FitResult, String> {
     start.validate()?;
+    if max_iterations == 0 {
+        return Err("max_iterations must be positive".into());
+    }
     if pairs.len() * 2 < start.model.parameter_count() {
         return Err(format!(
             "need at least {} star pairs for model {}",
@@ -424,9 +432,17 @@ pub fn fit(
             simplex[count] = reflected;
             scores[count] = reflected_score;
         } else {
-            let contracted = candidate(0.5);
+            // Outside contraction follows an improving reflection. Otherwise
+            // contract between the centroid and the original worst vertex.
+            let outside = reflected_score < scores[count];
+            let contracted = candidate(if outside { 0.5 } else { -0.5 });
             let contracted_score = evaluate(&contracted);
-            if contracted_score < scores[count] {
+            let contraction_limit = if outside {
+                reflected_score
+            } else {
+                scores[count]
+            };
+            if contracted_score < contraction_limit {
                 simplex[count] = contracted;
                 scores[count] = contracted_score;
             } else {
@@ -559,6 +575,12 @@ pub fn detect_stars(
     let Ok(image) = ArrayView2::from_shape((height as usize, width as usize), luminance) else {
         return Vec::new();
     };
+    if config.max_stars == 0
+        || !config.threshold_sigma.is_finite()
+        || !config.suppression_radius_px.is_finite()
+    {
+        return Vec::new();
+    }
     let finite: Vec<f64> = luminance
         .iter()
         .copied()
@@ -649,6 +671,55 @@ pub fn detect_stars(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn catalogue_coordinates_agree_with_independent_unrefracted_astropy() {
+        // Astropy 7.0 ICRS -> AltAz, pressure=0, bundled IERS data, no network.
+        // These match the legacy astrometry test's 0.02 degree accuracy gate.
+        for (ra, dec, time, lat, lon, expected_az, expected_el) in [
+            (
+                5.9195278,
+                7.4069444,
+                1_770_923_040_000,
+                67.8558,
+                20.2253,
+                179.9050818562479,
+                29.55488976058772,
+            ),
+            (
+                5.2781556,
+                45.9979917,
+                1_768_239_323_000,
+                69.586,
+                19.2247,
+                113.8040886062604,
+                57.95350713066306,
+            ),
+            (
+                6.752477,
+                -16.7161159,
+                1_734_557_298_000,
+                69.586,
+                19.2247,
+                149.2296298692962,
+                0.7111979565211541,
+            ),
+            (
+                13.3987333,
+                54.9253611,
+                1_748_736_000_000,
+                0.0,
+                0.0,
+                332.1511602799789,
+                22.462769168665066,
+            ),
+        ] {
+            let [az, ze] = radec_to_azimuth_zenith(ra, dec, time, lat, lon);
+            let daz = (az * RAD - expected_az + 180.0).rem_euclid(360.0) - 180.0;
+            let del = 90.0 - ze * RAD - expected_el;
+            assert!((daz * (expected_el * DEG).cos()).hypot(del) < 0.02);
+        }
+    }
 
     fn near(actual: f64, expected: f64, tolerance: f64) {
         assert!(

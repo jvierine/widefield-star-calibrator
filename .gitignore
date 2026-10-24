@@ -3,7 +3,9 @@
 node_modules/
 npm-debug.log*
 /target/
+/.latex-cache/
 /web/pkg/
+/web/help.html
 
 __pycache__/
 *.pyc

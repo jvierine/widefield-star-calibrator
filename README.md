@@ -7,7 +7,7 @@ projection, robust fitting, coordinate conversion, and star-detection code is a
 platform-independent Rust library shared by a native `wisc` executable and a
 Rust/WebAssembly browser application. The browser renders the image and star
 overlay through WebGL2 and uses rustplotlib for calibration plots. JavaScript is
-limited to the three-line WebAssembly bootstrap needed by the browser.
+limited to the small WebAssembly bootstrap needed by the browser.
 
 The previous JavaScript calibrator remains in the repository while specialized
 workflows are validated against the shared Rust implementation. New production
@@ -42,11 +42,46 @@ modules reliably from a `file:` URL):
 
 ```bash
 git clone https://github.com/jvierine/widefield-star-calibrator.git
+cd widefield-star-calibrator
+rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129 --locked
 scripts/build_web.sh
 python3 -m http.server 8000
 # open http://localhost:8000/web/
 ```
+
+## Rust Browser Workflow
+
+1. Load a PNG, JPEG, or FITS image. FITS data retain their original floating-point
+   intensity range for detection; the display texture is normalized separately.
+2. Import an existing `metadata.json`, `case.json`, fit job, or Rust calibration
+   result. Imported pairs keep their measured image positions and saved azimuth/
+   zenith coordinates. The loader handles the legacy raw-pixel flip conversion.
+3. For a new calibration, set UTC, latitude, longitude, model, focal lengths,
+   and camera angles, then choose **Apply camera settings and update catalogue**.
+   The bundled Tycho-2 magnitude-8 catalogue is decoded entirely in Rust.
+4. Select a catalogue star and click its image position. A nearby detection
+   supplies its centroid. Shift-click removes the nearest measured pair.
+5. **Fit pairs** optimizes the current measurements. **Match stars and fit**
+   expands associations from a roughly aligned model, preserving manual pairs.
+   **Find pointing with triangles** can recover unknown pointing when focal
+   lengths and distortion are approximately known. Triangle hypotheses must
+   have support from additional projected stars before they are accepted.
+6. Inspect the rustplotlib residual plot, use **Undo** to restore a previous
+   model or pairing set, and download the calibration JSON or two-plane az/el
+   FITS map. A map sampling step of 1 includes every raw image pixel centre.
+
+Green rings show detections, orange rings show projected catalogue stars, and
+blue rings show measured pairs. Loading another image clears old pairings and
+observation metadata; FITS observation headers populate time/site controls when
+available. No image or calibration is uploaded by this Rust interface.
+
+The Rust interface currently supports ground-based camera calibration. HEIC/
+HEIF decoding, spacecraft/UV workflows, HDF5 and report bundles, and the legacy
+40× KDE picker are still being ported. The sections below describing those
+features and keyboard shortcuts refer to the legacy root `index.html` interface.
+
+## Legacy Browser Reference
 
 Hosted test cases can also have short quick links. Create or update one with:
 
@@ -250,10 +285,34 @@ native executable:
 wisc detect image.jpg --output detections.json --threshold-sigma 5
 ```
 
-For scripted meteor-camera operation, run the command after each image or
-stacked frame is available, then read `calibration.json`. A failed solve keeps
-`solved: false` and `optpar: null`, so automation can reject it without parsing
-the visual HTML report.
+FITS images and stacks use the same decoder as the browser, including unsigned
+scaling, missing-data handling, and the legacy 16-bit byte-order heuristic.
+Use `--fits-byte-order big` or `--fits-byte-order little` on `detect`/`solve`
+to override that heuristic. The browser has the same selection before loading.
+
+Automatic association and lens fitting can run on an image using a saved initial
+model and its time/site metadata:
+
+```bash
+wisc solve image.fits --initial saved-case.json --output calibration.json
+wisc solve image.fits --initial initial-model.json --triangles --output calibration.json
+wisc map calibration.json --output azel.fits --step 1
+```
+
+`--triangles` searches camera pointing without a roughly aligned attitude; focal
+lengths and lens distortion must still be approximately known. Both matchers
+retain the identified pairs supplied in the initial job. The solve command
+requires image dimensions to match the calibration and exits unsuccessfully
+when it cannot obtain a reliable match. Pipelines must check its exit status;
+failed solves do not write a new result.
+
+The FITS map contains separate azimuth and elevation planes in degrees. Invalid
+inverse projections are NaN. `CDELT1` and `CDELT2` record the requested raw-pixel
+sampling step. `wisc project` and `wisc fit` accept the downloaded Rust result
+directly, so the result can be reused without extracting an inner JSON object.
+
+Rust calibration objects store `model` separately from `optpar`. The optical
+model number is included at the front of the array only in legacy exports.
 
 ## Export Notes
 
@@ -400,7 +459,7 @@ reprojection error in pixels.
 
 `crates/wisc-core` contains portable calibration algorithms and has no browser
 dependency. `crates/wisc-cli` is the native command-line executable.
-`crates/wisc-web` binds the same library to browser events, decodes PNG/JPEG in
+`crates/wisc-web` binds the same library to browser events, decodes PNG/JPEG/FITS in
 Rust, and renders with WebGL2. Browser plots use `rustplotlib-web`; native plots
 use `rustplotlib`. This keeps numerical behaviour common across both targets
 and confines JavaScript to `web/bootstrap.js`.

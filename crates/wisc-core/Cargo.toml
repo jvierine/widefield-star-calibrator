@@ -6,9 +6,10 @@ license = "CC-BY-4.0"
 description = "Shared native and WebAssembly calibration core for WISC"
 
 [dependencies]
+chrono = { version = "=0.4.38", default-features = false, features = ["std"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 nalgebra = "0.33"
 ndarray = "0.16"
 serde = { version = "1", features = ["derive"] }
-
-[dev-dependencies]
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }

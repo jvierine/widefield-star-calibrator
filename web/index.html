@@ -9,23 +9,54 @@
 <body>
   <header>
     <h1>WISC — Widefield Star Calibrator</h1>
-    <nav><a href="../help.html">Help</a> · <a href="https://github.com/jvierine/widefield-star-calibrator">Source</a></nav>
+    <nav><a href="help.html">Help</a> · <a href="https://github.com/jvierine/widefield-star-calibrator">Source</a></nav>
   </header>
   <main>
     <section class="viewer">
-      <label class="file">Load image <input id="imageFile" type="file" accept="image/png,image/jpeg"></label>
+      <label class="file">Load image <input id="imageFile" type="file" accept="image/png,image/jpeg,.fits,.fit,.fts"></label>
+      <label>FITS byte order (on load) <select id="fitsByteOrder"><option value="auto">Automatic legacy detection</option><option value="big">Standard big endian</option><option value="little">Nonstandard little endian (16-bit)</option></select></label>
       <output id="status" aria-live="polite">Loading Rust/WASM…</output>
       <canvas id="glCanvas" width="960" height="540" aria-label="WebGL calibration image"></canvas>
     </section>
     <section class="fit">
-      <h2>Fit identified star pairs</h2>
-      <p>The native CLI and this browser use the same Rust projection and robust fitting code.</p>
+      <h2>Camera calibration</h2>
+      <label class="file">Import calibration <input id="jobFile" type="file" accept="application/json,.json"></label>
+      <p>Import a saved test case or set the initial camera model below. Green circles mark detections; orange circles mark catalogue projections; blue circles mark measured pairs.</p>
+      <div class="controls">
+        <label>UTC <input id="utc" type="datetime-local" step="0.001"></label>
+        <label>Latitude [°] <input id="latitude" type="number" min="-90" max="90" step="any" value="0"></label>
+        <label>Longitude [°] <input id="longitude" type="number" min="-180" max="180" step="any" value="0"></label>
+        <label>Model <select id="model"><option value="1">1 · Pinhole</option><option value="2" selected>2 · Sine</option><option value="3">3 · Mixed</option><option value="4">4 · Power</option><option value="5">5 · Tangent</option><option value="6">6 · Equisolid</option><option value="12">12 · Unified</option><option value="20">20 · Brown–Conrady</option></select></label>
+        <label>Focal X <input id="focalX" type="number" step="any" value="1"></label>
+        <label>Focal Y <input id="focalY" type="number" step="any" value="1.333333"></label>
+        <label>α [°] <input id="alpha" type="number" step="any" value="0"></label>
+        <label>β [°] <input id="beta" type="number" step="any" value="0"></label>
+        <label>γ [°] <input id="gamma" type="number" step="any" value="0"></label>
+        <label>Radial α / Brown k₁ <input id="radial" type="number" step="any" value="0.35"></label>
+        <label>Magnitude limit <input id="magnitude" type="number" step="0.1" value="5" min="-2" max="8"></label>
+        <label>Match radius [px] <input id="matchRadius" type="number" step="1" value="12" min="1"></label>
+      </div>
+      <button id="applyControls" type="button">Apply camera settings and update catalogue</button>
+      <label>Catalogue star <select id="catalogStar" aria-label="Catalogue star"><option value="">Set time and site first</option></select></label>
+      <p>Select a catalogue star, then click its image position. Picking snaps to a detection within 12 pixels. Shift-click a blue pairing to remove it.</p>
+      <output id="pairCount">0 pairs</output>
+      <div class="actions">
+        <button id="fitPairs" type="button">Fit pairs</button>
+        <button id="autoFit" type="button">Match stars and fit</button>
+        <button id="triangleFit" type="button">Find pointing with triangles</button>
+        <button id="undo" type="button">Undo</button>
+        <button id="clearPairs" type="button">Clear pairs</button>
+        <button id="download" type="button">Download calibration</button>
+      </div>
+      <div class="controls"><label>Map sampling step [px] <input id="mapStep" type="number" min="1" max="4096" step="1" value="4"></label><button id="downloadMap" type="button">Download az/el FITS map</button></div>
+      <p>Match stars uses a roughly aligned model. Triangle matching can recover unknown pointing when the focal lengths and distortion are approximately known. Manual pairs are retained.</p>
+      <details><summary>Calibration JSON</summary>
       <textarea id="fitJob" spellcheck="false" aria-label="Calibration fit JSON">{
   "initial": {"width": 1024, "height": 768, "model": 2, "optpar": [1.0,1.333333,0,0,0,0,0,0.35]},
   "pairs": []
 }</textarea>
-      <button id="fitPairs" type="button">Fit in Rust</button>
-      <canvas id="residualPlot" width="560" height="300" aria-label="rustplotlib residual plot"></canvas>
+      </details>
+      <canvas id="residualPlot" width="560" height="560" aria-label="rustplotlib residual plot"></canvas>
     </section>
   </main>
   <script type="module" src="bootstrap.js"></script>

@@ -17,6 +17,10 @@ rsync_excludes=(
     --exclude=node_modules
     --exclude=__pycache__
     --exclude=test-report
+    --exclude=target
+    --exclude=crates
+    --exclude=tests
+    --exclude=calibration_images
 )
 
 usage() {
@@ -97,10 +101,12 @@ echo "Mirror target: $mirror_dir"
 
 rsync "${rsync_args[@]}" "$repo_root/" "$remote:$live_dir/"
 rsync "${rsync_args[@]}" "$repo_root/" "$remote:$mirror_dir/"
-rsync -az "$repo_root/web/" "$remote:$live_dir/"
-rsync -az "$repo_root/web/" "$remote:$mirror_dir/"
-rsync -az "$repo_root/help.html" "$remote:$live_dir/help.html"
-rsync -az "$repo_root/help.html" "$remote:$mirror_dir/help.html"
+overlay_args=(-az)
+if [ "$dry_run" -eq 1 ]; then
+    overlay_args+=(--dry-run --itemize-changes)
+fi
+rsync "${overlay_args[@]}" "$repo_root/web/" "$remote:$live_dir/"
+rsync "${overlay_args[@]}" "$repo_root/web/" "$remote:$mirror_dir/"
 
 if [ "$dry_run" -eq 1 ]; then
     echo "Dry run complete; not restarting or verifying."

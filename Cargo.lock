@@ -2097,10 +2097,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "image",
  "rustplotlib",
  "serde",
  "serde_json",
+ "tempfile",
  "wisc-core",
 ]
 
@@ -2108,6 +2108,9 @@ dependencies = [
 name = "wisc-core"
 version = "0.1.0"
 dependencies = [
+ "chrono",
+ "flate2",
+ "image",
  "nalgebra",
  "ndarray",
  "serde",
@@ -2118,7 +2121,6 @@ dependencies = [
 name = "wisc-web"
 version = "0.1.0"
 dependencies = [
- "image",
  "js-sys",
  "rustplotlib-web",
  "serde_json",

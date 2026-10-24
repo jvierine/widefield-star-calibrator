@@ -1,6 +1,5 @@
 use std::{cell::RefCell, rc::Rc};
 
-use image::ImageReader;
 use js_sys::{Float32Array, Uint8Array};
 use rustplotlib_web::SeriesView;
 use wasm_bindgen::{closure::Closure, prelude::*, JsCast};
@@ -8,7 +7,10 @@ use web_sys::{
     Event, FileReader, HtmlCanvasElement, HtmlInputElement, HtmlTextAreaElement,
     WebGl2RenderingContext as Gl, WebGlBuffer, WebGlProgram, WebGlShader, WebGlTexture,
 };
+use wisc_core::imaging::{decode, FitsByteOrder};
 use wisc_core::{detect_stars, fit, DetectorConfig, FitResult, StarPair};
+
+mod ui;
 
 thread_local! {
     static APP: RefCell<Option<Rc<RefCell<App>>>> = const { RefCell::new(None) };
@@ -84,6 +86,11 @@ struct App {
     width: u32,
     height: u32,
     detections: Vec<wisc_core::Detection>,
+    sky: Vec<wisc_core::workflow::SkyStar>,
+    catalog_points: Vec<[f32; 2]>,
+    pair_points: Vec<[f32; 2]>,
+    history: Vec<wisc_core::workflow::FitJob>,
+    fitted: Option<wisc_core::workflow::CalibrationDocument>,
 }
 
 impl App {
@@ -114,18 +121,19 @@ impl App {
             in vec2 point_px;
             uniform vec2 image_size;
             void main() {
-                vec2 clip = vec2(2.0 * point_px.x / image_size.x - 1.0,
-                                 1.0 - 2.0 * point_px.y / image_size.y);
+                vec2 clip = vec2(2.0 * (point_px.x + 0.5) / image_size.x - 1.0,
+                                 1.0 - 2.0 * (point_px.y + 0.5) / image_size.y);
                 gl_Position = vec4(clip, 0.0, 1.0);
                 gl_PointSize = 7.0;
             }"#,
             r#"#version 300 es
             precision highp float;
+            uniform vec3 point_color;
             out vec4 color;
             void main() {
                 vec2 d = gl_PointCoord - vec2(0.5);
                 if (dot(d,d) > 0.25 || dot(d,d) < 0.12) discard;
-                color = vec4(0.3, 1.0, 0.45, 1.0);
+                color = vec4(point_color, 1.0);
             }"#,
         )?;
         let texture = gl
@@ -149,18 +157,31 @@ impl App {
             width: 0,
             height: 0,
             detections: Vec::new(),
+            sky: Vec::new(),
+            catalog_points: Vec::new(),
+            pair_points: Vec::new(),
+            history: Vec::new(),
+            fitted: None,
         })
     }
 
+    fn invalidate_fit(&mut self) {
+        self.fitted = None;
+        if let Ok(plot) = element::<HtmlCanvasElement>("residualPlot") {
+            plot.set_width(plot.width());
+        }
+    }
+
     fn load_image(&mut self, bytes: &[u8]) -> Result<(), JsValue> {
-        let image = ImageReader::new(std::io::Cursor::new(bytes))
-            .with_guessed_format()
-            .map_err(|error| js_error(format!("cannot identify image: {error}")))?
-            .decode()
-            .map_err(|error| js_error(format!("cannot decode image: {error}")))?
-            .to_rgba8();
-        self.width = image.width();
-        self.height = image.height();
+        let order = element::<web_sys::HtmlSelectElement>("fitsByteOrder")?.value();
+        let order = match order.as_str() {
+            "big" => FitsByteOrder::Big,
+            "little" => FitsByteOrder::Little,
+            _ => FitsByteOrder::Auto,
+        };
+        let image = decode(bytes, order).map_err(js_error)?;
+        self.width = image.width;
+        self.height = image.height;
         self.canvas.set_width(self.width);
         self.canvas.set_height(self.height);
         self.gl.bind_texture(Gl::TEXTURE_2D, Some(&self.texture));
@@ -174,25 +195,18 @@ impl App {
                 0,
                 Gl::RGBA,
                 Gl::UNSIGNED_BYTE,
-                Some(image.as_raw()),
+                Some(&image.rgba),
             )?;
-        let luminance: Vec<f32> = image
-            .pixels()
-            .map(|pixel| {
-                0.2126 * f32::from(pixel[0])
-                    + 0.7152 * f32::from(pixel[1])
-                    + 0.0722 * f32::from(pixel[2])
-            })
-            .collect();
         self.detections = detect_stars(
-            &luminance,
+            &image.luminance,
             self.width,
             self.height,
             DetectorConfig::default(),
         );
+        ui::image_loaded(self, &image)?;
         self.draw();
         status(&format!(
-            "Loaded {} × {} image; Rust detector found {} stars",
+            "Loaded {} × {} image; {} detections. Import a saved calibration or set time and site.",
             self.width,
             self.height,
             self.detections.len()
@@ -217,13 +231,43 @@ impl App {
             .iter()
             .flat_map(|detection| [detection.x as f32, detection.y as f32])
             .collect();
+        self.draw_points(&points, [0.3, 1.0, 0.45]);
+        self.draw_points(
+            &self
+                .catalog_points
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>(),
+            [1.0, 0.55, 0.2],
+        );
+        self.draw_points(
+            &self
+                .pair_points
+                .iter()
+                .flatten()
+                .copied()
+                .collect::<Vec<_>>(),
+            [0.3, 0.65, 1.0],
+        );
+    }
+
+    fn draw_points(&self, points: &[f32], color: [f32; 3]) {
         self.gl.use_program(Some(&self.point_program));
+        self.gl.uniform3f(
+            self.gl
+                .get_uniform_location(&self.point_program, "point_color")
+                .as_ref(),
+            color[0],
+            color[1],
+            color[2],
+        );
         self.gl
             .bind_buffer(Gl::ARRAY_BUFFER, Some(&self.point_buffer));
         unsafe {
             self.gl.buffer_data_with_array_buffer_view(
                 Gl::ARRAY_BUFFER,
-                &Float32Array::view(&points),
+                &Float32Array::view(points),
                 Gl::STATIC_DRAW,
             );
         }
@@ -241,7 +285,7 @@ impl App {
             self.height as f32,
         );
         self.gl
-            .draw_arrays(Gl::POINTS, 0, self.detections.len() as i32);
+            .draw_arrays(Gl::POINTS, 0, (points.len() / 2) as i32);
     }
 }
 
@@ -268,7 +312,7 @@ fn render_residuals(result: &FitResult, pairs: &[StarPair]) -> Result<(), JsValu
         .unwrap_or(1.0);
     plot.begin(
         560.0,
-        300.0,
+        560.0,
         dpr,
         -extent,
         extent,
@@ -281,8 +325,8 @@ fn render_residuals(result: &FitResult, pairs: &[StarPair]) -> Result<(), JsValu
     Ok(())
 }
 
-fn connect_file_input(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
-    let input = element::<HtmlInputElement>("imageFile")?;
+fn connect_file_input(app: Rc<RefCell<App>>, id: &str, job_file: bool) -> Result<(), JsValue> {
+    let input = element::<HtmlInputElement>(id)?;
     let closure = Closure::<dyn FnMut(Event)>::new(move |event: Event| {
         let Some(input) = event
             .target()
@@ -305,7 +349,13 @@ fn connect_file_input(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
         let loaded = Closure::<dyn FnMut(Event)>::once(move |_| {
             let result = loaded_reader.result().and_then(|value| {
                 let bytes = Uint8Array::new(&value).to_vec();
-                loaded_app.borrow_mut().load_image(&bytes)
+                if job_file {
+                    let source =
+                        std::str::from_utf8(&bytes).map_err(|error| js_error(error.to_string()))?;
+                    ui::import_job(&mut loaded_app.borrow_mut(), source)
+                } else {
+                    loaded_app.borrow_mut().load_image(&bytes)
+                }
             });
             if let Err(error) = result {
                 status(&format!("Image load failed: {error:?}"));
@@ -322,52 +372,14 @@ fn connect_file_input(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
     Ok(())
 }
 
-fn connect_fit_button() -> Result<(), JsValue> {
-    let button = element::<web_sys::HtmlButtonElement>("fitPairs")?;
-    let closure = Closure::<dyn FnMut(Event)>::new(move |_| {
-        let result = (|| -> Result<(), JsValue> {
-            let source = element::<HtmlTextAreaElement>("fitJob")?.value();
-            let value: serde_json::Value = serde_json::from_str(&source)
-                .map_err(|error| js_error(format!("invalid fit JSON: {error}")))?;
-            let initial = serde_json::from_value(
-                value
-                    .get("initial")
-                    .cloned()
-                    .ok_or_else(|| js_error("missing initial calibration"))?,
-            )
-            .map_err(|error| js_error(format!("invalid calibration: {error}")))?;
-            let pairs: Vec<StarPair> = serde_json::from_value(
-                value
-                    .get("pairs")
-                    .cloned()
-                    .ok_or_else(|| js_error("missing pairs"))?,
-            )
-            .map_err(|error| js_error(format!("invalid pairs: {error}")))?;
-            let result = fit(&initial, &pairs, 2000).map_err(js_error)?;
-            render_residuals(&result, &pairs)?;
-            status(&format!(
-                "Rust fit complete: {} pairs, RMS {:.4} px",
-                pairs.len(),
-                result.rms_px
-            ));
-            Ok(())
-        })();
-        if let Err(error) = result {
-            status(&format!("Fit failed: {error:?}"));
-        }
-    });
-    button.add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())?;
-    closure.forget();
-    Ok(())
-}
-
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
     let canvas = element::<HtmlCanvasElement>("glCanvas")?;
     let app = Rc::new(RefCell::new(App::new(canvas)?));
-    connect_file_input(app.clone())?;
-    connect_fit_button()?;
+    connect_file_input(app.clone(), "imageFile", false)?;
+    connect_file_input(app.clone(), "jobFile", true)?;
+    ui::connect(app.clone())?;
     APP.with(|slot| *slot.borrow_mut() = Some(app));
-    status("Rust/WASM calibration core ready; load a PNG or JPEG image");
+    status("Load a PNG, JPEG, or FITS image to begin");
     Ok(())
 }

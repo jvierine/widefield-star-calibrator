@@ -14,4 +14,15 @@ canvas { display:block; width:100%; height:auto; background:#05090d; border:1px 
 textarea { box-sizing:border-box; width:100%; min-height:12rem; padding:.7rem; background:#081016; color:#dbe8ee; border:1px solid #405562; }
 .fit { display:grid; align-content:start; gap:.65rem; }
 .fit h2,.fit p { margin:0; }
+.fit p { line-height:1.4; font-size:.95rem; }
+.controls { display:grid; grid-template-columns:1fr 1fr; gap:.5rem; }
+label { display:grid; gap:.2rem; min-width:0; }
+.file { display:block; box-sizing:border-box; max-width:100%; }
+.file input { max-width:13rem; }
+input,select { box-sizing:border-box; min-width:0; width:100%; padding:.35rem; background:#081016; color:#edf2f4; border:1px solid #536977; border-radius:.2rem; }
+.actions { display:flex; flex-wrap:wrap; gap:.4rem; }
+button { cursor:pointer; }
+summary { cursor:pointer; padding:.4rem 0; }
+#glCanvas { cursor:crosshair; }
+#residualPlot { background:#fff; }
 @media (max-width: 900px) { main { grid-template-columns:1fr; } }

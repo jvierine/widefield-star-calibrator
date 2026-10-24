@@ -35,6 +35,9 @@ jobs:
       - name: Install Python test dependencies
         run: python -m pip install --disable-pip-version-check numpy==2.2.6 h5py==3.14.0
 
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+
       - name: Install dependencies
         run: npm ci
 

@@ -37,7 +37,7 @@ window.MathJax = {
 <p class="generated">Generated from <code>README.md</code>. Edit the README and run <code>npm run help:generate</code> to update this page.</p>
 <h1>WISC - Widefield Star Calibrator</h1>
 <p><a href="https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml"><img alt="Fast Unit Tests" src="https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg"></a></p>
-<p>This repository contains WISC, the Widefield Star Calibrator. Its calibration, projection, robust fitting, coordinate conversion, and star-detection code is a platform-independent Rust library shared by a native <code>wisc</code> executable and a Rust/WebAssembly browser application. The browser renders the image and star overlay through WebGL2 and uses rustplotlib for calibration plots. JavaScript is limited to the three-line WebAssembly bootstrap needed by the browser.</p>
+<p>This repository contains WISC, the Widefield Star Calibrator. Its calibration, projection, robust fitting, coordinate conversion, and star-detection code is a platform-independent Rust library shared by a native <code>wisc</code> executable and a Rust/WebAssembly browser application. The browser renders the image and star overlay through WebGL2 and uses rustplotlib for calibration plots. JavaScript is limited to the small WebAssembly bootstrap needed by the browser.</p>
 <p>The previous JavaScript calibrator remains in the repository while specialized workflows are validated against the shared Rust implementation. New production code belongs in <code>wisc-core</code>, <code>wisc-cli</code>, or <code>wisc-web</code>, rather than duplicating calibration mathematics in JavaScript.</p>
 <p>Authors: Juha Vierinen and Björn Gustavsson. More authors can be added later. Merge requests are welcome!</p>
 <p>Acknowledgements: The tool was inspired by the legendary aurora image data analysis (AIDA) MATLAB tools. This repository only implements the lens-model calibration parts needed by the browser and command-line calibrator. Original AIDA_tools MATLAB toolbox: https://github.com/jvierine/AIDA_tools. Thank you to Daniel Kastinen for suggesting making this a web page. The blind asterism-search ideas are also informed by astrometry.net. The star-detection experiments and reports were also informed by SExtractor and <a href="https://sep.readthedocs.io/">SEP</a>. Codex is gratefully acknowledged for contributions to implementation and testing.</p>
@@ -47,10 +47,24 @@ window.MathJax = {
 <p><img alt="WISC GUI" src="docs/gui-screenshot.png"></p>
 <p>The browser application is client-side Rust/WebAssembly with a WebGL2 viewer. Build it and serve the checkout over HTTP (browsers do not load WebAssembly modules reliably from a <code>file:</code> URL):</p>
 <pre><code class="language-bash">git clone https://github.com/jvierine/widefield-star-calibrator.git
+cd widefield-star-calibrator
+rustup target add wasm32-unknown-unknown
 cargo install wasm-bindgen-cli --version 0.2.129 --locked
 scripts/build_web.sh
 python3 -m http.server 8000
 # open http://localhost:8000/web/</code></pre>
+<h2>Rust Browser Workflow</h2>
+<ol>
+<li>Load a PNG, JPEG, or FITS image. FITS data retain their original floating-point intensity range for detection; the display texture is normalized separately.</li>
+<li>Import an existing <code>metadata.json</code>, <code>case.json</code>, fit job, or Rust calibration result. Imported pairs keep their measured image positions and saved azimuth/ zenith coordinates. The loader handles the legacy raw-pixel flip conversion.</li>
+<li>For a new calibration, set UTC, latitude, longitude, model, focal lengths, and camera angles, then choose <strong>Apply camera settings and update catalogue</strong>. The bundled Tycho-2 magnitude-8 catalogue is decoded entirely in Rust.</li>
+<li>Select a catalogue star and click its image position. A nearby detection supplies its centroid. Shift-click removes the nearest measured pair.</li>
+<li><strong>Fit pairs</strong> optimizes the current measurements. <strong>Match stars and fit</strong> expands associations from a roughly aligned model, preserving manual pairs. <strong>Find pointing with triangles</strong> can recover unknown pointing when focal lengths and distortion are approximately known. Triangle hypotheses must have support from additional projected stars before they are accepted.</li>
+<li>Inspect the rustplotlib residual plot, use <strong>Undo</strong> to restore a previous model or pairing set, and download the calibration JSON or two-plane az/el FITS map. A map sampling step of 1 includes every raw image pixel centre.</li>
+</ol>
+<p>Green rings show detections, orange rings show projected catalogue stars, and blue rings show measured pairs. Loading another image clears old pairings and observation metadata; FITS observation headers populate time/site controls when available. No image or calibration is uploaded by this Rust interface.</p>
+<p>The Rust interface currently supports ground-based camera calibration. HEIC/ HEIF decoding, spacecraft/UV workflows, HDF5 and report bundles, and the legacy 40× KDE picker are still being ported. The sections below describing those features and keyboard shortcuts refer to the legacy root <code>index.html</code> interface.</p>
+<h2>Legacy Browser Reference</h2>
 <p>Hosted test cases can also have short quick links. Create or update one with:</p>
 <pre><code class="language-bash">npm run quicklink -- tc01 Sunniva_Alomar_23-03-2023_21-30UT</code></pre>
 <p>This writes <code>quick_links.json</code> and a small <code>tc01/index.html</code> redirect. After deployment, <code>https://juha.no/aida/tc01</code> opens the browser GUI and loads the mapped saved test case. If a short name is not listed in <code>quick_links.json</code>, WISC tries to load a saved test case with that exact id.</p>
@@ -140,7 +154,14 @@ scripts/install.sh</code></pre>
 <p>The output contains the fitted calibration, RMS, iteration count, and residual vector for every pair. A requested PDF, SVG, PNG, or JPEG residual figure is rendered by rustplotlib. <code>wisc project calibration.json samples.json</code> projects an array of azimuth/zenith samples through an existing calibration.</p>
 <p>The same Rust detector used by the WebAssembly viewer is available from the native executable:</p>
 <pre><code class="language-bash">wisc detect image.jpg --output detections.json --threshold-sigma 5</code></pre>
-<p>For scripted meteor-camera operation, run the command after each image or stacked frame is available, then read <code>calibration.json</code>. A failed solve keeps <code>solved: false</code> and <code>optpar: null</code>, so automation can reject it without parsing the visual HTML report.</p>
+<p>FITS images and stacks use the same decoder as the browser, including unsigned scaling, missing-data handling, and the legacy 16-bit byte-order heuristic. Use <code>--fits-byte-order big</code> or <code>--fits-byte-order little</code> on <code>detect</code>/<code>solve</code> to override that heuristic. The browser has the same selection before loading.</p>
+<p>Automatic association and lens fitting can run on an image using a saved initial model and its time/site metadata:</p>
+<pre><code class="language-bash">wisc solve image.fits --initial saved-case.json --output calibration.json
+wisc solve image.fits --initial initial-model.json --triangles --output calibration.json
+wisc map calibration.json --output azel.fits --step 1</code></pre>
+<p><code>--triangles</code> searches camera pointing without a roughly aligned attitude; focal lengths and lens distortion must still be approximately known. Both matchers retain the identified pairs supplied in the initial job. The solve command requires image dimensions to match the calibration and exits unsuccessfully when it cannot obtain a reliable match. Pipelines must check its exit status; failed solves do not write a new result.</p>
+<p>The FITS map contains separate azimuth and elevation planes in degrees. Invalid inverse projections are NaN. <code>CDELT1</code> and <code>CDELT2</code> record the requested raw-pixel sampling step. <code>wisc project</code> and <code>wisc fit</code> accept the downloaded Rust result directly, so the result can be reused without extracting an inner JSON object.</p>
+<p>Rust calibration objects store <code>model</code> separately from <code>optpar</code>. The optical model number is included at the front of the array only in legacy exports.</p>
 <h2>Export Notes</h2>
 <p>The copied <code>optpar</code> array always starts with the optical model number. For AIDA radial models it contains <code>[optmod, f1, f2, alpha, beta, gamma, du, dv, radial_alpha]</code>. For Brown-Conrady (<code>optmod 20</code>), it contains <code>[20, f1, f2, alpha, beta, gamma, du, dv, k1, k2, k3, p1, p2]</code>.</p>
 <p>Lens parameters always map directly to raw, zero-based image pixel centers and never depend on GUI flip state. <code>Flip model X</code> negates only <code>f1</code>; <code>Flip model Y</code> negates only <code>f2</code>. Image-flip controls affect display only. Legacy saved cases with external overlay flips are converted once on load to equivalent raw-pixel parameters; new test cases and HDF5 products record <code>modelCoordinates = raw_image_pixel_centers</code>.</p>
@@ -174,7 +195,7 @@ x, y = az_el_to_pixel(210.0, 45.0, optpar, width, height)
 az, el = pixel_to_az_el(x, y, optpar, width, height)</code></pre>
 <p><code>pixel_to_az_el</code> is a numerical inverse intended for calibrated pixels inside the useful field of view. Pass <code>return_error=True</code> to also get the residual reprojection error in pixels.</p>
 <h2>Rust, WebAssembly, And WebGL</h2>
-<p><code>crates/wisc-core</code> contains portable calibration algorithms and has no browser dependency. <code>crates/wisc-cli</code> is the native command-line executable. <code>crates/wisc-web</code> binds the same library to browser events, decodes PNG/JPEG in Rust, and renders with WebGL2. Browser plots use <code>rustplotlib-web</code>; native plots use <code>rustplotlib</code>. This keeps numerical behaviour common across both targets and confines JavaScript to <code>web/bootstrap.js</code>.</p>
+<p><code>crates/wisc-core</code> contains portable calibration algorithms and has no browser dependency. <code>crates/wisc-cli</code> is the native command-line executable. <code>crates/wisc-web</code> binds the same library to browser events, decodes PNG/JPEG/FITS in Rust, and renders with WebGL2. Browser plots use <code>rustplotlib-web</code>; native plots use <code>rustplotlib</code>. This keeps numerical behaviour common across both targets and confines JavaScript to <code>web/bootstrap.js</code>.</p>
 <p>The scientific Python-to-Rust mapping is deliberate:</p>
 <table>
 <thead><tr>
