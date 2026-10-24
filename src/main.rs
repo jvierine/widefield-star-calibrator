@@ -705,7 +705,7 @@ fn ensure_regular_file_inside(root: &Path, target: &Path) -> Result<(), ApiError
             ApiError::internal("cannot resolve image path", error)
         }
     })?;
-    if !canonical_target.starts_with(&canonical_root) || !canonical_target.is_file() {
+    if !canonical_target.starts_with(canonical_root) || !canonical_target.is_file() {
         return Err(ApiError::forbidden("invalid storage path"));
     }
     Ok(())
