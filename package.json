@@ -22,7 +22,6 @@
     "help:generate": "node tools/generate_help_from_readme.js",
     "report:case": "node tools/generate_test_report.js",
     "lucky:report": "node tools/run_lucky_report.js",
-    "serve": "node tools/serve_calibrator.js",
     "review:overlays": "node tools/review_star_overlays.js",
     "catalog:yale-asterisms": "node tools/build_yale_asterism_index.js",
     "quicklink": "node tools/create_quick_link.js"
@@ -30,6 +29,6 @@
   "dependencies": {
     "exifr": "^7.1.3",
     "heic-convert": "^2.1.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.5"
   }
 }

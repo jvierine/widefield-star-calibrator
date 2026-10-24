@@ -1,0 +1,38 @@
+[package]
+name = "aida-calibrator-server"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.75"
+license = "CC-BY-4.0"
+
+[dependencies]
+axum = "=0.7.9"
+base64 = "=0.22.1"
+bytes = "=1.8.0"
+chrono = { version = "=0.4.38", default-features = false, features = ["clock"] }
+encoding_rs = "=0.8.35"
+futures-util = "=0.3.31"
+http = "=1.2.0"
+http-body = "=1.0.1"
+http-body-util = "=0.1.2"
+hyper = "=1.5.1"
+hyper-util = "=0.1.10"
+mio = "=1.0.3"
+multer = "=3.1.0"
+percent-encoding = "=2.3.1"
+serde = { version = "=1.0.215", features = ["derive"] }
+serde_json = { version = "=1.0.133", features = ["arbitrary_precision"] }
+subtle = "=2.6.1"
+tokio = { version = "=1.41.1", features = ["fs", "macros", "net", "rt-multi-thread", "signal"] }
+tower-layer = "=0.3.3"
+tower-service = "=0.3.3"
+
+[dev-dependencies]
+tempfile = "=3.14.0"
+tower = { version = "=0.5.1", features = ["util"] }
+
+[profile.release]
+codegen-units = 1
+lto = true
+panic = "abort"
+strip = true
