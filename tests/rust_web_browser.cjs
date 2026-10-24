@@ -5,6 +5,9 @@ const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const os = require('node:os');
+const {execFileSync} = require('node:child_process');
+const vm = require('node:vm');
 const root = path.resolve(__dirname, '..');
 const mime = {'.html':'text/html','.js':'text/javascript','.wasm':'application/wasm','.css':'text/css'};
 const server = http.createServer(async (request, response) => {
@@ -19,7 +22,11 @@ const server = http.createServer(async (request, response) => {
 (async () => {
   await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
   let browser;
+  const temporary=await fs.mkdtemp(path.join(os.tmpdir(),'wisc-rust-browser-'));
   try {
+    const reference={window:{},console,ArrayBuffer,DataView,Float32Array,Math,Uint8Array,Date,Number,Array,TextDecoder};
+    vm.runInNewContext(await fs.readFile(path.join(root,'js/aidatools.js'),'utf8'),reference);
+    const legacyProjection=reference.window.AidaTools;
     browser = await chromium.launch({headless:true,executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE,args:['--enable-webgl','--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
     const page = await browser.newPage({viewport:{width:1440,height:1000}});
     const errors=[];
@@ -37,10 +44,22 @@ const server = http.createServer(async (request, response) => {
     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Imported'));
     await page.click('#fitPairs');
     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Fit complete'));
+    const nmJob=JSON.parse(await page.inputValue('#fitJob'));
     await page.click('#fitPairsLm');
     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Fit complete'));
     const readJob=async()=>JSON.parse(await page.inputValue('#fitJob'));
     const fitted=await readJob();
+    const native=process.env.WISC_NATIVE || path.join(root,'target/release/wisc');
+    const nativeInput=path.join(temporary,'lm-input.json'),nativeOutput=path.join(temporary,'lm-output.json');
+    await fs.writeFile(nativeInput,JSON.stringify(nmJob));
+    execFileSync(native,['fit',nativeInput,'--lm','--max-iterations','200','--output',nativeOutput]);
+    const nativeResult=JSON.parse(await fs.readFile(nativeOutput,'utf8'));
+    assert.ok(nativeResult.rms_px<1.4,'native real-case LM fit');
+    for(const pair of fitted.pairs) {
+      const project=cal=>legacyProjection.cameraModel(pair.azimuth_rad,pair.zenith_rad,cal.optpar,cal.model,cal.width,cal.height);
+      const a=project(fitted.initial),b=project(nativeResult.calibration);
+      assert.ok(Math.hypot(a.x-b.x,a.y-b.y)<1e-5,'native/WASM LM projections agree within 0.00001 pixel');
+    }
     const canvas=page.locator('#glCanvas');
     const bounds=await canvas.boundingBox();
     const center={x:bounds.x+bounds.width/2,y:bounds.y+bounds.height/2};
@@ -82,6 +101,7 @@ const server = http.createServer(async (request, response) => {
     console.log(`Rust/WASM browser acceptance passed: ${fitted.initial.width}×${fitted.initial.height}, ${fitted.pairs.length} pairs; NM/LM fit, zoom/pan, overlays, display, masks, KDE, undo, HDF5.`);
   } finally {
     if(browser) await browser.close();
+    await fs.rm(temporary,{recursive:true});
     await new Promise(resolve=>server.close(resolve));
   }
 })().catch(error=>{console.error(error);process.exitCode=1;});

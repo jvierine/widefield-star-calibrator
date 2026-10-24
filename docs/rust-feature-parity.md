@@ -42,7 +42,8 @@ packages. No feature below is intentionally dropped.
 
 Run `cargo test --locked --workspace`, strict Clippy, and `scripts/build_web.sh`.
 `tests/rust_web_browser.cjs` exercises the **Rust** UI in real Chromium/WebGL:
-NM/LM fit, zoom/pan without accidental pairing, scientific overlays, display
+NM/LM fit (including native/WASM LM projection agreement within 0.00001 pixel),
+zoom/pan without accidental pairing, scientific overlays, display
 isolation, masks, KDE, undo, and HDF5 download. CI runs this after the WASM build.
 Install Playwright 1.62.1 and its Chromium binary to run it locally; a separately
 installed package may be supplied through `NODE_PATH`. An existing browser
