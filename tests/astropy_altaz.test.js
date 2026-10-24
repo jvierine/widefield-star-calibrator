@@ -182,13 +182,14 @@ test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip:
             cwd: path.join(__dirname, ".."),
             encoding: "utf8",
             timeout: 30000,
+            maxBuffer: 32 * 1024 * 1024,
         },
     );
 
     assert.equal(
         result.status,
         0,
-        result.stderr || result.stdout || `Astropy cross-check exited ${result.status}`,
+        result.error?.message || result.stderr || result.stdout || `Astropy cross-check exited ${result.status}`,
     );
     // This is a numerical cross-check, not a test of the optional legacy plot
     // renderer. Read fresh results directly without a Matplotlib dependency.
