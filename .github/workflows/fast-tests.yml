@@ -33,7 +33,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Install Python test dependencies
-        run: python -m pip install --disable-pip-version-check numpy==2.2.6 h5py==3.14.0
+        run: python -m pip install --disable-pip-version-check numpy==2.2.6 h5py==3.14.0 astropy==7.0.0 scipy==1.15.3
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
@@ -57,6 +57,13 @@ jobs:
 
       - name: Build native Rust CLI
         run: cargo build --locked --release -p wisc-cli
+
+      - name: Independently verify scientific map exports
+        run: |
+          mkdir -p test-report/rust-migration
+          target/release/wisc fit test_cases/BACC_NYA_20200218_010731/case.json --output test-report/rust-migration/calibration.json
+          target/release/wisc map test-report/rust-migration/calibration.json --output test-report/rust-migration/azel.fits --step 4
+          python tests/verify_rust_exports.py test-report/rust-migration/calibration.json test-report/rust-migration/azel.fits
 
       - name: Install WebAssembly binding generator
         run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
