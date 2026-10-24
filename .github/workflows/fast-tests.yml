@@ -49,6 +49,12 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all --check
 
+      - name: Compare lens models with Python and MATLAB references
+        env:
+          AIDA_FULL_TESTS: "1"
+          PYTHON: python
+        run: node --test tests/aidatools.test.js
+
       - name: Test Rust workspace
         run: cargo test --locked --workspace
 
