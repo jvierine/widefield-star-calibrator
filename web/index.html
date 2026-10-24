@@ -13,14 +13,14 @@
   </header>
   <main>
     <section class="viewer">
-      <label class="file">Load image <input id="imageFile" type="file" accept="image/png,image/jpeg,.fits,.fit,.fts"></label>
+      <label class="file">Load image <input id="imageFile" type="file" accept="image/png,image/jpeg,image/heic,image/heif,.heic,.heif,.fits,.fit,.fts"></label>
       <label>FITS byte order (on load) <select id="fitsByteOrder"><option value="auto">Automatic legacy detection</option><option value="big">Standard big endian</option><option value="little">Nonstandard little endian (16-bit)</option></select></label>
       <output id="status" aria-live="polite">Loading Rust/WASM…</output>
       <canvas id="glCanvas" width="960" height="540" aria-label="WebGL calibration image"></canvas>
     </section>
     <section class="fit">
       <h2>Camera calibration</h2>
-      <label class="file">Import calibration <input id="jobFile" type="file" accept="application/json,.json"></label>
+      <label class="file">Import calibration <input id="jobFile" type="file" accept="application/json,.json,.h5,.hdf5"></label>
       <p>Import a saved test case or set the initial camera model below. Green circles mark detections; orange circles mark catalogue projections; blue circles mark measured pairs.</p>
       <div class="controls">
         <label>UTC <input id="utc" type="datetime-local" step="0.001"></label>
@@ -47,8 +47,10 @@
         <button id="undo" type="button">Undo</button>
         <button id="clearPairs" type="button">Clear pairs</button>
         <button id="download" type="button">Download calibration</button>
+        <button id="downloadHdf5" type="button">Download calibration HDF5</button>
       </div>
       <div class="controls"><label>Map sampling step [px] <input id="mapStep" type="number" min="1" max="4096" step="1" value="4"></label><button id="downloadMap" type="button">Download az/el FITS map</button></div>
+      <button id="downloadHdf5Map" type="button">Download full pixel-corner HDF5 map</button>
       <p>Match stars uses a roughly aligned model. Triangle matching can recover unknown pointing when the focal lengths and distortion are approximately known. Manual pairs are retained.</p>
       <details><summary>Calibration JSON</summary>
       <textarea id="fitJob" spellcheck="false" aria-label="Calibration fit JSON">{

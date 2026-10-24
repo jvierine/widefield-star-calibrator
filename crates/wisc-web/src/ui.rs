@@ -137,8 +137,8 @@ fn refresh_overlay(app: &mut App, job: &FitJob) -> Result<(), JsValue> {
     Ok(())
 }
 
-pub(super) fn import_job(app: &mut App, source: &str) -> Result<(), JsValue> {
-    let job = parse_job(source).map_err(js_error)?;
+pub(super) fn import_job(app: &mut App, source: &[u8]) -> Result<(), JsValue> {
+    let job = wisc_core::products::import_job(source).map_err(js_error)?;
     ensure_dimensions(app, &job)?;
     if let Ok(previous) = read_job() {
         app.history.push(previous);
@@ -331,6 +331,25 @@ fn action(
     Ok(())
 }
 
+fn download_bytes(name: &str, bytes: &[u8]) -> Result<(), JsValue> {
+    let parts = js_sys::Array::new();
+    parts.push(&Uint8Array::from(bytes));
+    let blob = web_sys::Blob::new_with_u8_array_sequence(&parts)?;
+    let url = web_sys::Url::create_object_url_with_blob(&blob)?;
+    let anchor = web_sys::window()
+        .unwrap()
+        .document()
+        .unwrap()
+        .create_element("a")?
+        .dyn_into::<HtmlAnchorElement>()?;
+    anchor.set_href(&url);
+    anchor.set_download(name);
+    anchor.click();
+    web_sys::Url::revoke_object_url(&url)?;
+    status(&format!("Downloaded {name}"));
+    Ok(())
+}
+
 pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
     controls_from_job(&read_job()?)?;
     action(app.clone(), "applyControls", apply_controls)?;
@@ -365,6 +384,36 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
         Ok(())
     })?;
     action(app.clone(), "download", download_json)?;
+    action(app.clone(), "downloadHdf5", |app| {
+        let job = read_job()?;
+        let result = if let Some(document) = &app.fitted {
+            if document.calibration != job.initial
+                || document.pairs != job.pairs
+                || document.observation != job.observation
+            {
+                return Err(js_error(
+                    "calibration changed; fit again before downloading results",
+                ));
+            }
+            Some(wisc_core::FitResult {
+                calibration: document.calibration.clone(),
+                rms_px: document.rms_px,
+                iterations: document.iterations,
+            })
+        } else {
+            None
+        };
+        let bytes =
+            wisc_core::products::calibration_hdf5(&job, result.as_ref()).map_err(js_error)?;
+        download_bytes("calibration.h5", &bytes)
+    })?;
+    action(app.clone(), "downloadHdf5Map", |app| {
+        let job = read_job()?;
+        ensure_dimensions(app, &job)?;
+        let bytes = wisc_core::products::azel_hdf5(&job.initial, job.observation.as_ref())
+            .map_err(js_error)?;
+        download_bytes("azel.h5", &bytes)
+    })?;
     action(app.clone(), "undo", |app| {
         let job = app
             .history

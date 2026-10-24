@@ -9,8 +9,7 @@ use rustplotlib::{Axes, Figure, IntendedUse, Layer, Line, MarkerShape, MarkerSty
 use serde::Deserialize;
 use wisc_core::imaging::{decode, FitsByteOrder};
 use wisc_core::workflow::{
-    automatic_fit_preserving, parse_job, tycho_catalog, visible_catalog, CalibrationDocument,
-    FitJob,
+    automatic_fit_preserving, tycho_catalog, visible_catalog, CalibrationDocument, FitJob,
 };
 use wisc_core::{detect_stars, fit, DetectorConfig, FitResult};
 
@@ -40,7 +39,7 @@ impl From<ByteOrder> for FitsByteOrder {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Export azimuth/elevation maps as two FITS planes in degrees.
+    /// Export azimuth/elevation as FITS planes or an HDF5 pixel-corner grid.
     Map {
         calibration: PathBuf,
         #[arg(short, long, default_value = "azel.fits")]
@@ -72,7 +71,7 @@ enum Command {
         #[arg(long)]
         triangles: bool,
     },
-    /// Detect stellar point sources in a PNG, JPEG, or FITS image.
+    /// Detect stellar point sources in a PNG, JPEG, HEIC/HEIF, or FITS image.
     Detect {
         image: PathBuf,
         /// Explicit override for nonstandard 16-bit FITS files.
@@ -88,7 +87,7 @@ enum Command {
     },
     /// Fit a camera model to identified sky/image star pairs.
     Fit {
-        /// JSON job containing an initial calibration and identified pairs.
+        /// JSON or WISC HDF5 containing a calibration and identified pairs.
         input: PathBuf,
         /// Machine-readable fitted calibration and residual summary.
         #[arg(short, long, default_value = "calibration.json")]
@@ -119,9 +118,15 @@ fn read_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
 }
 
 fn read_job(path: &Path) -> Result<FitJob> {
-    parse_job(&fs::read_to_string(path)?)
+    wisc_core::products::import_job(&fs::read(path)?)
         .map_err(anyhow::Error::msg)
         .with_context(|| format!("importing {}", path.display()))
+}
+
+fn is_hdf5(path: &Path) -> bool {
+    path.extension()
+        .and_then(|s| s.to_str())
+        .is_some_and(|s| s.eq_ignore_ascii_case("h5") || s.eq_ignore_ascii_case("hdf5"))
 }
 
 fn save_fit(output: &Path, plot: Option<&Path>, result: &FitResult, job: &FitJob) -> Result<()> {
@@ -130,7 +135,12 @@ fn save_fit(output: &Path, plot: Option<&Path>, result: &FitResult, job: &FitJob
         residual_plot(path, &document.residuals_px, result.rms_px)
             .with_context(|| format!("writing residual plot {}", path.display()))?;
     }
-    fs::write(output, serde_json::to_vec_pretty(&document)?)?;
+    let bytes = if is_hdf5(output) {
+        wisc_core::products::calibration_hdf5(job, Some(result)).map_err(anyhow::Error::msg)?
+    } else {
+        serde_json::to_vec_pretty(&document)?
+    };
+    fs::write(output, bytes)?;
     println!(
         "{}: {} pairs, RMS {:.4} px",
         output.display(),
@@ -189,10 +199,20 @@ fn run() -> Result<()> {
             step,
         } => {
             let job = read_job(&calibration)?;
-            let mut writer = std::io::BufWriter::new(fs::File::create(&output)?);
-            wisc_core::imaging::write_azel_fits(&mut writer, &job.initial, step)
-                .map_err(anyhow::Error::msg)?;
-            std::io::Write::flush(&mut writer)?;
+            if is_hdf5(&output) {
+                anyhow::ensure!(
+                    step == 1,
+                    "HDF5 maps use the full pixel-corner grid; --step must be 1"
+                );
+                let bytes = wisc_core::products::azel_hdf5(&job.initial, job.observation.as_ref())
+                    .map_err(anyhow::Error::msg)?;
+                fs::write(&output, bytes)?;
+            } else {
+                let mut writer = std::io::BufWriter::new(fs::File::create(&output)?);
+                wisc_core::imaging::write_azel_fits(&mut writer, &job.initial, step)
+                    .map_err(anyhow::Error::msg)?;
+                std::io::Write::flush(&mut writer)?;
+            }
             println!(
                 "{}: azimuth/elevation in degrees, step {} px",
                 output.display(),

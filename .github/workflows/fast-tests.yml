@@ -63,7 +63,9 @@ jobs:
           mkdir -p test-report/rust-migration
           target/release/wisc fit test_cases/BACC_NYA_20200218_010731/case.json --output test-report/rust-migration/calibration.json
           target/release/wisc map test-report/rust-migration/calibration.json --output test-report/rust-migration/azel.fits --step 4
-          python tests/verify_rust_exports.py test-report/rust-migration/calibration.json test-report/rust-migration/azel.fits
+          target/release/wisc fit test_cases/BACC_NYA_20200218_010731/case.json --output test-report/rust-migration/calibration.h5
+          target/release/wisc map test-report/rust-migration/calibration.h5 --output test-report/rust-migration/azel.h5
+          python tests/verify_rust_exports.py test-report/rust-migration/calibration.json test-report/rust-migration/azel.fits --hdf5 test-report/rust-migration/calibration.h5 test-report/rust-migration/azel.h5
 
       - name: Install WebAssembly binding generator
         run: cargo install wasm-bindgen-cli --version 0.2.129 --locked

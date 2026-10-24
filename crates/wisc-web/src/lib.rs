@@ -350,9 +350,7 @@ fn connect_file_input(app: Rc<RefCell<App>>, id: &str, job_file: bool) -> Result
             let result = loaded_reader.result().and_then(|value| {
                 let bytes = Uint8Array::new(&value).to_vec();
                 if job_file {
-                    let source =
-                        std::str::from_utf8(&bytes).map_err(|error| js_error(error.to_string()))?;
-                    ui::import_job(&mut loaded_app.borrow_mut(), source)
+                    ui::import_job(&mut loaded_app.borrow_mut(), &bytes)
                 } else {
                     loaded_app.borrow_mut().load_image(&bytes)
                 }
@@ -380,6 +378,6 @@ pub fn start() -> Result<(), JsValue> {
     connect_file_input(app.clone(), "jobFile", true)?;
     ui::connect(app.clone())?;
     APP.with(|slot| *slot.borrow_mut() = Some(app));
-    status("Load a PNG, JPEG, or FITS image to begin");
+    status("Load a PNG, JPEG, HEIC/HEIF, or FITS image to begin");
     Ok(())
 }

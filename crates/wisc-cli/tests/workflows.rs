@@ -91,6 +91,34 @@ fn saved_case_fit_export_is_directly_usable_by_project_and_fit() {
     let metadata =
         wisc_core::imaging::decode(&bytes, wisc_core::imaging::FitsByteOrder::Big).unwrap();
     assert_eq!(metadata.fits_header["CDELT1"], "16");
+    let compact = directory.path().join("calibration.h5");
+    run(&[
+        "fit",
+        as_str(&fitted),
+        "--output",
+        as_str(&compact),
+        "--max-iterations",
+        "200",
+    ]);
+    let restored = wisc_core::products::import_job(&fs::read(&compact).unwrap()).unwrap();
+    assert_eq!(restored.pairs, result.pairs);
+    run(&["project", as_str(&compact), as_str(&samples)]);
+    // Reject sampled HDF5 before opening or overwriting the destination.
+    let grid = directory.path().join("azel.h5");
+    fs::write(&grid, b"preserve existing file").unwrap();
+    let failure = Command::new(env!("CARGO_BIN_EXE_wisc"))
+        .args([
+            "map",
+            as_str(&compact),
+            "--output",
+            as_str(&grid),
+            "--step",
+            "2",
+        ])
+        .output()
+        .unwrap();
+    assert!(!failure.status.success());
+    assert_eq!(fs::read(&grid).unwrap(), b"preserve existing file");
 }
 
 #[test]

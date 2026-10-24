@@ -55,15 +55,15 @@ python3 -m http.server 8000
 # open http://localhost:8000/web/</code></pre>
 <h2>Rust Browser Workflow</h2>
 <ol>
-<li>Load a PNG, JPEG, or FITS image. FITS data retain their original floating-point intensity range for detection; the display texture is normalized separately.</li>
-<li>Import an existing <code>metadata.json</code>, <code>case.json</code>, fit job, or Rust calibration result. Imported pairs keep their measured image positions and saved azimuth/ zenith coordinates. The loader handles the legacy raw-pixel flip conversion.</li>
+<li>Load a PNG, JPEG, HEIC/HEIF, or FITS image. FITS data retain their original floating-point intensity range for detection; the display texture is normalized separately.</li>
+<li>Import an existing <code>metadata.json</code>, <code>case.json</code>, fit job, or Rust calibration result (JSON or Rust WISC HDF5). Imported pairs keep their measured image positions and saved azimuth/ zenith coordinates. The loader handles the legacy raw-pixel flip conversion.</li>
 <li>For a new calibration, set UTC, latitude, longitude, model, focal lengths, and camera angles, then choose <strong>Apply camera settings and update catalogue</strong>. The bundled Tycho-2 magnitude-8 catalogue is decoded entirely in Rust.</li>
 <li>Select a catalogue star and click its image position. A nearby detection supplies its centroid. Shift-click removes the nearest measured pair.</li>
 <li><strong>Fit pairs</strong> optimizes the current measurements. <strong>Match stars and fit</strong> expands associations from a roughly aligned model, preserving manual pairs. <strong>Find pointing with triangles</strong> can recover unknown pointing when focal lengths and distortion are approximately known. Triangle hypotheses must have support from additional projected stars before they are accepted.</li>
-<li>Inspect the rustplotlib residual plot, use <strong>Undo</strong> to restore a previous model or pairing set, and download the calibration JSON or two-plane az/el FITS map. A map sampling step of 1 includes every raw image pixel centre.</li>
+<li>Inspect the rustplotlib residual plot, use <strong>Undo</strong> to restore a previous model or pairing set, and download the calibration JSON or two-plane az/el FITS map. A map sampling step of 1 includes every raw image pixel centre. Compact HDF5 saves the full-precision model, measurements, residuals, and re-importable JSON. The separate HDF5 map contains compressed float32 azimuth/elevation arrays at every pixel corner: <code>[height+1,width+1]</code>, from <code>(-0.5,-0.5)</code> to <code>(width-0.5,height-0.5)</code>, suitable for <code>pcolormesh</code>. HDF5 map export always uses the full grid, independent of the FITS step.</li>
 </ol>
 <p>Green rings show detections, orange rings show projected catalogue stars, and blue rings show measured pairs. Loading another image clears old pairings and observation metadata; FITS observation headers populate time/site controls when available. No image or calibration is uploaded by this Rust interface.</p>
-<p>The Rust interface currently supports ground-based camera calibration. HEIC/ HEIF decoding, spacecraft/UV workflows, HDF5 and report bundles, and the legacy 40× KDE picker are still being ported. The sections below describing those features and keyboard shortcuts refer to the legacy root <code>index.html</code> interface.</p>
+<p>The Rust interface currently supports ground-based camera calibration. Spacecraft/ UV workflows, legacy HDF5 import and report bundles, and the legacy 40× KDE picker are still being ported. The sections below describing those features and keyboard shortcuts refer to the legacy root <code>index.html</code> interface.</p>
 <h2>Legacy Browser Reference</h2>
 <p>Hosted test cases can also have short quick links. Create or update one with:</p>
 <pre><code class="language-bash">npm run quicklink -- tc01 Sunniva_Alomar_23-03-2023_21-30UT</code></pre>
@@ -158,7 +158,9 @@ scripts/install.sh</code></pre>
 <p>Automatic association and lens fitting can run on an image using a saved initial model and its time/site metadata:</p>
 <pre><code class="language-bash">wisc solve image.fits --initial saved-case.json --output calibration.json
 wisc solve image.fits --initial initial-model.json --triangles --output calibration.json
-wisc map calibration.json --output azel.fits --step 1</code></pre>
+wisc map calibration.json --output azel.fits --step 1
+wisc fit saved-case.json --output calibration.h5
+wisc map calibration.h5 --output azel.h5 --step 1</code></pre>
 <p><code>--triangles</code> searches camera pointing without a roughly aligned attitude; focal lengths and lens distortion must still be approximately known. Both matchers retain the identified pairs supplied in the initial job. The solve command requires image dimensions to match the calibration and exits unsuccessfully when it cannot obtain a reliable match. Pipelines must check its exit status; failed solves do not write a new result.</p>
 <p>The FITS map contains separate azimuth and elevation planes in degrees. Invalid inverse projections are NaN. <code>CDELT1</code> and <code>CDELT2</code> record the requested raw-pixel sampling step. <code>wisc project</code> and <code>wisc fit</code> accept the downloaded Rust result directly, so the result can be reused without extracting an inner JSON object.</p>
 <p>Rust calibration objects store <code>model</code> separately from <code>optpar</code>. The optical model number is included at the front of the array only in legacy exports.</p>
@@ -195,7 +197,8 @@ x, y = az_el_to_pixel(210.0, 45.0, optpar, width, height)
 az, el = pixel_to_az_el(x, y, optpar, width, height)</code></pre>
 <p><code>pixel_to_az_el</code> is a numerical inverse intended for calibrated pixels inside the useful field of view. Pass <code>return_error=True</code> to also get the residual reprojection error in pixels.</p>
 <h2>Rust, WebAssembly, And WebGL</h2>
-<p><code>crates/wisc-core</code> contains portable calibration algorithms and has no browser dependency. <code>crates/wisc-cli</code> is the native command-line executable. <code>crates/wisc-web</code> binds the same library to browser events, decodes PNG/JPEG/FITS in Rust, and renders with WebGL2. Browser plots use <code>rustplotlib-web</code>; native plots use <code>rustplotlib</code>. This keeps numerical behaviour common across both targets and confines JavaScript to <code>web/bootstrap.js</code>.</p>
+<p><code>crates/wisc-core</code> contains portable calibration algorithms and has no browser dependency. <code>crates/wisc-cli</code> is the native command-line executable. <code>crates/wisc-web</code> binds the same library to browser events, decodes PNG/JPEG/HEIC/FITS in Rust, and renders with WebGL2. Browser plots use <code>rustplotlib-web</code>; native plots use <code>rustplotlib</code>. This keeps numerical behaviour common across both targets and confines JavaScript to <code>web/bootstrap.js</code>.</p>
+<p>HEIC/HEIF uses the pure Rust <code>heic-rs</code> decoder with threading disabled for the shared WASM target. The tiled 4032×3024 iPhone fixture is checked against its existing PNG reference for dimensions, orientation, and spatial luminance.</p>
 <p>The scientific Python-to-Rust mapping is deliberate:</p>
 <table>
 <thead><tr>

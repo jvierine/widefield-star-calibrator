@@ -52,10 +52,10 @@ python3 -m http.server 8000
 
 ## Rust Browser Workflow
 
-1. Load a PNG, JPEG, or FITS image. FITS data retain their original floating-point
+1. Load a PNG, JPEG, HEIC/HEIF, or FITS image. FITS data retain their original floating-point
    intensity range for detection; the display texture is normalized separately.
 2. Import an existing `metadata.json`, `case.json`, fit job, or Rust calibration
-   result. Imported pairs keep their measured image positions and saved azimuth/
+   result (JSON or Rust WISC HDF5). Imported pairs keep their measured image positions and saved azimuth/
    zenith coordinates. The loader handles the legacy raw-pixel flip conversion.
 3. For a new calibration, set UTC, latitude, longitude, model, focal lengths,
    and camera angles, then choose **Apply camera settings and update catalogue**.
@@ -70,14 +70,19 @@ python3 -m http.server 8000
 6. Inspect the rustplotlib residual plot, use **Undo** to restore a previous
    model or pairing set, and download the calibration JSON or two-plane az/el
    FITS map. A map sampling step of 1 includes every raw image pixel centre.
+   Compact HDF5 saves the full-precision model, measurements, residuals, and
+   re-importable JSON. The separate HDF5 map contains compressed float32
+   azimuth/elevation arrays at every pixel corner: `[height+1,width+1]`, from
+   `(-0.5,-0.5)` to `(width-0.5,height-0.5)`, suitable for `pcolormesh`.
+   HDF5 map export always uses the full grid, independent of the FITS step.
 
 Green rings show detections, orange rings show projected catalogue stars, and
 blue rings show measured pairs. Loading another image clears old pairings and
 observation metadata; FITS observation headers populate time/site controls when
 available. No image or calibration is uploaded by this Rust interface.
 
-The Rust interface currently supports ground-based camera calibration. HEIC/
-HEIF decoding, spacecraft/UV workflows, HDF5 and report bundles, and the legacy
+The Rust interface currently supports ground-based camera calibration. Spacecraft/
+UV workflows, legacy HDF5 import and report bundles, and the legacy
 40× KDE picker are still being ported. The sections below describing those
 features and keyboard shortcuts refer to the legacy root `index.html` interface.
 
@@ -297,6 +302,8 @@ model and its time/site metadata:
 wisc solve image.fits --initial saved-case.json --output calibration.json
 wisc solve image.fits --initial initial-model.json --triangles --output calibration.json
 wisc map calibration.json --output azel.fits --step 1
+wisc fit saved-case.json --output calibration.h5
+wisc map calibration.h5 --output azel.h5 --step 1
 ```
 
 `--triangles` searches camera pointing without a roughly aligned attitude; focal
@@ -459,10 +466,14 @@ reprojection error in pixels.
 
 `crates/wisc-core` contains portable calibration algorithms and has no browser
 dependency. `crates/wisc-cli` is the native command-line executable.
-`crates/wisc-web` binds the same library to browser events, decodes PNG/JPEG/FITS in
+`crates/wisc-web` binds the same library to browser events, decodes PNG/JPEG/HEIC/FITS in
 Rust, and renders with WebGL2. Browser plots use `rustplotlib-web`; native plots
 use `rustplotlib`. This keeps numerical behaviour common across both targets
 and confines JavaScript to `web/bootstrap.js`.
+
+HEIC/HEIF uses the pure Rust `heic-rs` decoder with threading disabled for the
+shared WASM target. The tiled 4032×3024 iPhone fixture is checked against its
+existing PNG reference for dimensions, orientation, and spatial luminance.
 
 The scientific Python-to-Rust mapping is deliberate:
 

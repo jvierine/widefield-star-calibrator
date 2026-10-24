@@ -111,6 +111,33 @@ pub fn decode(bytes: &[u8], byte_order: FitsByteOrder) -> Result<CalibrationImag
     if bytes.starts_with(b"SIMPLE  ") {
         return decode_fits(bytes, byte_order);
     }
+    if bytes.get(4..8) == Some(b"ftyp") {
+        let options = heic_rs::DecodeOptions::default()
+            .with_layout(heic_rs::PixelLayout::Rgba8)
+            .with_max_pixels(Some(MAX_PIXELS as u64))
+            .with_strict(true);
+        let decoded = heic_rs::decode(bytes, &options).map_err(|error| error.to_string())?;
+        let luminance = decoded
+            .data
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|pixel| {
+                0.2126 * f32::from(pixel[0])
+                    + 0.7152 * f32::from(pixel[1])
+                    + 0.0722 * f32::from(pixel[2])
+            })
+            .collect();
+        return Ok(CalibrationImage {
+            width: decoded.width,
+            height: decoded.height,
+            frames: 1,
+            luminance,
+            rgba: decoded.data,
+            fits_header: BTreeMap::new(),
+            little_endian: false,
+        });
+    }
     let reader = image::ImageReader::new(std::io::Cursor::new(bytes))
         .with_guessed_format()
         .map_err(|error| error.to_string())?;
@@ -351,6 +378,56 @@ pub fn decode_fits(bytes: &[u8], byte_order: FitsByteOrder) -> Result<Calibratio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn heic_iphone_tiles_preserve_orientation_and_match_existing_png() {
+        let decoded = decode(
+            include_bytes!("../../../calibration_images/IMG_9953.HEIC"),
+            FitsByteOrder::Auto,
+        )
+        .unwrap();
+        let reference = decode(
+            include_bytes!("../../../test_cases/IMG_9953/IMG_9953.png"),
+            FitsByteOrder::Auto,
+        )
+        .unwrap();
+        assert_eq!((decoded.width, decoded.height), (4032, 3024));
+        assert_eq!(
+            (decoded.width, decoded.height),
+            (reference.width, reference.height)
+        );
+        let difference = decoded
+            .luminance
+            .iter()
+            .zip(&reference.luminance)
+            .map(|(a, b)| f64::from((a - b).abs()))
+            .sum::<f64>()
+            / decoded.luminance.len() as f64;
+        assert!(difference < 12.0, "mean luma difference {difference}");
+        let count = decoded.luminance.len() as f64;
+        let mean_a = decoded
+            .luminance
+            .iter()
+            .map(|value| f64::from(*value))
+            .sum::<f64>()
+            / count;
+        let mean_b = reference
+            .luminance
+            .iter()
+            .map(|value| f64::from(*value))
+            .sum::<f64>()
+            / count;
+        let (mut covariance, mut variance_a, mut variance_b) = (0.0, 0.0, 0.0);
+        for (a, b) in decoded.luminance.iter().zip(&reference.luminance) {
+            let a = f64::from(*a) - mean_a;
+            let b = f64::from(*b) - mean_b;
+            covariance += a * b;
+            variance_a += a * a;
+            variance_b += b * b;
+        }
+        let correlation = covariance / (variance_a * variance_b).sqrt();
+        assert!(correlation > 0.99, "spatial luma correlation {correlation}");
+    }
 
     #[test]
     fn azel_map_has_two_separate_degree_planes_and_pixel_sampling_metadata() {

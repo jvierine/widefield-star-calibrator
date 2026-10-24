@@ -8,6 +8,7 @@ use std::f64::consts::PI;
 pub mod asterism;
 pub mod geometry;
 pub mod imaging;
+pub mod products;
 pub mod workflow;
 
 pub const DEG: f64 = PI / 180.0;
