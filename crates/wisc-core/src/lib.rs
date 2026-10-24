@@ -1,5 +1,7 @@
 //! Platform-independent calibration algorithms shared by WISC's CLI and WASM UI.
 
+use nalgebra::Matrix3;
+use ndarray::ArrayView2;
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
@@ -118,24 +120,13 @@ pub fn default_optpar(width: u32, height: u32, model: OpticalModel) -> Vec<f64> 
     values
 }
 
-fn mat_mul3(a: [f64; 9], b: [f64; 9]) -> [f64; 9] {
-    let mut out = [0.0; 9];
-    for row in 0..3 {
-        for column in 0..3 {
-            out[row * 3 + column] = (0..3)
-                .map(|inner| a[row * 3 + inner] * b[inner * 3 + column])
-                .sum();
-        }
-    }
-    out
-}
-
 pub fn camera_rotation(alpha_deg: f64, beta_deg: f64, gamma_deg: f64) -> [f64; 9] {
     let (a, b, g) = (alpha_deg * DEG, beta_deg * DEG, gamma_deg * DEG);
-    let rot1 = [g.cos(), -g.sin(), 0.0, g.sin(), g.cos(), 0.0, 0.0, 0.0, 1.0];
-    let rot2 = [a.cos(), 0.0, a.sin(), 0.0, 1.0, 0.0, -a.sin(), 0.0, a.cos()];
-    let rot3 = [1.0, 0.0, 0.0, 0.0, b.cos(), b.sin(), 0.0, -b.sin(), b.cos()];
-    mat_mul3(mat_mul3(rot2, rot3), rot1)
+    let rot1 = Matrix3::new(g.cos(), -g.sin(), 0.0, g.sin(), g.cos(), 0.0, 0.0, 0.0, 1.0);
+    let rot2 = Matrix3::new(a.cos(), 0.0, a.sin(), 0.0, 1.0, 0.0, -a.sin(), 0.0, a.cos());
+    let rot3 = Matrix3::new(1.0, 0.0, 0.0, 0.0, b.cos(), b.sin(), 0.0, -b.sin(), b.cos());
+    let rotation = rot2 * rot3 * rot1;
+    std::array::from_fn(|index| rotation[(index / 3, index % 3)])
 }
 
 pub fn camera_angles(rotation: &[f64; 9]) -> [f64; 3] {
@@ -565,6 +556,9 @@ pub fn detect_stars(
     if width < 3 || height < 3 || luminance.len() != width as usize * height as usize {
         return Vec::new();
     }
+    let Ok(image) = ArrayView2::from_shape((height as usize, width as usize), luminance) else {
+        return Vec::new();
+    };
     let finite: Vec<f64> = luminance
         .iter()
         .copied()
@@ -591,7 +585,7 @@ pub fn detect_stars(
     let threshold = (background + config.threshold_sigma.max(0.0) * robust_sigma)
         .min(mean + config.threshold_sigma.max(0.0) * variance.sqrt())
         .min(percentile_99);
-    let at = |x: u32, y: u32| f64::from(luminance[(y * width + x) as usize]);
+    let at = |x: u32, y: u32| f64::from(image[[y as usize, x as usize]]);
     let mut candidates = Vec::new();
     for y in 1..height - 1 {
         for x in 1..width - 1 {

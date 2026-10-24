@@ -6,6 +6,8 @@ license = "CC-BY-4.0"
 description = "Shared native and WebAssembly calibration core for WISC"
 
 [dependencies]
+nalgebra = "0.33"
+ndarray = "0.16"
 serde = { version = "1", features = ["derive"] }
 
 [dev-dependencies]

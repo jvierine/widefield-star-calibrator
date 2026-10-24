@@ -405,6 +405,20 @@ Rust, and renders with WebGL2. Browser plots use `rustplotlib-web`; native plots
 use `rustplotlib`. This keeps numerical behaviour common across both targets
 and confines JavaScript to `web/bootstrap.js`.
 
+The scientific Python-to-Rust mapping is deliberate:
+
+| Python role | Rust crate |
+|---|---|
+| NumPy multidimensional arrays, views, slicing, and broadcasting | `ndarray` |
+| Large dense matrix solves, SVD, QR, and eigensolvers | `faer` |
+| Fixed-size vectors, matrices, rotations, and camera geometry | `nalgebra` |
+| SciPy-style optimization, integration, interpolation, statistics, and signal processing | `SciRS2` (`scirs2`) |
+
+The portable core already uses `ndarray` for image views and `nalgebra` for
+camera rotations. `faer` is reserved for genuinely large linear systems;
+`scirs2` modules replace bespoke numerical routines where their WebAssembly
+support and numerical behaviour are covered by WISC cross-target tests.
+
 ## Coordinates And Camera Models
 
 For a catalog star at azimuth $\mathrm{az}$ and zenith angle $\mathrm{ze}$,

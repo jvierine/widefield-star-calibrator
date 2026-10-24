@@ -175,6 +175,20 @@ az, el = pixel_to_az_el(x, y, optpar, width, height)</code></pre>
 <p><code>pixel_to_az_el</code> is a numerical inverse intended for calibrated pixels inside the useful field of view. Pass <code>return_error=True</code> to also get the residual reprojection error in pixels.</p>
 <h2>Rust, WebAssembly, And WebGL</h2>
 <p><code>crates/wisc-core</code> contains portable calibration algorithms and has no browser dependency. <code>crates/wisc-cli</code> is the native command-line executable. <code>crates/wisc-web</code> binds the same library to browser events, decodes PNG/JPEG in Rust, and renders with WebGL2. Browser plots use <code>rustplotlib-web</code>; native plots use <code>rustplotlib</code>. This keeps numerical behaviour common across both targets and confines JavaScript to <code>web/bootstrap.js</code>.</p>
+<p>The scientific Python-to-Rust mapping is deliberate:</p>
+<table>
+<thead><tr>
+<th>Python role</th>
+<th>Rust crate</th>
+</tr></thead>
+<tbody>
+<tr><td>NumPy multidimensional arrays, views, slicing, and broadcasting</td><td><code>ndarray</code></td></tr>
+<tr><td>Large dense matrix solves, SVD, QR, and eigensolvers</td><td><code>faer</code></td></tr>
+<tr><td>Fixed-size vectors, matrices, rotations, and camera geometry</td><td><code>nalgebra</code></td></tr>
+<tr><td>SciPy-style optimization, integration, interpolation, statistics, and signal processing</td><td><code>SciRS2</code> (<code>scirs2</code>)</td></tr>
+</tbody>
+</table>
+<p>The portable core already uses <code>ndarray</code> for image views and <code>nalgebra</code> for camera rotations. <code>faer</code> is reserved for genuinely large linear systems; <code>scirs2</code> modules replace bespoke numerical routines where their WebAssembly support and numerical behaviour are covered by WISC cross-target tests.</p>
 <h2>Coordinates And Camera Models</h2>
 <p>For a catalog star at azimuth $\mathrm{az}$ and zenith angle $\mathrm{ze}$, WISC first writes the local sky direction as an east/north/up unit vector:</p>
 <div class="math-block">$$
