@@ -1,0 +1,25 @@
+[Unit]
+Description=AIDA standalone lens calibration API (Rust)
+After=network-online.target
+
+[Service]
+Type=simple
+Environment=AIDA_TEST_CASE_DIR=/mnt/data/juha/gaia/aida
+ExecStart=/home/j/.local/bin/aida-calibrator-server --host 127.0.0.1 --port 18790 --test-case-dir /mnt/data/juha/gaia/aida
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/mnt/data/juha/gaia/aida
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryMax=512M
+TasksMax=64
+
+[Install]
+WantedBy=default.target
