@@ -88,7 +88,9 @@ fn saved_case_fit_export_is_directly_usable_by_project_and_fit() {
     let header = std::str::from_utf8(&bytes[..2880]).unwrap();
     assert!(header.contains("BUNIT   = 'deg'"));
     assert!(header.contains("PLANE2  = 'ELEVATION'"));
-    assert!(header.contains("CDELT1  = 16"));
+    let metadata =
+        wisc_core::imaging::decode(&bytes, wisc_core::imaging::FitsByteOrder::Big).unwrap();
+    assert_eq!(metadata.fits_header["CDELT1"], "16");
 }
 
 #[test]

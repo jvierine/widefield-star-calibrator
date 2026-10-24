@@ -40,6 +40,11 @@ pub fn write_azel_fits(
     let height = calibration.height.div_ceil(step);
     let mut header = Vec::new();
     let mut card = |key: &str, value: String| {
+        let value = if value.starts_with('\'') {
+            format!("{value:<20}")
+        } else {
+            format!("{value:>20}")
+        };
         header.extend(format!("{:<80}", format!("{key:<8}= {value}")).as_bytes());
     };
     for (key, value) in [
@@ -357,9 +362,10 @@ mod tests {
         };
         let mut bytes = Vec::new();
         write_azel_fits(&mut bytes, &calibration, 2).unwrap();
-        let header = std::str::from_utf8(&bytes[..2880]).unwrap();
-        assert!(header.contains("PLANE2  = 'ELEVATION'"));
-        assert!(header.contains("CDELT1  = 2"));
+        assert_eq!(&bytes[..30], b"SIMPLE  =                    T");
+        let image = decode(&bytes, FitsByteOrder::Big).unwrap();
+        assert_eq!(image.fits_header["PLANE2"], "ELEVATION");
+        assert_eq!(image.fits_header["CDELT1"], "2");
         let expected = crate::geometry::pixel_to_azimuth_zenith(&calibration, [4.0, 4.0]).unwrap();
         let at = |offset| f32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap());
         assert!((f64::from(at(2880 + 12 * 4)) - expected[0] * crate::RAD).abs() < 1e-5);
