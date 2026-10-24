@@ -2,7 +2,7 @@
 name = "aida-calibrator-server"
 version = "1.0.0"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.85"
 license = "CC-BY-4.0"
 
 [dependencies]
@@ -36,3 +36,7 @@ codegen-units = 1
 lto = true
 panic = "abort"
 strip = true
+
+[workspace]
+members = ["crates/wisc-core", "crates/wisc-cli", "crates/wisc-web"]
+resolver = "2"

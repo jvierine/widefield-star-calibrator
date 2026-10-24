@@ -3,6 +3,7 @@
 node_modules/
 npm-debug.log*
 /target/
+/web/pkg/
 
 __pycache__/
 *.pyc

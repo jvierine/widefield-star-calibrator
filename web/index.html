@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>WISC Rust/WASM calibrator</title>
+  <link rel="stylesheet" href="wisc.css">
+</head>
+<body>
+  <header>
+    <h1>WISC — Widefield Star Calibrator</h1>
+    <nav><a href="../help.html">Help</a> · <a href="https://github.com/jvierine/widefield-star-calibrator">Source</a></nav>
+  </header>
+  <main>
+    <section class="viewer">
+      <label class="file">Load image <input id="imageFile" type="file" accept="image/png,image/jpeg"></label>
+      <output id="status" aria-live="polite">Loading Rust/WASM…</output>
+      <canvas id="glCanvas" width="960" height="540" aria-label="WebGL calibration image"></canvas>
+    </section>
+    <section class="fit">
+      <h2>Fit identified star pairs</h2>
+      <p>The native CLI and this browser use the same Rust projection and robust fitting code.</p>
+      <textarea id="fitJob" spellcheck="false" aria-label="Calibration fit JSON">{
+  "initial": {"width": 1024, "height": 768, "model": 2, "optpar": [1.0,1.333333,0,0,0,0,0,0.35]},
+  "pairs": []
+}</textarea>
+      <button id="fitPairs" type="button">Fit in Rust</button>
+      <canvas id="residualPlot" width="560" height="300" aria-label="rustplotlib residual plot"></canvas>
+    </section>
+  </main>
+  <script type="module" src="bootstrap.js"></script>
+</body>
+</html>

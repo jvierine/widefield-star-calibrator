@@ -27,9 +27,10 @@ jobs:
           python-version: "3.12"
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@1.75.0
+        uses: dtolnay/rust-toolchain@stable
         with:
-          components: clippy
+          components: clippy, rustfmt
+          targets: wasm32-unknown-unknown
 
       - name: Install Python test dependencies
         run: python -m pip install --disable-pip-version-check numpy==2.2.6 h5py==3.14.0
@@ -42,8 +43,20 @@ jobs:
           PYTHON: python
         run: npm test
 
-      - name: Test Rust API
-        run: cargo test --locked
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
 
-      - name: Lint Rust API
-        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Test Rust workspace
+        run: cargo test --locked --workspace
+
+      - name: Lint Rust workspace
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
+
+      - name: Build native Rust CLI
+        run: cargo build --locked --release -p wisc-cli
+
+      - name: Install WebAssembly binding generator
+        run: cargo install wasm-bindgen-cli --version 0.2.129 --locked
+
+      - name: Build Rust/WASM WebGL application
+        run: scripts/build_web.sh

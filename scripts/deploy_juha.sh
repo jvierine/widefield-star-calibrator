@@ -8,11 +8,9 @@ live_dir=${AIDA_DEPLOY_LIVE_DIR:-/var/www/aida}
 mirror_dir=${AIDA_DEPLOY_MIRROR_DIR:-/var/www/html/aida}
 service=${AIDA_DEPLOY_SERVICE:-wisc-aida-api.service}
 api_url=${AIDA_DEPLOY_API_URL:-https://juha.no/api/test-cases}
-app_url=${AIDA_DEPLOY_APP_URL:-https://juha.no/aida/js/app.js}
-api_port=${AIDA_DEPLOY_API_PORT:-8790}
+app_url=${AIDA_DEPLOY_APP_URL:-https://juha.no/aida/bootstrap.js}
 json_body_limit=${AIDA_DEPLOY_JSON_BODY_LIMIT:-134217728}
 image_body_limit=${AIDA_DEPLOY_IMAGE_BODY_LIMIT:-67108864}
-config_file=${AIDA_DEPLOY_BROWSER_CONFIG_FILE:-js/aida_config.js}
 
 rsync_excludes=(
     --exclude=.git
@@ -34,10 +32,8 @@ Environment overrides:
   AIDA_DEPLOY_SERVICE      default: $service
   AIDA_DEPLOY_API_URL      default: $api_url
   AIDA_DEPLOY_APP_URL      default: $app_url
-  AIDA_DEPLOY_API_PORT     default: $api_port
   AIDA_DEPLOY_JSON_BODY_LIMIT default: $json_body_limit
   AIDA_DEPLOY_IMAGE_BODY_LIMIT default: $image_body_limit
-  AIDA_DEPLOY_BROWSER_CONFIG_FILE default: $config_file
 EOF
 }
 
@@ -83,6 +79,7 @@ require_command() {
 require_command rsync
 require_command ssh
 require_command curl
+"$repo_root/scripts/build_web.sh"
 
 rsync_args=(-az)
 if [ "$delete_extra" -eq 1 ]; then
@@ -100,28 +97,15 @@ echo "Mirror target: $mirror_dir"
 
 rsync "${rsync_args[@]}" "$repo_root/" "$remote:$live_dir/"
 rsync "${rsync_args[@]}" "$repo_root/" "$remote:$mirror_dir/"
+rsync -az "$repo_root/web/" "$remote:$live_dir/"
+rsync -az "$repo_root/web/" "$remote:$mirror_dir/"
+rsync -az "$repo_root/help.html" "$remote:$live_dir/help.html"
+rsync -az "$repo_root/help.html" "$remote:$mirror_dir/help.html"
 
 if [ "$dry_run" -eq 1 ]; then
     echo "Dry run complete; not restarting or verifying."
     exit 0
 fi
-
-echo "Installing browser submit config on $remote..."
-ssh -o BatchMode=yes "$remote" \
-    "set -eu
-     install_config() {
-         target=\"\$1\"
-         sudo -n mkdir -p \"\$(dirname \"\$target\")\"
-         sudo -n bash -c '
-             set -a
-             . /etc/wisc-aida-api.env
-             set +a
-             node -e \"process.stdout.write(\\\"window.WISC_AIDA_CONFIG = \\\" + JSON.stringify({submitPassKey: process.env.AIDA_SUBMIT_PASSKEY || \\\"\\\"}) + \\\";\\\\n\\\")\" > \"\$1\"
-         ' -- \"\$target\"
-         sudo -n chmod 0644 \"\$target\"
-     }
-     install_config '${live_dir}/${config_file}'
-     install_config '${mirror_dir}/${config_file}'"
 
 if [ "$skip_restart" -eq 0 ]; then
     echo "Restarting $service on $remote..."
@@ -135,8 +119,6 @@ if [ "$skip_restart" -eq 0 ]; then
              sudo -n tee \"\$dropin_dir/aida-limits.conf\" >/dev/null
          sudo -n systemctl daemon-reload
          sudo -n systemctl stop '$service' || true
-         pkill -f 'node .*${live_dir}/tools/serve_calibrator\\.js.*--port ${api_port}' || true
-         sleep 1
          sudo -n systemctl start '$service'
          systemctl is-active --quiet '$service'
          systemctl status '$service' --no-pager --lines=8"
@@ -149,15 +131,15 @@ if [ "$skip_verify" -eq 0 ]; then
     echo "Verifying public app URL..."
     app_head=$(curl -fsSL "${app_url}?deploy=${cache_bust}" | sed -n '1,8p')
     printf '%s\n' "$app_head"
-    printf '%s\n' "$app_head" | grep -q 'APP_VERSION'
+    printf '%s\n' "$app_head" | grep -q 'wisc_web'
 
     echo "Verifying public API URL..."
     curl -fsSL "$api_url" >/dev/null
 
-    echo "Verifying FITS allow-list in running server module..."
+    echo "Verifying FITS allow-list in the Rust server module..."
     ssh -o BatchMode=yes "$remote" \
-        "grep -q 'application/fits' '$live_dir/tools/serve_calibrator.js'
-         grep -q 'image/fits' '$live_dir/tools/serve_calibrator.js'
+        "grep -q 'application/fits' '$live_dir/src/main.rs'
+         grep -q 'image/fits' '$live_dir/src/main.rs'
          systemctl is-active --quiet '$service'"
 fi
 

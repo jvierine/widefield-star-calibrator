@@ -2,17 +2,17 @@
 
 [![Fast Unit Tests](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg)](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml)
 
-This repository contains WISC, the Widefield Star Calibrator, a stand-alone
-JavaScript wide-field star calibration tool. WISC can run star finding,
-asterism matching, and lens-model fitting as a somewhat robust automated
-process. The strength of the code, and the reason for the JavaScript
-implementation, is the interactive browser GUI for fine tuning, inspection, and
-completely manual star-pairing based optical model fitting assisted by the Yale
-Bright Star Catalogue. This is useful for difficult images that do not
-automatically plate solve cleanly.
-However, it can also be installed and run on the command line like a normal
-Linux/Unix command-line program named `wisc`; see the command-line section
-below.
+This repository contains WISC, the Widefield Star Calibrator. Its calibration,
+projection, robust fitting, coordinate conversion, and star-detection code is a
+platform-independent Rust library shared by a native `wisc` executable and a
+Rust/WebAssembly browser application. The browser renders the image and star
+overlay through WebGL2 and uses rustplotlib for calibration plots. JavaScript is
+limited to the three-line WebAssembly bootstrap needed by the browser.
+
+The previous JavaScript calibrator remains in the repository while specialized
+workflows are validated against the shared Rust implementation. New production
+code belongs in `wisc-core`, `wisc-cli`, or `wisc-web`, rather than duplicating
+calibration mathematics in JavaScript.
 
 Authors: Juha Vierinen and Björn Gustavsson. More authors can be added later.
 Merge requests are welcome!
@@ -36,14 +36,16 @@ http://4.235.86.214/aida/
 
 ![WISC GUI](docs/gui-screenshot.png)
 
-The tool is fully client-side JavaScript, with the GUI rendered in WebGL. For
-normal GUI use, no installation is required: open the hosted link above in a
-browser, or open `index.html` directly from a local checkout:
+The browser application is client-side Rust/WebAssembly with a WebGL2 viewer.
+Build it and serve the checkout over HTTP (browsers do not load WebAssembly
+modules reliably from a `file:` URL):
 
 ```bash
 git clone https://github.com/jvierine/widefield-star-calibrator.git
-code widefield-star-calibrator
-# open index.html
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
+scripts/build_web.sh
+python3 -m http.server 8000
+# open http://localhost:8000/web/
 ```
 
 Hosted test cases can also have short quick links. Create or update one with:
@@ -58,7 +60,7 @@ mapped saved test case. If a short name is not listed in `quick_links.json`,
 WISC tries to load a saved test case with that exact id.
 
 DDR data policy disclaimer: all data goes directly to STASI main archives. Just
-kidding. Most calibration work is purely client-side JavaScript. Images are not
+kidding. Most calibration work is purely client-side WebAssembly. Images are not
 uploaded during ordinary viewing, star picking, fitting, or code export. If you
 click "Submit as test case", the browser uploads the currently loaded image and
 the current calibration metadata to the server. The stored metadata includes the
@@ -197,11 +199,9 @@ the Undo button or `Cmd/Ctrl Z` to restore the state from before the latest
 accepted fit or automatic pairing run. Loading a new image or removing all star
 pairings clears the undo history.
 
-## Automatic Command-Line Lens Calibration
+## Native Rust Command-Line Calibration
 
-Installation is only required for command-line use. The browser GUI works
-without installing anything. To install the `wisc` command-line wrapper, clone
-the repository and run:
+To build and install the native `wisc` executable, clone the repository and run:
 
 ```bash
 git clone https://github.com/jvierine/widefield-star-calibrator.git
@@ -209,42 +209,46 @@ cd widefield-star-calibrator
 scripts/install.sh
 ```
 
-The installer links `wisc` into `~/.local/bin` by default.
+The installer compiles an optimized Rust binary and copies it to
+`~/.local/bin` by default.
 Set `PREFIX=/usr/local` or `BINDIR=/some/bin` before running the script to
-choose another install location. The command-line calibrator needs
-[Node.js](https://nodejs.org/), and the installer fetches the Node
-image-decoding dependencies used for PNG, JPEG, HEIC, HEIF, and FITS input.
+choose another install location. Node.js is not required.
 
-Run the browser-style "I'm feeling lucky" calibration from the command line by
-giving `wisc` an image filename. Latitude, longitude, altitude, and UTC time may
-be provided as flags; if they are omitted, saved test-case metadata and image
-EXIF-derived metadata are used by default when available, followed by filename
-or fallback values.
+Fit identified image/sky pairs from a JSON job. The native executable calls the
+same `wisc-core` fitter and projection functions as the WebAssembly UI:
 
 ```bash
-wisc calibration_images/IMG_9953.HEIC --lat 69.644233 --lon 18.925919 --alt 95 --time 2024-12-31T22:37:51Z --optpar-out calibration.json --code python
+wisc fit fit-job.json --output calibration.json --residual-plot residuals.pdf
 ```
 
-The script runs the same automatic star finding and asterism matching strategy
-as the GUI, fits the selected lens model, and writes:
+The fit job has this schema (angles are radians and image coordinates are
+zero-based pixel centres):
 
-- `lucky-report/index.html`: visual overlay report with raw detections,
-  asterisms, matched stars, residuals, timing, and fitted `optpar`.
-- `lucky-report/summary.json`: machine-readable calibration summary with
-  `optmod`, `[optmod, ...optpar]`, RMS, match count, site/time metadata, and
-  timing totals.
-- `calibration.json`: compact machine-readable optpar output when
-  `--optpar-out` is used. This is the file a meteor-camera pipeline should
-  consume automatically.
-- `lucky-report/code/*_mapper.py`: mapper source code when `--code` is used.
-  Supported code languages are `python`, `julia`, `c`, and `matlab`. Python
-  mapper output is self-contained and includes the lens-model code, optpar, and
-  image dimensions in one file.
+```json
+{
+  "initial": {
+    "width": 1024,
+    "height": 768,
+    "model": 2,
+    "optpar": [1.0, 1.333333, 0.0, 0.0, 0.0, 0.0, 0.0, 0.35]
+  },
+  "pairs": [
+    {"azimuth_rad": 0.4, "zenith_rad": 0.7, "x_px": 522.1, "y_px": 281.8}
+  ]
+}
+```
 
-Saved `test_cases/*/metadata.json` files are used when available. Otherwise
-the script infers allsky7 timestamps and station metadata from filenames, and
-falls back to a Tromso default. HEIC and JPEG inputs are normalized to PNG
-report assets by the Node command-line tool, without relying on macOS `sips`.
+The output contains the fitted calibration, RMS, iteration count, and residual
+vector for every pair. A requested PDF, SVG, PNG, or JPEG residual figure is
+rendered by rustplotlib. `wisc project calibration.json samples.json` projects
+an array of azimuth/zenith samples through an existing calibration.
+
+The same Rust detector used by the WebAssembly viewer is available from the
+native executable:
+
+```bash
+wisc detect image.jpg --output detections.json --threshold-sigma 5
+```
 
 For scripted meteor-camera operation, run the command after each image or
 stacked frame is available, then read `calibration.json`. A failed solve keeps
@@ -392,21 +396,14 @@ az, el = pixel_to_az_el(x, y, optpar, width, height)
 the useful field of view. Pass `return_error=True` to also get the residual
 reprojection error in pixels.
 
-## Why JavaScript?
+## Rust, WebAssembly, And WebGL
 
-JavaScript is not a beautiful language for mathematical software. In fact, I
-truly hate this language with a passion; there are only a few worse programming
-languages in the world to program in: Brainfuck, and normal Java. But JavaScript
-is extremely well optimized because it runs software for a huge fraction of the
-world's internet users. It is also very well suited for graphical user
-interfaces that can be shared over the internet without asking users to install a
-desktop application. WebGL is fast enough for the interactive image display and
-overlay work this tool needs.
-
-The GUI is optional, because the same calibrator can be installed as
-`wisc` and run like any other command-line program. Still,
-the GUI is a major advantage when a difficult star field does not automatically
-plate solve and needs a few manual corrections.
+`crates/wisc-core` contains portable calibration algorithms and has no browser
+dependency. `crates/wisc-cli` is the native command-line executable.
+`crates/wisc-web` binds the same library to browser events, decodes PNG/JPEG in
+Rust, and renders with WebGL2. Browser plots use `rustplotlib-web`; native plots
+use `rustplotlib`. This keeps numerical behaviour common across both targets
+and confines JavaScript to `web/bootstrap.js`.
 
 ## Coordinates And Camera Models
 
@@ -510,13 +507,18 @@ $$
 
 ## Tests
 
-Run the JavaScript unit tests with:
+Run all Rust unit tests, lints, formatting checks, and the WebAssembly build:
 
 ```bash
-npm test
+cargo fmt --all --check
+cargo test --locked --workspace
+cargo clippy --locked --workspace --all-targets -- -D warnings
+cargo build --locked --release -p wisc-web --target wasm32-unknown-unknown
 ```
 
-GitHub Actions runs these fast tests on every pushed commit and pull request.
+The legacy JavaScript cross-checks remain available with `npm test` while the
+specialized reports are being validated. GitHub Actions runs both suites plus
+the native CLI and WebAssembly builds on every pushed commit and pull request.
 Long-running reports and sensitivity studies are intentionally local-only; they
 write into ignored directories such as `test-report/`, `lucky-report/`, and
 `test_cases/report/`.

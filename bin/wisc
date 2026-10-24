@@ -14,4 +14,18 @@ done
 bin_dir=$(CDPATH= cd -- "$(dirname -- "$script")" && pwd)
 repo_root=$(CDPATH= cd -- "$bin_dir/.." && pwd)
 
-exec node "$repo_root/tools/run_lucky_report.js" "$@"
+binary="$repo_root/target/release/wisc"
+if [ ! -x "$binary" ]; then
+    echo "Building the native Rust wisc executable..." >&2
+    cargo_home_dir=${CARGO_HOME:-"$HOME/.cargo"}
+    if [ -x "$cargo_home_dir/bin/cargo" ]; then
+        cargo_bin="$cargo_home_dir/bin/cargo"
+    elif command -v rustup >/dev/null 2>&1; then
+        cargo_bin=$(rustup which --toolchain stable cargo)
+    else
+        cargo_bin=$(command -v cargo)
+    fi
+    (cd "$repo_root" && "$cargo_bin" build --locked --release -p wisc-cli)
+fi
+
+exec "$binary" "$@"

@@ -1,0 +1,18 @@
+[package]
+name = "wisc-cli"
+version = "0.1.0"
+edition = "2021"
+license = "CC-BY-4.0"
+
+[[bin]]
+name = "wisc"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+rustplotlib = { git = "https://github.com/jvierine/rustplotlib.git", rev = "80c0d481b828f96d2018f394354991d6eaa5bc44" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wisc-core = { path = "../wisc-core" }
