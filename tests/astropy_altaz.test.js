@@ -176,9 +176,7 @@ test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip:
         [
             script,
             "--tracked",
-            "--write-report",
-            "--out",
-            path.join(__dirname, "..", "test-report", "astropy-altaz"),
+            "--json",
         ],
         {
             cwd: path.join(__dirname, ".."),
@@ -192,9 +190,9 @@ test("AIDA az/el coordinates agree with Astropy for saved star matches", { skip:
         0,
         result.stderr || result.stdout || `Astropy cross-check exited ${result.status}`,
     );
-    const summary = JSON.parse(
-        fs.readFileSync(path.join(__dirname, "..", "test-report", "astropy-altaz", "summary.json"), "utf8"),
-    );
+    // This is a numerical cross-check, not a test of the optional legacy plot
+    // renderer. Read fresh results directly without a Matplotlib dependency.
+    const summary = JSON.parse(result.stdout);
     assert.ok(summary.caseCount >= 10, `expected at least 10 comparable cases, got ${summary.caseCount}`);
     assert.ok(summary.count >= 100, `expected at least 100 star comparisons, got ${summary.count}`);
     assert.ok(summary.exposureDrift.length >= 5, "expected exposure drift rows in Astropy report");
