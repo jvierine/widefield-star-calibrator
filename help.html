@@ -36,7 +36,7 @@ window.MathJax = {
 <main>
 <p class="generated">Generated from <code>README.md</code>. Edit the README and run <code>npm run help:generate</code> to update this page.</p>
 <h1>WISC - Widefield Star Calibrator</h1>
-<p><a href="https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml"><img alt="Fast Unit Tests" src="https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg"></a></p>
+<p><a href="https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml"><img alt="Tests" src="https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg"></a></p>
 <p>This repository contains WISC, the Widefield Star Calibrator. Its calibration, projection, robust fitting, coordinate conversion, and star-detection code is a platform-independent Rust library shared by a native <code>wisc</code> executable and a Rust/WebAssembly browser application. The browser renders the image and star overlay through WebGL2 and uses rustplotlib for calibration plots. JavaScript is limited to the small WebAssembly bootstrap needed by the browser.</p>
 <p>The previous JavaScript calibrator remains in the repository while specialized workflows are validated against the shared Rust implementation. New production code belongs in <code>wisc-core</code>, <code>wisc-cli</code>, or <code>wisc-web</code>, rather than duplicating calibration mathematics in JavaScript.</p>
 <p>Authors: Juha Vierinen and Björn Gustavsson. More authors can be added later. Merge requests are welcome!</p>
@@ -281,14 +281,16 @@ $$</div>
 cargo test --locked --workspace
 cargo clippy --locked --workspace --all-targets -- -D warnings
 cargo build --locked --release -p wisc-web --target wasm32-unknown-unknown</code></pre>
-<p>The legacy JavaScript cross-checks remain available with <code>npm test</code> while the specialized reports are being validated. GitHub Actions runs both suites plus the native CLI and WebAssembly builds on every pushed commit and pull request. Long-running reports and sensitivity studies are intentionally local-only; they write into ignored directories such as <code>test-report/</code>, <code>lucky-report/</code>, and <code>test_cases/report/</code>.</p>
+<p>The legacy JavaScript cross-checks remain available with <code>npm test</code> while the specialized reports are being validated. GitHub Actions runs both suites plus the native CLI and WebAssembly builds on every pushed commit and pull request. CI also runs every optional real-image, blind-match, and sensitivity regression, with no test skips. Reproduce the full compatibility gate locally with:</p>
+<pre><code class="language-bash">PYTHON=python3 npm run test:all</code></pre>
+<p>The sensitivity sweeps take several minutes. Generated diagnostic reports write into ignored directories such as <code>test-report/</code>, <code>lucky-report/</code>, and <code>test_cases/report/</code>.</p>
 <p>To independently check the two low-resolution <code>BACC_*</code> cases, first load each case in WISC and click <code>Download az/el HDF5</code>. Then run:</p>
 <pre><code class="language-bash">conda run -n base python tools/verify_bacc_astropy_hdf5.py</code></pre>
 <p>The script downloads the saved images and J2000 catalog coordinates, calculates unrefracted apparent azimuth/elevation with Astropy, and numerically inverts the downloaded <code>[height + 1, width + 1]</code> pixel-edge grids. It does not import the WISC/AIDA lens mapper. The command fails if either fit exceeds its expected RMS, if the grid inversion is inaccurate, or if the mean x/y residual indicates a pixel-indexing offset. It writes full-frame high-pass overlays, pixel-resolved montages of every selected-star cutout, and a detailed HDF5 result to <code>test-report/bacc-astropy-hdf5/</code>. The high-pass and contrast stretch are only used for display; calculations use the original coordinates and az/el grid. Use repeated <code>--grid CASE_ID=/path/to/file.h5</code> options if the downloads are elsewhere.</p>
 <p>A shorter direct check of the Python WISC library is available as:</p>
 <pre><code class="language-bash">conda run -n base python tools/check_bacc_pixel2azel.py</code></pre>
 <p>It reads the two tracked BACC images and test-case JSON files, explicitly separates the saved <code>optmod = optpar[0]</code> from the remaining parameters, runs <code>wisc_lens.pixel2azel</code> on the selected zero-based pixel centers, compares the result with Astropy, and plots the selected and predicted pixel centers. There is no fitting or HDF5 inversion in this test. Integer coordinates are displayed at image pixel centers using an image extent from <code>-0.5</code> to <code>size - 0.5</code>.</p>
-<p>The camera-model cross-check starts Python and imports <code>aida_tools_py</code>. Set <code>PYTHON=/path/to/python</code> if the default <code>/opt/miniconda3/bin/python</code> is not the right environment.</p>
+<p>The camera-model cross-check starts Python and imports this repository's <code>wisc_lens</code> module; no sibling checkout is needed. Set <code>PYTHON=/path/to/python</code> to select an environment with NumPy, SciPy, Astropy, and h5py installed.</p>
 <h2>References</h2>
 <ul>
 <li>Warren Jr., W. H., and Hoffleit, D. (1987). The Bright Star Catalogue. <em>Bulletin of the American Astronomical Society</em>, 19, 733.</li>

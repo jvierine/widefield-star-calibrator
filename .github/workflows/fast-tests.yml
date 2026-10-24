@@ -1,4 +1,4 @@
-name: Fast Unit Tests
+name: Tests
 
 on:
   push:
@@ -45,6 +45,11 @@ jobs:
         env:
           PYTHON: python
         run: npm test
+
+      - name: Run all real-image and sensitivity regressions
+        env:
+          PYTHON: python
+        run: npm run test:all
 
       - name: Check Rust formatting
         run: cargo fmt --all --check

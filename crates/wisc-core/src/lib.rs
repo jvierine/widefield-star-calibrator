@@ -171,6 +171,11 @@ pub fn project(
     let x = east * rotation[0] + north * rotation[3] + up * rotation[6];
     let y = east * rotation[1] + north * rotation[4] + up * rotation[7];
     let z = east * rotation[2] + north * rotation[5] + up * rotation[8];
+    // Perspective lenses have no image on the back half of the camera. Without
+    // this guard, dividing two negative components aliases antipodal stars.
+    if matches!(model, OpticalModel::Pinhole | OpticalModel::BrownConrady) && z <= 1e-12 {
+        return None;
+    }
     let radial = x.hypot(y);
     let theta = radial.atan2(z);
     let (f1, f2, dx, dy, alpha) = (optpar[0], optpar[1], optpar[5], optpar[6], optpar[7]);
@@ -727,6 +732,17 @@ mod tests {
             (actual - expected).abs() <= tolerance,
             "{actual} != {expected}"
         );
+    }
+
+    #[test]
+    fn perspective_lenses_reject_back_facing_and_horizon_rays() {
+        for model in [OpticalModel::Pinhole, OpticalModel::BrownConrady] {
+            let optpar = default_optpar(800, 600, model);
+            assert!(project(0.0, 0.0, &optpar, model, 800, 600).is_some());
+            for zenith in [90.0, 120.0, 180.0] {
+                assert!(project(0.0, zenith * DEG, &optpar, model, 800, 600).is_none());
+            }
+        }
     }
 
     #[test]

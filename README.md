@@ -1,6 +1,6 @@
 # WISC - Widefield Star Calibrator
 
-[![Fast Unit Tests](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg)](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml)
+[![Tests](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml/badge.svg)](https://github.com/jvierine/widefield-star-calibrator/actions/workflows/fast-tests.yml)
 
 This repository contains WISC, the Widefield Star Calibrator. Its calibration,
 projection, robust fitting, coordinate conversion, and star-detection code is a
@@ -603,8 +603,15 @@ cargo build --locked --release -p wisc-web --target wasm32-unknown-unknown
 The legacy JavaScript cross-checks remain available with `npm test` while the
 specialized reports are being validated. GitHub Actions runs both suites plus
 the native CLI and WebAssembly builds on every pushed commit and pull request.
-Long-running reports and sensitivity studies are intentionally local-only; they
-write into ignored directories such as `test-report/`, `lucky-report/`, and
+CI also runs every optional real-image, blind-match, and sensitivity regression,
+with no test skips. Reproduce the full compatibility gate locally with:
+
+```bash
+PYTHON=python3 npm run test:all
+```
+
+The sensitivity sweeps take several minutes. Generated diagnostic reports write
+into ignored directories such as `test-report/`, `lucky-report/`, and
 `test_cases/report/`.
 
 To independently check the two low-resolution `BACC_*` cases, first load each
@@ -639,9 +646,9 @@ There is no fitting or HDF5 inversion in this test. Integer coordinates are
 displayed at image pixel centers using an image extent from `-0.5` to
 `size - 0.5`.
 
-The camera-model cross-check starts Python and imports `aida_tools_py`. Set
-`PYTHON=/path/to/python` if the default `/opt/miniconda3/bin/python` is not the
-right environment.
+The camera-model cross-check starts Python and imports this repository's
+`wisc_lens` module; no sibling checkout is needed. Set `PYTHON=/path/to/python`
+to select an environment with NumPy, SciPy, Astropy, and h5py installed.
 
 ## References
 

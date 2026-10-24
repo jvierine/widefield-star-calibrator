@@ -374,8 +374,9 @@
         const data = pixelData.data;
         const maxDetections = Number.isFinite(options.maxDetections) ? options.maxDetections : 50;
         const maskPredicate = typeof options.maskPredicate === "function" ? options.maskPredicate : null;
-        const scanStep = Number.isFinite(options.scanStep) ? options.scanStep :
-            width * height >= 8000000 ? 2 : 1;
+        // A stride of two plus a strict-maximum check silently misses stars
+        // centred on either odd coordinate. Subsampling must be explicit.
+        const scanStep = Number.isFinite(options.scanStep) ? options.scanStep : 1;
         const cellSize = Number.isFinite(options.cellSize) ? options.cellSize :
             width * height >= 8000000 ? 16 : 12;
         const cellsX = Math.ceil(width / cellSize);
@@ -597,8 +598,11 @@
             const saturationPenalty = 1 + 0.18 * shape.saturated;
             const roundnessFactor = coreShapeFactor * peakShapeFactor;
             const matchedFactor = Math.pow(Math.max(0.2, matchedSnr), 0.25);
-            const score = compactness * Math.pow(Math.max(1, shape.flux), 0.25) * roundnessFactor * matchedFactor /
+            const shapeScore = compactness * Math.pow(Math.max(1, shape.flux), 0.25) * roundnessFactor * matchedFactor /
                 (elongationPenalty * outerShapePenalty * centroidOffsetPenalty * saturationPenalty);
+            // PSF width varies across a wide field. Balance brightness and shape
+            // so a slightly broader bright star is not outranked by faint noise.
+            const score = Math.sqrt(Math.max(0, shapeScore * contrast));
             candidates.push({
                 x: centroid.x,
                 y: centroid.y,
@@ -667,7 +671,7 @@
         }
         filteredCandidates.sort((a, b) => b.score - a.score);
         const minimumSuppressionRadius = Number.isFinite(options.minimumSuppressionRadiusPx) ?
-            Math.max(0, options.minimumSuppressionRadiusPx) : 30;
+            Math.max(0, options.minimumSuppressionRadiusPx) : 0;
         const suppressionRadius = Math.max(minimumSuppressionRadius, Number.isFinite(options.suppressionRadiusPx) ?
             options.suppressionRadiusPx :
             Math.max(18, Math.min(60, 0.010 * Math.hypot(width, height))));

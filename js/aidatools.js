@@ -420,6 +420,9 @@
         const sese1 = es1 * rot[0] + es2 * rot[3] + es3 * rot[6];
         const sese2 = es1 * rot[1] + es2 * rot[4] + es3 * rot[7];
         const sese3 = es1 * rot[2] + es2 * rot[5] + es3 * rot[8];
+        if ((optmod === 1 || optmod === BROWN_CONRADY_OPTMOD) && sese3 <= 1e-12) {
+            return {x: NaN, y: NaN};
+        }
 
         const f1 = optpar[0];
         const f2 = optpar[1];

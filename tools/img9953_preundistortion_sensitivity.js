@@ -42,7 +42,9 @@ const MATCHER_OPTIONS = {
     maxCatalogTriangles: 16000,
     triangleSignatureRadius: 0.02,
     maxNeighborTriangles: 8,
-    maxCandidateTransforms: 3000,
+    // Keep the same verified search budget as the standalone asterism report.
+    // The lower 3000-candidate budget can stop before any valid transform.
+    maxCandidateTransforms: 7000,
 };
 
 const MAX_MAG = 6.5;
