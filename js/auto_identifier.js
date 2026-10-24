@@ -2039,7 +2039,9 @@
         );
         const radialMedian = median(radial);
         const sigma = Math.max(1, 1.4826 * median(radial.map(value => Math.abs(value - radialMedian))));
-        const threshold = Math.max(defaultMatchRadius(options), radialMedian + 4.0 * sigma);
+        const threshold = options.clipTranslationOutliers === true ?
+            Math.min(defaultMatchRadius(options), Math.max(3, radialMedian + 4.0 * sigma)) :
+            Math.max(defaultMatchRadius(options), radialMedian + 4.0 * sigma);
         return matches.filter(match =>
             Math.hypot(match.residualDx - dxMedian, match.residualDy - dyMedian) <= threshold
         );
@@ -2060,7 +2062,9 @@
         }
         const offset = estimateTranslation(projected, normalizedDetections, options);
         const rawMatches = greedyMatch(projected, normalizedDetections, offset, options);
-        const matches = robustFilterMatches(rawMatches, options);
+        // A known projected lens should need only a translation. Unlike rough
+        // affine asterism seeds, its residuals should not contain lens curvature.
+        const matches = robustFilterMatches(rawMatches, {...options, clipTranslationOutliers: true});
         const minMatches = Number.isFinite(options.minMatches) ? options.minMatches : 4;
         const medianDistance = matches.length ? median(matches.map(match => match.distance)) : Infinity;
         const status = matches.length >= minMatches ?
@@ -2800,7 +2804,7 @@
         }
 
         const f1Candidates = Array.isArray(options.preflattenF1Candidates) ?
-            options.preflattenF1Candidates : [0.70, 0.85, 1.00];
+            options.preflattenF1Candidates : [0.70, 0.75, 0.80, 0.85, 0.90, 1.00];
         const fixedDu = Number.isFinite(options.preflattenDu) ? options.preflattenDu : 0;
         const fixedDv = Number.isFinite(options.preflattenDv) ? options.preflattenDv : 0;
         const duCandidates = [fixedDu];
@@ -3194,7 +3198,7 @@
         }
 
         const f1Candidates = Array.isArray(options.preflattenF1Candidates) ?
-            options.preflattenF1Candidates : [0.70, 0.85, 1.00];
+            options.preflattenF1Candidates : [0.70, 0.75, 0.80, 0.85, 0.90, 1.00];
         const fixedDu = Number.isFinite(options.preflattenDu) ? options.preflattenDu : 0;
         const fixedDv = Number.isFinite(options.preflattenDv) ? options.preflattenDv : 0;
         const duCandidates = [fixedDu];

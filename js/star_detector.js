@@ -427,7 +427,7 @@
                     Number.isFinite(options.minPeakAboveBg) ? options.minPeakAboveBg : 4,
                     (Number.isFinite(options.scanThresholdSigma) ? options.scanThresholdSigma : 0.5) * localSigmaForScan
                 );
-                if (value < Math.max(scanThreshold, localScanThreshold) ||
+                if (value < (backgroundMap ? localScanThreshold : scanThreshold) ||
                         !isStrictLocalMaximum(pixelData, x, y, value, saturationThreshold)) {
                     continue;
                 }
@@ -447,6 +447,7 @@
                         value,
                         score: localPeakScore,
                         scanMatchedSnr,
+                        scanThreshold: backgroundMap ? localScanThreshold : scanThreshold,
                         x,
                         y,
                     };
@@ -462,7 +463,7 @@
         const requireGlobalThreshold = options.requireGlobalThreshold === true;
         const validCellPeaks = [];
         for (const peak of cellPeaks) {
-            if (!Number.isFinite(peak.value) || peak.value < scanThreshold) {
+            if (!Number.isFinite(peak.value) || peak.value < peak.scanThreshold) {
                 continue;
             }
             if (requireGlobalThreshold && peak.value < globalThreshold) {
@@ -475,9 +476,12 @@
             (b.scanMatchedSnr || 0) - (a.scanMatchedSnr || 0) ||
             b.value - a.value
         );
+        // Global brightness is not a star-likeness measure: foreground texture
+        // can outrank every faint star. Measure each cell's winner by default;
+        // an explicit budget remains available for interactive previews.
         const maxShapeCandidates = Number.isFinite(options.maxShapeCandidates) ?
             Math.max(maxDetections, Math.floor(options.maxShapeCandidates)) :
-            Math.max(900, Math.min(2200, maxDetections * 12));
+            validCellPeaks.length;
         const shapePeaks = validCellPeaks.slice(0, maxShapeCandidates);
 
         await maybeYield(

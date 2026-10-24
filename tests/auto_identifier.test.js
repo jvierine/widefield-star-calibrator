@@ -1216,6 +1216,42 @@ test("star detector accepts Float32Array processing images", async () => {
     assert.ok(result.detections[0].peakValue > 1000);
 });
 
+test("known-lens translation clips isolated mismatches inside the search radius", () => {
+    const stars = Array.from({length: 9}, (_, i) => ({key: `s${i}`, x: 30 + i * 50, y: 100, mag: 2}));
+    const detections = stars.map((star, i) => ({id: i + 1, x: star.x + 2 + (i === 8 ? 15 : 0), y: 103, score: 100}));
+    const result = AutoIdentifier.identifyStars(stars, detections, {
+        imageWidth: 500, imageHeight: 200, maxDistancePx: 20, translationSearchRadiusPx: 20,
+    });
+    assert.equal(result.rawMatches.length, 9);
+    assert.equal(result.matches.length, 8);
+    assert.ok(!result.matches.some(match => match.detection.id === 9));
+});
+
+test("star shape measurement does not discard faint cells behind a global brightness cap", async () => {
+    const image = syntheticFloatImage(444, 444, 10);
+    for (let y = 6; y < 438; y += 12) {
+        for (let x = 6; x < 438; x += 12) {
+            image.addGaussian(x, y, 1, 1, x === 6 && y === 6 ? 20 : 100);
+        }
+    }
+    const result = await StarDetector.detectBrightStars(image, {maxDetections: 1});
+    assert.ok(result.candidates.length > 900);
+    assert.ok(result.candidates.some(candidate => Math.hypot(candidate.x - 6, candidate.y - 6) < 1));
+    const preview = await StarDetector.detectBrightStars(image, {maxDetections: 1, maxShapeCandidates: 900});
+    assert.ok(preview.candidates.length <= 900);
+});
+
+test("spatial background detection is not vetoed by the global foreground threshold", async () => {
+    const image = syntheticFloatImage(256, 128, 10);
+    for (let y = 0; y < image.height; y += 1) {
+        for (let x = 0; x < 128; x += 1) image.data[y * image.width + x] = 500;
+    }
+    image.addGaussian(200, 64, 1.2, 1.2, 30);
+    const result = await StarDetector.detectBrightStars(image, {useSpatialBackground: true});
+    assert.ok(result.globalThreshold > 40);
+    assert.ok(result.candidates.some(candidate => Math.hypot(candidate.x - 200, candidate.y - 64) < 1));
+});
+
 test("star detector keeps saturated plateaus in Float32Array display-derived images", async () => {
     const rgba = syntheticGrayImage(96, 64, 20);
     rgba.addGaussian(42, 31, 1.1, 1.1, 500);
