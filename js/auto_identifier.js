@@ -1786,6 +1786,8 @@
         const height = finiteNumber(options.imageHeight, NaN);
         const margin = radius;
         const used = new Set();
+        const usedStars = new Set();
+        const pairs = [];
         const matches = [];
         let weighted = 0;
         let sumD2 = 0;
@@ -1799,20 +1801,21 @@
                     xy.y < -margin || xy.y > height - 1 + margin)) {
                 continue;
             }
-            const candidates = detectionTree.range(xy.x, xy.y, radius);
-            let best = null;
-            for (const candidate of candidates) {
-                if (!used.has(candidate.payload.id)) {
-                    best = candidate;
-                    break;
-                }
+            for (const candidate of detectionTree.range(xy.x, xy.y, radius)) {
+                pairs.push({star, xy, detection: candidate.payload, distance2: candidate.distance2});
             }
-            if (!best || best.distance2 > radius2) {
+        }
+        // Resolve competition by geometric agreement, not catalogue brightness.
+        // Otherwise a bright star can steal a nearby faint star's detection.
+        pairs.sort((a, b) => a.distance2 - b.distance2 || a.star.mag - b.star.mag);
+        for (const pair of pairs) {
+            const {star, xy, detection, distance2} = pair;
+            if (used.has(detection.id) || usedStars.has(star.key) || distance2 > radius2) {
                 continue;
             }
-            const detection = best.payload;
             used.add(detection.id);
-            const distance = Math.sqrt(best.distance2);
+            usedStars.add(star.key);
+            const distance = Math.sqrt(distance2);
             matches.push({
                 star,
                 detection,
@@ -1824,8 +1827,9 @@
                 residualDy: detection.y - xy.y,
                 distance,
             });
-            weighted += 1 + Math.max(0, 4.2 - star.mag) * 0.35;
-            sumD2 += best.distance2;
+            const significance = Math.exp(-distance2 / (2 * Math.pow(Math.max(2, radius / 3), 2)));
+            weighted += (1 + Math.max(0, 4.2 - star.mag) * 0.35) * significance;
+            sumD2 += distance2;
         }
         const rms = matches.length > 0 ? Math.sqrt(sumD2 / matches.length) : Infinity;
         return {
@@ -2039,7 +2043,9 @@
         );
         const radialMedian = median(radial);
         const sigma = Math.max(1, 1.4826 * median(radial.map(value => Math.abs(value - radialMedian))));
-        const threshold = Math.max(defaultMatchRadius(options), radialMedian + 4.0 * sigma);
+        const threshold = options.clipTranslationOutliers === true ?
+            Math.min(defaultMatchRadius(options), Math.max(3, radialMedian + 4.0 * sigma)) :
+            Math.max(defaultMatchRadius(options), radialMedian + 4.0 * sigma);
         return matches.filter(match =>
             Math.hypot(match.residualDx - dxMedian, match.residualDy - dyMedian) <= threshold
         );
@@ -2060,7 +2066,9 @@
         }
         const offset = estimateTranslation(projected, normalizedDetections, options);
         const rawMatches = greedyMatch(projected, normalizedDetections, offset, options);
-        const matches = robustFilterMatches(rawMatches, options);
+        // A known projected lens should need only a translation. Unlike rough
+        // affine asterism seeds, its residuals should not contain lens curvature.
+        const matches = robustFilterMatches(rawMatches, {...options, clipTranslationOutliers: true});
         const minMatches = Number.isFinite(options.minMatches) ? options.minMatches : 4;
         const medianDistance = matches.length ? median(matches.map(match => match.distance)) : Infinity;
         const status = matches.length >= minMatches ?
@@ -2800,7 +2808,7 @@
         }
 
         const f1Candidates = Array.isArray(options.preflattenF1Candidates) ?
-            options.preflattenF1Candidates : [0.70, 0.85, 1.00];
+            options.preflattenF1Candidates : [0.70, 0.75, 0.80, 0.85, 0.90, 1.00];
         const fixedDu = Number.isFinite(options.preflattenDu) ? options.preflattenDu : 0;
         const fixedDv = Number.isFinite(options.preflattenDv) ? options.preflattenDv : 0;
         const duCandidates = [fixedDu];
@@ -3194,7 +3202,7 @@
         }
 
         const f1Candidates = Array.isArray(options.preflattenF1Candidates) ?
-            options.preflattenF1Candidates : [0.70, 0.85, 1.00];
+            options.preflattenF1Candidates : [0.70, 0.75, 0.80, 0.85, 0.90, 1.00];
         const fixedDu = Number.isFinite(options.preflattenDu) ? options.preflattenDu : 0;
         const fixedDv = Number.isFinite(options.preflattenDv) ? options.preflattenDv : 0;
         const duCandidates = [fixedDu];

@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WISC - Widefield Star Calibrator</title>
+<link rel="stylesheet" href="style.css?v=20261002-mobile-radec">
+<link rel="stylesheet" href="phone.css?v=20261025-gear">
+</head>
+<body>
+<header class="topbar">
+    <div>
+        <h1>WISC - Widefield Star Calibrator</h1>
+        <div class="version-line">Version <span id="appVersion">loading...</span></div>
+        <div class="copyright-line" id="copyrightLine">
+            Copyright &copy; Juha Vierinen and Björn Gustavsson.
+        </div>
+        <div class="subtle shortcut-line">
+            Shortcuts:
+            <kbd>S</kbd> star picking,
+            <kbd>L</kbd> lucky auto fit,
+            <kbd>F</kbd> Nelder-Mead fit,
+            <kbd>G</kbd> Levenberg-Marquardt fit,
+            <kbd>D</kbd> delete pairing,
+            <kbd>M</kbd> mark bad detections,
+            <kbd>Z</kbd> magnifier,
+            <kbd>C</kbd> pairing/Stellarium view,
+            <kbd>X</kbd> pure image/Stellarium,
+            <kbd>N</kbd> star names,
+            <kbd>H</kbd> detected stars,
+            <kbd>K</kbd> KDE dots,
+            <kbd>T</kbd> asterism lines,
+            <kbd>A</kbd> az/el grid,
+            <kbd>R</kbd> residuals,
+            <kbd>Cmd/Ctrl Z</kbd> undo,
+            <kbd>Drag</kbd> pan image,
+            <kbd>Wheel</kbd> zoom image,
+            <kbd>Cmd/Ctrl drag</kbd> adjust lens,
+            <kbd>⌘/Ctrl + Shift + drag ↔</kbd> rotate lens (normal click),
+            <kbd>Cmd/Ctrl Wheel</kbd> scale lens,
+            <kbd>Esc</kbd> cancel.
+        </div>
+    </div>
+    <div class="top-actions">
+        <button id="phoneModeToggle" class="top-link" type="button" aria-pressed="false">Phone mode</button>
+        <a class="top-link" href="https://github.com/jvierine/widefield-star-calibrator" target="_blank" rel="noopener">GitHub</a>
+        <a class="top-link" href="help.html" target="_blank" rel="noopener">Help</a>
+        <button id="toggleAmbientMusic" class="audio-button" type="button" aria-label="Play ambient sky music">
+            <span class="audio-icon" aria-hidden="true"></span>
+        </button>
+        <label class="file-button">
+            Load image
+            <input id="imageFile" type="file" accept="image/png,image/jpeg,image/jpg,image/heic,image/heif,image/fits,application/fits,application/fits-image,.heic,.heif,.fits,.fit,.fts">
+        </label>
+    </div>
+</header>
+
+<main class="layout">
+    <section class="viewer-panel" id="viewerPanel">
+        <button id="settingsToggle" class="settings-toggle" type="button" aria-label="Open settings" aria-controls="settingsPanel" aria-expanded="false">⚙</button>
+        <canvas id="glCanvas" tabindex="0"></canvas>
+        <div class="cardinal-layer" id="cardinalLayer" aria-hidden="true"></div>
+        <div class="view-zoom-controls" role="group" aria-label="Image zoom controls">
+            <button id="viewZoomOut" type="button" title="Zoom out" aria-label="Zoom out">&minus;</button>
+            <button id="viewZoomReset" type="button" title="Fit the whole image in the viewer">Fit</button>
+            <output id="viewZoomValue" aria-live="polite">1.0&times;</output>
+            <button id="viewZoomIn" type="button" title="Zoom in" aria-label="Zoom in">+</button>
+        </div>
+        <div id="starPickingLegend" class="star-picking-legend" role="dialog" aria-label="Star picking legend" hidden>
+            <div id="starPickingLegendHeader" class="star-picking-legend-header">
+                <h2>Star Picking</h2>
+                <button id="starPickingLegendClose" class="panel-close" type="button" aria-label="Close star picking help">×</button>
+            </div>
+            <div class="legend-row">
+                <span class="legend-circle legend-circle-green" aria-hidden="true"></span>
+                <span>green circle = star in image associated with star in catalogue</span>
+            </div>
+            <div class="legend-row">
+                <span class="legend-circle legend-circle-red" aria-hidden="true"></span>
+                <span>red circle = star in catalogue not yet associated with star in image</span>
+            </div>
+            <div class="star-picking-help-line">
+                <kbd>S</kbd> + click selects an image star; then click the matching red catalogue star.
+                You might need to scan around a bit to find the star you are looking for.
+            </div>
+            <div class="star-picking-help-line">
+                Wheel zooms and drag pans the image. Hold Cmd/Ctrl while using the wheel or dragging to adjust the lens model. On a Mac trackpad, hold ⌘ + Shift before a normal click-and-drag left/right to rotate the lens; no right-click needed.
+            </div>
+            <div class="star-picking-help-line">
+                <kbd>X</kbd> toggles between the star catalogue view and the image, which is useful while checking a match.
+            </div>
+        </div>
+        <div class="residual-histogram" id="residualHistogram" aria-hidden="true"></div>
+        <canvas id="zoomCanvas" class="zoom-canvas" width="100" height="100" aria-hidden="true"></canvas>
+        <div id="zoomCoordinateReadout" class="zoom-coordinate-readout" aria-hidden="true"></div>
+        <div id="densityPopup" class="density-popup" aria-hidden="true">
+            <div class="density-popup-header">
+                <div>
+                    <div class="density-popup-title">KDE Centroid</div>
+                    <div id="densityPopupSubtitle" class="density-popup-subtitle"></div>
+                </div>
+                <button id="densityPopupClose" type="button" aria-label="Close density estimate">Close</button>
+            </div>
+            <canvas id="densityCanvas" width="320" height="220"></canvas>
+        </div>
+        <div class="hint" id="canvasHint">Drop or load a PNG/JPEG/HEIC/FITS calibration frame.</div>
+        <div class="loading-overlay" id="loadingOverlay" aria-hidden="true">
+            <div class="loading-box">
+                <div id="loadingText">Loading image...</div>
+                <div class="loading-track"><div class="loading-bar" id="loadingBar"></div></div>
+            </div>
+        </div>
+    </section>
+
+    <button id="settingsBackdrop" class="settings-backdrop" type="button" tabindex="-1" aria-label="Close settings" hidden></button>
+    <aside class="controls" id="settingsPanel" aria-label="Calibration settings">
+        <button id="settingsClose" class="settings-close" type="button" aria-label="Close settings">Close settings ×</button>
+        <section>
+            <h2>Observation</h2>
+            <label>Platform
+                <select id="observerMode"><option value="ground">Ground camera</option><option value="spacecraft">Spacecraft</option></select>
+            </label>
+            <div id="spacecraftControls" hidden>
+                <div class="grid2">
+                    <label>ECEF X (km)<input id="spaceX" type="number" step="0.001"></label>
+                    <label>ECEF Y (km)<input id="spaceY" type="number" step="0.001"></label>
+                    <label>ECEF Z (km)<input id="spaceZ" type="number" step="0.001"></label>
+                    <label>Horizontal FOV (deg)<input id="spaceFov" type="number" value="10" min="0.01" max="179" step="0.01"></label>
+                </div>
+                <label>Look direction, ECEF X Y Z<input id="spaceLook" type="text" value="0 0 -1"></label>
+                <label>Image up, ECEF X Y Z<input id="spaceUp" type="text" value="0 0 1"></label>
+                <button id="initializeSpacecraft" type="button">Initialize spacecraft lens</button>
+                <button id="fitSpacecraftDisc" type="button">Fit Earth disc</button>
+                <label>Restore picked stars (fit HDF5 or results ZIP)
+                    <input id="restoreSpacecraftStars" type="file" accept=".h5,.hdf5,.zip">
+                </label>
+                <small>Star pairs and lens settings are saved locally for this frame. Brown fits refine k1; higher-order coefficients stay fixed.</small>
+                <label class="checkbox-label" title="Predicted WGS84 surface limb; auroral emission is above this surface">
+                    <input id="showEarthLimb" type="checkbox" checked>Earth outline
+                </label>
+                <label class="checkbox-label" title="Leave off while solving the camera geometry">
+                    <input id="hideOccultedStars" type="checkbox">Hide Earth-occulted stars
+                </label>
+                <button id="returnSpacecraft" type="button" hidden>Return calibration to SMILE</button>
+                <output id="spacecraftStatus"></output>
+            </div>
+            <label>UTC timestamp
+                <input id="timestampUtc" type="datetime-local" step="0.001">
+            </label>
+            <div class="grid2">
+                <label>Latitude deg
+                    <input id="latDeg" type="number" step="0.0001" value="69.348">
+                </label>
+                <label>Longitude deg
+                    <input id="lonDeg" type="number" step="0.0001" value="20.363">
+                </label>
+            </div>
+            <label>Altitude m
+                <input id="altM" type="number" step="1" value="0">
+            </label>
+            <button id="sendGaiaCalibration" class="primary-action" type="button" hidden>Save lens model to GAIA</button>
+            <button id="luckyFit" class="primary-action" type="button">I'm feeling lucky... (L)</button>
+            <label>Export language
+                <select id="exportLanguage">
+                    <option value="python" selected>Python</option>
+                    <option value="julia">Julia</option>
+                    <option value="c">C</option>
+                    <option value="matlab">MATLAB</option>
+                </select>
+            </label>
+            <div class="button-row">
+                <button id="copyOptpar" type="button">Copy optpar</button>
+                <button id="downloadFitHdf5" type="button">Download fit HDF5</button>
+                <button id="downloadSpacecraftSessions" type="button">Download all saved spacecraft star picks</button>
+            </div>
+            <div class="button-row button-row-2">
+                <button id="downloadAzElHdf5" type="button">Download az/el HDF5</button>
+                <button id="downloadFitReport" type="button">Download results</button>
+            </div>
+        </section>
+
+        <section>
+            <h2>Stars</h2>
+            <div class="button-row button-row-2 phone-only">
+                <button id="phonePickStar" type="button" aria-pressed="false">Pick stars</button>
+                <button id="phonePan" type="button">Pan / cancel pick</button>
+            </div>
+            <label>Star catalogue
+                <select id="starCatalog">
+                    <option value="yale" selected>Yale Bright Star</option>
+                    <option value="tycho2">Tycho-2 VT &lt; 8</option>
+                    <option value="td1">TD-1 far UV · 156.5 nm</option>
+                </select>
+            </label>
+            <label>Image brightness <span id="brightnessValue">0.06</span>
+                <input id="brightness" type="range" min="-1" max="1" value="0.06" step="0.01">
+            </label>
+            <label>Image contrast <span id="contrastValue">1.00</span>
+                <input id="contrast" type="range" min="0.1" max="4" value="1" step="0.01">
+            </label>
+            <label>Display clipping <span id="displayClipMaxValue">5%</span>
+                <input id="displayClipMax" type="range" min="0" max="50" value="5" step="1">
+            </label>
+            <label class="checkbox-label">
+                <input id="highPassImage" type="checkbox" checked>
+                <span>High-pass image</span>
+            </label>
+            <label>High-pass Gaussian width <span id="highPassWidthValue">100</span> px
+                <input id="highPassWidth" type="range" min="10" max="300" value="100" step="5">
+            </label>
+            <label>Limiting magnitude <span id="magValue">4.0</span>
+                <input id="maxMag" type="range" min="2" max="8" value="4" step="0.1">
+            </label>
+            <div class="button-row">
+                <button id="flipX" type="button" title="Negate lens-model f1">Flip model X (f1 sign)</button>
+                <button id="flipY" type="button" title="Negate lens-model f2">Flip model Y (f2 sign)</button>
+                <button id="resetOffset" type="button">Reset pointing</button>
+            </div>
+            <div class="button-row button-row-2">
+                <button id="flipImageX" type="button">Flip image horizontally</button>
+                <button id="flipImageY" type="button">Flip image vertically</button>
+            </div>
+            <button id="toggleRaDecGrid" type="button" title="Celestial coordinate grid using the same pointing, lens and frame ephemeris as the stars">Show RA/Dec grid</button>
+            <button id="toggleAzElGrid" type="button">Hide az/el grid</button>
+            <button id="toggleDetectionCircles" type="button">Stellarium view (C)</button>
+            <button id="toggleStarNames" type="button">Show star names (N)</button>
+        </section>
+
+        <section>
+            <h2>Camera</h2>
+            <div class="grid2">
+                <label>Optical model
+                    <select id="optmod">
+                        <option value="1">AIDA rectilinear/pinhole (optmod 1)</option>
+                        <option value="2" selected>AIDA sinusoidal radial (optmod 2)</option>
+                        <option value="3">AIDA hybrid tan/theta radial (optmod 3)</option>
+                        <option value="4">AIDA power equidistant (optmod 4)</option>
+                        <option value="5">AIDA scaled rectilinear (optmod 5)</option>
+                        <option value="6">AIDA simple equisolid (optmod 6)</option>
+                        <option value="12">AIDA unified radial (optmod 12)</option>
+                        <option value="20">Brown-Conrady</option>
+                    </select>
+                </label>
+                <label>Horizontal focal f1
+                    <input id="fScaleX" type="number" value="1.0" step="0.01">
+                </label>
+                <label>Vertical focal f2
+                    <input id="fScaleY" type="number" value="1.0" step="0.01">
+                </label>
+            </div>
+            <label>Alpha deg
+            <input id="rotAlpha" type="range" min="-90" max="90" value="0" step="0.001">
+            </label>
+            <label>Beta deg
+            <input id="rotBeta" type="range" min="-90" max="90" value="0" step="0.001">
+            </label>
+            <label>Gamma deg
+            <input id="rotGamma" type="range" min="-180" max="180" value="0" step="0.001">
+            </label>
+            <div class="rotation-widget">
+                <canvas id="rotationCanvas" width="280" height="180" aria-label="3D camera rotation visualization"></canvas>
+            </div>
+            <div class="grid2">
+                <label>du
+                    <input id="du" type="number" value="0" step="0.001">
+                </label>
+                <label>dv
+                    <input id="dv" type="number" value="0" step="0.001">
+                </label>
+            </div>
+            <label><span id="radialAlphaLabel">Radial alpha / Brown k1</span>
+                <input id="radialAlpha" type="number" value="0.35" step="0.01">
+            </label>
+            <div id="brownConradyParams" class="grid2" hidden>
+                <label>Brown k2
+                    <input id="brownK2" type="number" value="0" step="0.001">
+                </label>
+                <label>Brown k3
+                    <input id="brownK3" type="number" value="0" step="0.001">
+                </label>
+                <label>Brown p1
+                    <input id="brownP1" type="number" value="0" step="0.0001">
+                </label>
+                <label>Brown p2
+                    <input id="brownP2" type="number" value="0" step="0.0001">
+                </label>
+            </div>
+            <div id="lensEquation" class="lens-equation"></div>
+            <button id="closeAssociateFit" type="button">Auto-associate close lens fit (P)</button>
+            <button id="fitLens" type="button">Fit lens with Nelder-Mead (F)</button>
+            <button id="fitLensLm" type="button">Fit lens with Levenberg-Marquardt (G)</button>
+            <button id="undoFit" type="button" disabled>Undo</button>
+            <div id="localTestCaseTools" hidden>
+                <label>Submit pass key
+                    <input id="submitPassKey" type="password" autocomplete="off" placeholder="Required for server submission">
+                </label>
+                <button id="submitTestCase" type="button">Submit as test case</button>
+                <div id="saveFeedback" class="save-feedback" aria-live="polite" hidden></div>
+                <div id="testCaseQuickLink" class="quick-link-box" hidden>
+                    <label>Quick link
+                        <input id="testCaseQuickLinkInput" type="text" readonly>
+                    </label>
+                    <button id="copyTestCaseQuickLink" type="button">Copy quick link</button>
+                </div>
+                <label>Load test case
+                    <select id="testCaseSelect">
+                        <option value="">Select saved test case...</option>
+                    </select>
+                </label>
+                <button id="loadTestCase" type="button">Load selected test case</button>
+            </div>
+            <button id="toggleFitResiduals" type="button">Show fit residual view (R)</button>
+            <button id="clearMatches" type="button">Remove star pairings</button>
+        </section>
+
+        <section>
+            <h2>Status</h2>
+            <div id="matchInstructions" class="match-instructions">
+                Hold s and click an image star to start a matched pair.
+            </div>
+            <pre id="status">No image loaded.</pre>
+        </section>
+    </aside>
+</main>
+
+<script src="js/star_catalog.js?v=20260523b"></script>
+<script>
+window.MathJax = {
+    tex: {inlineMath: [["\\(", "\\)"], ["$", "$"]]},
+    startup: {typeset: false}
+};
+</script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic-to@1.3.0/dist/iife/heic-to.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="js/project_metadata.js?v=20260526a"></script>
+<script src="js/aidatools.js?v=20261001-forward-fit-071"></script>
+<script src="js/centroid.js?v=20260813-low-resolution-selection"></script>
+<script src="js/display_stretch.js?v=20260710-percentile-clipping"></script>
+<script src="js/az_el_grid.js?v=20260710-pixel-corners"></script>
+<script src="js/celestial_grid.js?v=20261002-spacecraft-radec"></script>
+<script src="js/miracle_export.js?v=20260810-equisolid-parameter-row"></script>
+<script src="js/export_generators.js?v=20260810-equisolid-optmod6"></script>
+<script src="js/catalogs.js?v=20260527a"></script>
+<script src="js/yale_asterism_index.js?v=20260528a"></script>
+<script src="js/star_detector.js?v=20260603-float32-dynamic-range"></script>
+<script src="js/auto_identifier.js?v=20260526a"></script>
+<script src="js/aida_config.js?v=20260603a"></script>
+<script src="js/view_zoom.js?v=20260818-gesture-modifiers"></script>
+<script src="js/spacecraft.js?v=20261001-forward-fit-071"></script>
+<script src="js/spacecraft_sessions.js?v=20261002-sequence-export"></script>
+<script type="module" src="js/start_rust_app.js"></script>
+<script src="js/phone_mode.js?v=20261025-gear"></script>
+</body>
+</html>

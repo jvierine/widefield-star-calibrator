@@ -368,28 +368,25 @@ function matlabCameraModel(az, ze, optpar, optmod, width, height) {
 }
 
 function pythonCameraModel(cases) {
-    const python = process.env.PYTHON || "/opt/miniconda3/bin/python";
+    const python = process.env.PYTHON || "python3";
     const script = `
 import json
 import sys
 from pathlib import Path
-import numpy as np
+import math
 
-python_dir = Path.cwd().parent / "python"
-sys.path.insert(0, str(python_dir))
-from aida_tools_py.camera import camera_model
+sys.path.insert(0, str(Path.cwd()))
+from wisc_lens import az_el_to_pixel
 
 cases = json.loads(sys.stdin.read())
 out = []
 for case in cases:
-    u, v = camera_model(
-        np.array([case["az"]], dtype=float),
-        np.array([case["ze"]], dtype=float),
-        np.array(case["optpar"], dtype=float),
-        int(case["optmod"]),
-        (int(case["height"]), int(case["width"])),
+    u, v = az_el_to_pixel(
+        math.degrees(case["az"]), 90 - math.degrees(case["ze"]),
+        case["optpar"], case["width"], case["height"], optmod=case["optmod"],
     )
-    out.append({"x": float(u[0]), "y": float(v[0])})
+    # Preserve the AIDA/Matlab one-based reference convention for this test.
+    out.append({"x": u + 1, "y": v + 1})
 print(json.dumps(out))
 `;
     const result = childProcess.spawnSync(

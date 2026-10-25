@@ -7,21 +7,26 @@ bindir=${BINDIR:-"$prefix/bin"}
 command_name=${COMMAND_NAME:-wisc}
 target="$bindir/$command_name"
 
-if ! command -v node >/dev/null 2>&1; then
-    echo "error: node is required but was not found in PATH" >&2
+if ! command -v cargo >/dev/null 2>&1 && ! command -v rustup >/dev/null 2>&1; then
+    echo "error: Rust cargo is required but was not found in PATH" >&2
     exit 1
 fi
-
-if [ ! -d "$repo_root/node_modules" ]; then
-    echo "Installing Node dependencies..."
-    (cd "$repo_root" && npm install)
+cargo_home_dir=${CARGO_HOME:-"$HOME/.cargo"}
+if [ -x "$cargo_home_dir/bin/cargo" ]; then
+    cargo_bin="$cargo_home_dir/bin/cargo"
+elif command -v rustup >/dev/null 2>&1; then
+    cargo_bin=$(rustup which --toolchain stable cargo)
+else
+    cargo_bin=$(command -v cargo)
 fi
 
-mkdir -p "$bindir"
-chmod +x "$repo_root/bin/wisc"
-ln -sf "$repo_root/bin/wisc" "$target"
+echo "Building the native Rust calibrator..."
+(cd "$repo_root" && "$cargo_bin" build --locked --release -p wisc-cli)
 
-echo "Installed $command_name -> $repo_root/bin/wisc"
+mkdir -p "$bindir"
+install -m 0755 "$repo_root/target/release/wisc" "$target"
+
+echo "Installed native Rust executable: $target"
 echo "Install directory: $bindir"
 
 case ":$PATH:" in
@@ -35,4 +40,5 @@ esac
 
 echo
 echo "Try:"
-echo "  $command_name calibration_images/IMG_9953.HEIC --optpar-out calibration.json --code python"
+echo "  $command_name --help"
+echo "  $command_name fit fit-job.json --output calibration.json --residual-plot residuals.pdf"

@@ -1,0 +1,20 @@
+[package]
+name = "wisc-core"
+version = "0.1.0"
+edition = "2021"
+license = "CC-BY-4.0"
+description = "Shared native and WebAssembly calibration core for WISC"
+
+[dependencies]
+chrono = { version = "=0.4.38", default-features = false, features = ["std"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+heic-rs = { version = "=0.1.4", default-features = false }
+hdf5-pure = "=0.47.0"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+kamadak-exif = "=0.6.1"
+nalgebra = "0.33"
+ndarray = "0.16"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "=0.10.9"
+zip = { version = "=6.0.0", default-features = false, features = ["deflate-flate2"] }

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>WISC - Widefield Star Calibrator</title>
+<link rel="stylesheet" href="rust_ui_harness.css">
+</head>
+<body>
+<header class="topbar">
+<div><h1>WISC - Widefield Star Calibrator</h1><div class="version-line">Rust / WebAssembly</div>
+<div class="copyright-line">Copyright © Juha Vierinen and Björn Gustavsson.</div>
+<div class="subtle shortcut-line"><kbd>Drag</kbd> pan · <kbd>Wheel</kbd> zoom · <kbd>Ctrl/⌘ drag</kbd> point lens · <kbd>Shift</kbd> roll · <kbd>C</kbd> sky · <kbd>N</kbd> names · <kbd>R</kbd> residuals</div></div>
+<div class="top-actions"><a class="top-link" href="https://github.com/jvierine/widefield-star-calibrator">GitHub</a><a class="top-link" href="help.html">Help</a>
+<button id="phoneModeToggle" class="top-link" type="button" aria-pressed="false">Phone mode</button>
+<label class="file-button">Load image <input id="imageFile" type="file" accept="image/png,image/jpeg,image/heic,image/heif,.heic,.heif,.fits,.fit,.fts"></label></div>
+</header>
+<main class="layout">
+<section class="viewer-panel" id="viewerPanel" aria-label="Calibration viewer">
+<div class="image-panel" id="imagePanel"><canvas id="glCanvas" width="960" height="540" tabindex="0" aria-label="WebGL calibration image"></canvas><canvas id="starLabels" aria-label="Catalogue star names"></canvas></div>
+<div class="view-zoom-controls" role="group" aria-label="Image zoom controls"><button id="zoomOut" type="button">−</button><button id="resetView" type="button">Fit</button><output id="zoomValue">1.0×</output><button id="zoomIn" type="button">+</button></div>
+<button id="settingsToggle" class="settings-toggle" type="button" aria-label="Open settings" aria-controls="settingsPanel" aria-expanded="false">⚙</button>
+<div class="hint" id="canvasHint">Drop or load a PNG/JPEG/HEIC/FITS calibration frame.</div>
+<div class="viewer-readout"><output id="viewStatus">Zoom 1.00×</output><output id="status" aria-live="polite">Loading Rust/WASM…</output></div>
+<canvas id="magnifierCanvas" width="288" height="288" hidden aria-label="Six times magnified cursor view"></canvas>
+</section>
+<button id="settingsBackdrop" class="settings-backdrop" type="button" tabindex="-1" aria-label="Close settings" hidden></button>
+<aside class="controls" id="settingsPanel" aria-label="Calibration settings">
+<button id="settingsClose" class="settings-close" type="button" aria-label="Close settings">Close settings ×</button>
+<section><h2>Observation</h2>
+<label>UTC <input id="utc" type="datetime-local" step="0.001"></label><div class="grid2"><label>Latitude [°] <input id="latitude" type="number" min="-90" max="90" step="any" value="0"></label>
+<label>Longitude [°] <input id="longitude" type="number" min="-180" max="180" step="any" value="0"></label></div><label>Altitude [m] <input id="altitude" type="number" step="any" value="0"></label>
+<button class="primary-action" id="autoFit" type="button">Match stars and fit</button><label>Compatibility export <select id="exportLanguage"><option value="python">Python</option><option value="julia">Julia</option><option value="matlab">MATLAB</option><option value="c">C</option></select></label><div class="button-row button-row-2"><button id="copyParameters" type="button">Copy optpar</button>
+<button id="downloadMapper" type="button">Download standalone mapper</button></div><div class="button-row button-row-2"><button id="downloadHdf5" type="button">Download calibration HDF5</button>
+<button id="downloadReport" type="button">Download complete report ZIP</button></div>
+<details><summary>GAIA handoff</summary><output id="gaiaStatus" aria-live="polite">Open from GAIA to load a camera or event image. Nothing is uploaded automatically.</output><button id="sendGaia" type="button" disabled>Send fitted calibration to GAIA</button></details>
+</section>
+<section><h2>Stars</h2>
+<label>Catalogue <select id="starCatalogue"><option value="tycho2">Tycho-2 visual</option><option value="yale">Yale named bright stars</option><option value="td1">TD1 UV (AB at 156.5 nm)</option></select></label><label>Brightness <input id="brightness" type="range" min="-1" max="1" step="0.01" value="0"></label><label>Contrast <input id="contrast" type="range" min="0.1" max="10" step="0.1" value="1"></label><label>Percentile clipping [% total] <input id="displayClip" type="number" min="0" max="50" step="0.5" value="0"></label><label class="checkbox-label"><input id="highPass" type="checkbox">High-pass display</label><label>Gaussian width [px] <input id="highPassSigma" type="number" min="0.1" max="300" step="0.1" value="8"></label><label>Magnitude limit <input id="magnitude" type="number" step="0.1" value="5" min="-2" max="8"></label>
+<div class="button-row"><button id="flipModelX" type="button">Flip model X</button><button id="flipModelY" type="button">Flip model Y</button><button id="resetPointing" type="button">Reset pointing to zenith</button></div>
+<div class="grid2"><label class="checkbox-label"><input id="imageFlipX" type="checkbox">Flip image horizontally</label>
+<label class="checkbox-label"><input id="imageFlipY" type="checkbox">Flip image vertically</label></div><button id="toggleImage" type="button">Image / Stellarium view (C)</button><div class="grid2"><label class="checkbox-label"><input id="showCelestial" type="checkbox">J2000 RA/Dec grid</label>
+<label class="checkbox-label"><input id="showGrid" type="checkbox">Azimuth/zenith grid (A)</label>
+<label class="checkbox-label"><input id="showNames" type="checkbox">Star names (N)</label>
+<label class="checkbox-label"><input id="showDetections" type="checkbox" checked>Detected stars (H)</label></div><button id="toggleMarkers" type="button">Detections (H)</button>
+<label>Catalogue star <select id="catalogStar" aria-label="Catalogue star"><option value="">Set time and site first</option></select></label><p class="subtle">Select a catalogue star, then click its image position. Drag or pinch to move the view.</p>
+<label class="checkbox-label"><input id="kdePick" type="checkbox" checked>40× KDE subpixel picking</label><label class="checkbox-label"><input id="magnifier" type="checkbox">Cursor magnifier (or hold S)</label><label class="checkbox-label"><input id="maskMode" type="checkbox">Click to mask 128×128 detection tiles</label><button id="clearMask" type="button">Clear detection mask</button>
+</section>
+<section><h2>Camera</h2>
+<label>Model <select id="model"><option value="1">1 · Pinhole</option><option value="2" selected>2 · Sine</option><option value="3">3 · Mixed</option><option value="4">4 · Power</option><option value="5">5 · Tangent</option><option value="6">6 · Equisolid</option><option value="12">12 · Unified</option><option value="20">20 · Brown–Conrady</option></select></label><div class="grid2"><label>Focal X <input id="focalX" type="number" step="any" value="1"></label>
+<label>Focal Y <input id="focalY" type="number" step="any" value="1.333333"></label></div><label>α [°] <input id="alpha" type="number" step="any" value="0"></label><label>β [°] <input id="beta" type="number" step="any" value="0"></label><label>γ [°] <input id="gamma" type="number" step="any" value="0"></label><div class="grid2"><label>Centre offset X <input id="offsetX" type="number" step="any" value="0"></label>
+<label>Centre offset Y <input id="offsetY" type="number" step="any" value="0"></label></div><label>Radial α / Brown k₁ <input id="radial" type="number" step="any" value="0.35"></label>
+<div id="brownFields" class="grid2" hidden><label>Brown k₂ <input id="brownK2" type="number" step="any" value="0"></label><label>Brown k₃ <input id="brownK3" type="number" step="any" value="0"></label><label>Brown p₁ <input id="brownP1" type="number" step="any" value="0"></label><label>Brown p₂ <input id="brownP2" type="number" step="any" value="0"></label></div>
+<label>Match radius [px] <input id="matchRadius" type="number" step="1" value="12" min="1"></label><button id="applyControls" type="button">Apply camera settings and update catalogue</button><button id="triangleFit" type="button">Find pointing with triangles</button><button id="fitPairs" type="button">Fit lens with Nelder–Mead (F)</button><button id="fitPairsLm" type="button">Fit lens with Levenberg–Marquardt (G)</button><button id="undo" type="button">Undo</button><label class="checkbox-label"><input id="showResiduals" type="checkbox">Residual vectors ×20 (R)</label><button id="clearPairs" type="button">Remove star pairings</button>
+</section>
+<section><h2>Status</h2>
+<output id="pairCount" class="match-instructions">0 pairs</output><output id="imageMetadata"></output>
+<canvas id="residualPlot" width="560" height="560" aria-label="Rustplotlib residual plot"></canvas>
+<details><summary>KDE centroid</summary><output id="densityInfo">Pick a star to inspect its density.</output><div class="density-panel"><canvas id="densityPlot" aria-label="Rustplotlib KDE density"></canvas><canvas id="densityAxes" aria-label="KDE axes and colorbar"></canvas></div></details>
+</section>
+<section><h2>Files and sessions</h2>
+<label>FITS byte order (on load) <select id="fitsByteOrder"><option value="auto">Automatic legacy detection</option><option value="big">Standard big endian</option><option value="little">Nonstandard little endian (16-bit)</option></select></label><label class="file">Import calibration/session/report <input id="jobFile" type="file" accept="application/json,.json,.h5,.hdf5,.zip"></label><output id="sessionStatus" aria-live="polite"></output>
+<button id="restoreSession" type="button" disabled>Restore local session</button><div class="button-row button-row-2"><button id="downloadSession" type="button">Download full session</button>
+<button id="downloadLegacy" type="button">Download legacy metadata</button></div><div class="button-row button-row-2"><button id="download" type="button">Download calibration</button>
+<button id="downloadMiracle" type="button">Download MIRACLE approximations</button></div><button id="downloadResiduals" type="button">Download Rustplotlib residual plot</button><label>Map sampling step [px] <input id="mapStep" type="number" min="1" max="4096" step="1" value="4"></label><button id="downloadMap" type="button">Download az/el FITS map</button><button id="downloadHdf5Map" type="button">Download full pixel-corner HDF5 map</button>
+<details><summary>Display gamma</summary><label>Display gamma <input id="gammaDisplay" type="range" min="0.1" max="4" step="0.1" value="1"></label></details>
+<details><summary>Calibration JSON</summary><textarea id="fitJob" spellcheck="false" aria-label="Calibration fit JSON">{
+  "initial": {"width": 1024, "height": 768, "model": 2, "optpar": [1.0,1.333333,0,0,0,0,0,0.35]},
+  "pairs": []
+}</textarea></details>
+<details><summary>Server test cases and sharing</summary><div class="button-row button-row-2"><button id="reloadCases" type="button">List saved cases</button>
+<button id="loadHosted" type="button">Load selected case</button></div>
+<label>Saved case <select id="hostedCase" aria-label="Saved case"></select></label><label>Case ID <input id="caseId" type="text" autocomplete="off"></label><label>Title <input id="caseTitle" type="text"></label><label>Submission passkey <input id="submitPasskey" type="password" autocomplete="off"></label><button id="submitHosted" type="button">Submit image and calibration</button><label>Share link <input id="shareLink" type="text" readonly></label>
+<output id="hostedStatus" aria-live="polite">Nothing is uploaded automatically.</output></details>
+</section>
+</aside>
+</main>
+<script type="module" src="../../web/bootstrap.js"></script>
+</body>
+</html>

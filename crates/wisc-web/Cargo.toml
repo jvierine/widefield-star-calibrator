@@ -1,0 +1,31 @@
+[package]
+name = "wisc-web"
+version = "0.1.0"
+edition = "2021"
+license = "CC-BY-4.0"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "=0.22.1"
+js-sys = "0.3"
+rustplotlib-web = { package = "rustplotlib-web", git = "https://github.com/jvierine/rustplotlib.git", rev = "80c0d481b828f96d2018f394354991d6eaa5bc44" }
+serde_json = "1"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+wisc-core = { path = "../wisc-core" }
+
+[dependencies.web-sys]
+version = "0.3"
+features = [
+  "Blob", "Document", "DomRect", "Event", "File", "FileList", "FileReader",
+  "HtmlAnchorElement", "HtmlOptionElement", "HtmlSelectElement", "MouseEvent", "Url",
+  "HtmlButtonElement", "HtmlCanvasElement", "HtmlElement", "HtmlInputElement",
+  "HtmlTextAreaElement", "WheelEvent", "AddEventListenerOptions", "KeyboardEvent",
+  "CanvasRenderingContext2d", "ImageData", "WebGl2RenderingContext", "WebGlBuffer", "WebGlProgram",
+  "WebGlShader", "WebGlTexture", "Window", "console", "Storage", "Location",
+  "UrlSearchParams", "Request", "RequestInit", "RequestMode", "RequestCredentials",
+  "Response", "Headers", "FormData", "BlobPropertyBag", "Navigator", "Clipboard",
+  "DragEvent", "DataTransfer", "TouchEvent", "TouchList", "Touch", "DomTokenList"
+]
