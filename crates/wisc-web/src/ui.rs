@@ -1,8 +1,7 @@
 use super::*;
 use web_sys::{HtmlAnchorElement, HtmlOptionElement, HtmlSelectElement, MouseEvent};
 use wisc_core::workflow::{
-    automatic_fit_preserving, parse_job, tycho_catalog, visible_catalog, CalibrationDocument,
-    FitJob, Observation,
+    automatic_fit_preserving, parse_job, visible_catalog, CalibrationDocument, FitJob, Observation,
 };
 use wisc_core::{default_optpar, OpticalModel};
 
@@ -10,7 +9,7 @@ pub(super) fn read_job() -> Result<FitJob, JsValue> {
     parse_job(&element::<HtmlTextAreaElement>("fitJob")?.value()).map_err(js_error)
 }
 
-fn write_job(job: &FitJob) -> Result<(), JsValue> {
+pub(super) fn write_job(job: &FitJob) -> Result<(), JsValue> {
     element::<HtmlTextAreaElement>("fitJob")?.set_value(
         &serde_json::to_string_pretty(job).map_err(|error| js_error(error.to_string()))?,
     );
@@ -26,7 +25,7 @@ fn input_number(id: &str) -> Result<f64, JsValue> {
     }
 }
 
-fn controls_from_job(job: &FitJob) -> Result<(), JsValue> {
+pub(super) fn controls_from_job(job: &FitJob) -> Result<(), JsValue> {
     if let Some(observation) = &job.observation {
         let date = js_sys::Date::new(&JsValue::from_f64(observation.unix_millis as f64));
         let iso = String::from(date.to_iso_string());
@@ -65,7 +64,7 @@ fn controls_from_job(job: &FitJob) -> Result<(), JsValue> {
     Ok(())
 }
 
-fn sync_observation(job: &mut FitJob) -> Result<(), JsValue> {
+pub(super) fn sync_observation(job: &mut FitJob) -> Result<(), JsValue> {
     let utc = element::<HtmlInputElement>("utc")?.value();
     if utc.is_empty() {
         return Ok(());
@@ -104,7 +103,17 @@ fn ensure_dimensions(app: &App, job: &FitJob) -> Result<(), JsValue> {
     }
 }
 
-fn refresh_overlay(app: &mut App, job: &FitJob) -> Result<(), JsValue> {
+pub(super) fn refresh_overlay(app: &mut App, job: &FitJob) -> Result<(), JsValue> {
+    let kind = element::<HtmlSelectElement>("starCatalogue")?.value();
+    if app.catalog_kind != kind {
+        app.catalog = wisc_core::catalogues::load(&kind).map_err(js_error)?;
+        app.catalog_kind = kind;
+    }
+    element::<HtmlInputElement>("magnitude")?.set_max(match app.catalog_kind.as_str() {
+        "td1" => "13",
+        "yale" => "7",
+        _ => "8",
+    });
     app.catalog_points.clear();
     app.pair_points = job
         .pairs
@@ -116,7 +125,10 @@ fn refresh_overlay(app: &mut App, job: &FitJob) -> Result<(), JsValue> {
     selector.set_text_content(None);
     if let Some(observation) = &job.observation {
         app.sky = visible_catalog(
-            &tycho_catalog().map_err(js_error)?,
+            &app.catalog
+                .iter()
+                .map(|e| e.star.clone())
+                .collect::<Vec<_>>(),
             observation,
             input_number("magnitude")?,
         )
@@ -139,8 +151,8 @@ fn refresh_overlay(app: &mut App, job: &FitJob) -> Result<(), JsValue> {
                 .dyn_into::<HtmlOptionElement>()?;
             option.set_value(&index.to_string());
             option.set_text(&format!(
-                "Tycho row {} · mag {:.1} · x {:.0}, y {:.0}",
-                star.catalog_index, star.magnitude, pixel[0], pixel[1]
+                "{} · mag {:.1} · x {:.0}, y {:.0}",
+                app.catalog[star.catalog_index].name, star.magnitude, pixel[0], pixel[1]
             ));
             selector.append_child(&option)?;
         }
@@ -151,18 +163,29 @@ fn refresh_overlay(app: &mut App, job: &FitJob) -> Result<(), JsValue> {
         app.catalog_points.len()
     )));
     app.draw();
+    persistence::autosave(app);
     Ok(())
 }
 
 pub(super) fn import_job(app: &mut App, source: &[u8]) -> Result<(), JsValue> {
+    if let Some(session) = wisc_core::products::read_session(source).map_err(js_error)? {
+        return persistence::restore(app, session);
+    }
     let job = wisc_core::products::import_job(source).map_err(js_error)?;
     ensure_dimensions(app, &job)?;
+    let metadata = wisc_core::products::source_metadata(source).map_err(js_error)?;
+    wisc_core::session::validate_metadata(&metadata, job.initial.width, job.initial.height)
+        .map_err(js_error)?;
     if let Ok(previous) = read_job() {
-        app.history.push(previous);
+        app.remember(previous);
     }
+    app.original_metadata = metadata;
+    app.session_ready = app.width > 0;
+    persistence::apply_legacy_metadata(app)?;
     app.invalidate_fit();
     write_job(&job)?;
     controls_from_job(&job)?;
+    viewer::update_texture(app)?;
     refresh_overlay(app, &job)?;
     status(&format!(
         "Imported calibration with {} measured star pairs",
@@ -184,6 +207,15 @@ pub(super) fn image_loaded(
     for id in ["utc", "latitude", "longitude"] {
         element::<HtmlInputElement>(id)?.set_value("");
     }
+    element::<HtmlInputElement>("altitude")?
+        .set_value(&app.image_metadata.altitude_m.unwrap_or(0.0).to_string());
+    element::<HtmlInputElement>("caseId")?.set_value(
+        app.image_name
+            .rsplit_once('.')
+            .map(|(stem, _)| stem)
+            .unwrap_or(&app.image_name),
+    );
+    element::<HtmlInputElement>("caseTitle")?.set_value(&app.image_name);
     if let Some(timestamp) = app.image_metadata.unix_millis {
         let iso =
             String::from(js_sys::Date::new(&JsValue::from_f64(timestamp as f64)).to_iso_string());
@@ -272,7 +304,8 @@ fn apply_controls(app: &mut App) -> Result<(), JsValue> {
     }
     sync_observation(&mut job)?;
     job.initial.validate().map_err(js_error)?;
-    app.history.push(previous);
+    app.session_ready = app.width > 0;
+    app.remember(previous);
     app.invalidate_fit();
     write_job(&job)?;
     refresh_overlay(app, &job)?;
@@ -296,7 +329,10 @@ fn run_fit(app: &mut App, mode: u8) -> Result<(), JsValue> {
             .as_ref()
             .ok_or_else(|| js_error("set UTC time and observer position"))?;
         let sky = visible_catalog(
-            &tycho_catalog().map_err(js_error)?,
+            &app.catalog
+                .iter()
+                .map(|e| e.star.clone())
+                .collect::<Vec<_>>(),
             observation,
             input_number("magnitude")?,
         )
@@ -325,8 +361,9 @@ fn run_fit(app: &mut App, mode: u8) -> Result<(), JsValue> {
         fit(&job.initial, &job.pairs, 2000).map_err(js_error)?
     };
     render_residuals(&result, &job.pairs)?;
+    app.session_ready = app.width > 0;
     app.fitted = Some(CalibrationDocument::from_fit(&result, &job).map_err(js_error)?);
-    app.history.push(previous);
+    app.remember(previous);
     job.initial = result.calibration;
     write_job(&job)?;
     controls_from_job(&job)?;
@@ -374,10 +411,10 @@ fn download_json(app: &mut App) -> Result<(), JsValue> {
     Ok(())
 }
 
-fn action(
+pub(super) fn action(
     app: Rc<RefCell<App>>,
     id: &str,
-    callback: fn(&mut App) -> Result<(), JsValue>,
+    callback: impl Fn(&mut App) -> Result<(), JsValue> + 'static,
 ) -> Result<(), JsValue> {
     let button = element::<web_sys::HtmlButtonElement>(id)?;
     let closure = Closure::<dyn FnMut(Event)>::new(move |_| {
@@ -390,7 +427,7 @@ fn action(
     Ok(())
 }
 
-fn download_bytes(name: &str, bytes: &[u8]) -> Result<(), JsValue> {
+pub(super) fn download_bytes(name: &str, bytes: &[u8]) -> Result<(), JsValue> {
     let parts = js_sys::Array::new();
     parts.push(&Uint8Array::from(bytes));
     let blob = web_sys::Blob::new_with_u8_array_sequence(&parts)?;
@@ -464,7 +501,8 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
             None
         };
         let bytes =
-            wisc_core::products::calibration_hdf5(&job, result.as_ref()).map_err(js_error)?;
+            wisc_core::products::session_hdf5(&persistence::snapshot(app)?, result.as_ref())
+                .map_err(js_error)?;
         download_bytes("calibration.h5", &bytes)
     })?;
     action(app.clone(), "downloadHdf5Map", |app| {
@@ -475,20 +513,19 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
         download_bytes("azel.h5", &bytes)
     })?;
     action(app.clone(), "undo", |app| {
-        let job = app
+        let state = app
             .history
             .pop()
             .ok_or_else(|| js_error("nothing to undo"))?;
         app.invalidate_fit();
-        write_job(&job)?;
-        controls_from_job(&job)?;
-        refresh_overlay(app, &job)?;
+        persistence::restore_edit(app, state)?;
         status("Previous calibration restored");
         Ok(())
     })?;
     action(app.clone(), "clearPairs", |app| {
+        app.session_ready = app.width > 0;
         let mut job = read_job()?;
-        app.history.push(job.clone());
+        app.remember(job.clone());
         job.pairs.clear();
         app.invalidate_fit();
         write_job(&job)?;
@@ -508,10 +545,16 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
                 return Err(js_error("load an image first"));
             }
             let mut job = read_job()?;
-            let point = app
-                .viewport
-                .image_coordinate(viewer::screen(&app, &event), [app.width, app.height]);
+            let point = viewer::raw_point(&app, viewer::screen(&app, &event));
+            if point[0] < -0.5
+                || point[1] < -0.5
+                || point[0] >= app.width as f64 - 0.5
+                || point[1] >= app.height as f64 - 0.5
+            {
+                return Err(js_error("pick inside the image"));
+            }
             if element::<HtmlInputElement>("maskMode")?.checked() {
+                app.remember(job.clone());
                 let tile = [
                     (point[0].max(0.0) as u32) / 128,
                     (point[1].max(0.0) as u32) / 128,
@@ -522,6 +565,7 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
                     app.masked_tiles.push(tile);
                 }
                 app.draw();
+                persistence::autosave(&app);
                 status("128×128 detection mask toggled; existing manual pairs are preserved");
                 return Ok(());
             }
@@ -543,7 +587,7 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
                 if distance > 20.0 {
                     return Err(js_error("Shift-click closer to a paired star"));
                 }
-                app.history.push(job.clone());
+                app.remember(job.clone());
                 job.pairs.remove(index);
             } else {
                 let index = element::<HtmlSelectElement>("catalogStar")?
@@ -580,7 +624,7 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
                     xy = centroid.position;
                     viewer::show_density(&mut app, &centroid)?;
                 }
-                app.history.push(job.clone());
+                app.remember(job.clone());
                 job.pairs.retain(|pair| {
                     (pair.azimuth_rad - star.azimuth_rad).abs() > 1e-10
                         || (pair.zenith_rad - star.zenith_rad).abs() > 1e-10
@@ -591,8 +635,10 @@ pub(super) fn connect(app: Rc<RefCell<App>>) -> Result<(), JsValue> {
                     x_px: xy[0],
                     y_px: xy[1],
                 });
+                persistence::remember_star(&mut app, &star, xy)?;
             }
             app.invalidate_fit();
+            app.session_ready = true;
             write_job(&job)?;
             refresh_overlay(&mut app, &job)?;
             status(&format!("{} measured star pairs", job.pairs.len()));

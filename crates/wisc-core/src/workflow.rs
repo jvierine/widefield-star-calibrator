@@ -89,6 +89,16 @@ fn field<T: for<'de> Deserialize<'de>>(value: &Value, key: &str) -> Result<T, St
 /// Legacy saved az/ze values are retained exactly, avoiding epoch changes.
 pub fn parse_job(source: &str) -> Result<FitJob, String> {
     let root: Value = serde_json::from_str(source).map_err(|error| error.to_string())?;
+    if root
+        .get("schema")
+        .and_then(Value::as_str)
+        .is_some_and(|s| s.starts_with("wisc.session/"))
+    {
+        let session: crate::session::Session =
+            serde_json::from_value(root).map_err(|e| e.to_string())?;
+        session.validate()?;
+        return Ok(session.job);
+    }
     let value = root.get("testCase").unwrap_or(&root);
     let job = if value.get("initial").is_some() {
         serde_json::from_value::<FitJob>(value.clone()).map_err(|error| error.to_string())?
@@ -287,7 +297,7 @@ pub fn visible_catalog(
     if !max_magnitude.is_finite() {
         return Err("invalid magnitude limit".into());
     }
-    Ok(catalog
+    let mut visible: Vec<_> = catalog
         .iter()
         .filter(|star| star.magnitude <= max_magnitude)
         .filter_map(|star| {
@@ -305,7 +315,13 @@ pub fn visible_catalog(
                 magnitude: star.magnitude,
             })
         })
-        .collect())
+        .collect();
+    visible.sort_by(|a, b| {
+        a.magnitude
+            .total_cmp(&b.magnitude)
+            .then_with(|| a.catalog_index.cmp(&b.catalog_index))
+    });
+    Ok(visible)
 }
 
 /// Associate each source and catalogue star at most once, after rough alignment.
@@ -463,7 +479,7 @@ mod tests {
     #[test]
     fn bundled_catalog_preserves_binary_layout_and_magnitude_order() {
         let stars = tycho_catalog().unwrap();
-        assert_eq!(stars.len(), 42072);
+        assert_eq!(stars.len(), 42047);
         assert!(stars
             .windows(2)
             .all(|pair| pair[0].magnitude <= pair[1].magnitude));

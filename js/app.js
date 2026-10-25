@@ -7036,6 +7036,14 @@ lens-model inverse.}
         title.textContent = `Fit residuals: ${rows.length} stars, RMS ${rms.toFixed(2)} px, axis +/-${span} px; image vectors 20x`;
         residualHistogram.appendChild(title);
 
+        if (window.WiscRustEngine) {
+            const plot = document.createElement("canvas");
+            plot.className = "residual-scatter-svg";
+            plot.setAttribute("aria-label", "Rustplotlib residual scatter plot");
+            residualHistogram.appendChild(plot);
+            window.WiscRustEngine.residualPlot(plot, rows);
+            return;
+        }
         const svg = svgEl("svg");
         svg.setAttribute("viewBox", "0 0 240 180");
         svg.classList.add("residual-scatter-svg");
@@ -7723,6 +7731,9 @@ lens-model inverse.}
     function matchInstructionText() {
         if (!state.image) {
             return "Load an image first. Press s for star picking, or c to switch between pairing and Stellarium views.";
+        }
+        if (state.phonePicking) {
+            return state.pendingMatch ? "Tap the matching catalogue star. Pinch to zoom or drag to pan; gestures do not add pairings." : "Tap an image star, then its matching catalogue star. Pinch to zoom or drag to pan. Use ⚙ → Pan / cancel pick to stop picking.";
         }
         if (state.showFitResiduals) {
             return "Fit residual mode: normal markings are hidden. Red lines connect each identified image star to its fitted catalog position; press r to return.";
@@ -10630,7 +10641,55 @@ lens-model inverse.}
         };
     }
 
+    function fitWithSharedRust(options, method) {
+        const matches = Array.isArray(options.matches) ? options.matches : fittingMatches();
+        const model = Number(controls.optmod.value) || 2;
+        const minimum = Math.ceil(requiredOptparLength(model) / 2);
+        if (!state.image || matches.length < minimum) {
+            state.fitMessage = `lens fit: need at least ${minimum} matched star pairs (${matches.length} available)`;
+            render();
+            return {accepted: false, fitCount: matches.length, reason: "not enough matched star pairs"};
+        }
+        const date = AidaTools.datetimeLocalToDate(controls.timestampUtc.value);
+        const latitude = Number(controls.latDeg.value), longitude = Number(controls.lonDeg.value);
+        const start = currentOptpar();
+        const job = {
+            initial: {width: state.image.width, height: state.image.height, model, optpar: start},
+            pairs: matches.map(match => {
+                const sky = observerRaDec(match.catalog.raHours, match.catalog.decDeg, date, latitude, longitude);
+                return {azimuth_rad: sky.az, zenith_rad: sky.ze, x_px: match.image.x, y_px: match.image.y};
+            }),
+        };
+        const before = residualVectorSummary(matchResidualFactory(matches)(start)).rms;
+        if (spacecraftMode() && model === BROWN_CONRADY_OPTMOD) job.fixed_parameters = [8, 9, 10, 11];
+        const result = window.WiscRustEngine.fit(job, method, method === "lm" ? 200 : 2000);
+        const acceptanceLimit = spacecraftMode() ? before + 1e-6 : Math.max(50, before * 1.25);
+        if (!Number.isFinite(result.rms_px) || result.rms_px > acceptanceLimit) {
+            state.fitMessage = `Rust fit rejected: RMS ${before.toFixed(2)} → ${result.rms_px.toFixed(2)} px`;
+            render(); return {accepted: false, fitCount: matches.length};
+        }
+        rememberFitState(method === "lm" ? "Levenberg-Marquardt lens fit" : "Nelder-Mead lens fit");
+        const parameters = result.calibration.optpar.slice();
+        const names = ["fScaleX", "fScaleY", "rotAlpha", "rotBeta", "rotGamma", "du", "dv", "radialAlpha", "brownK2", "brownK3", "brownP1", "brownP2"];
+        names.slice(0, parameters.length).forEach((name, i) => {
+            const input = controls[name];
+            if (input.type === "range") {
+                input.min = String(Math.min(Number(input.min), parameters[i]));
+                input.max = String(Math.max(Number(input.max), parameters[i]));
+            }
+            input.value = parameters[i].toPrecision(17);
+        });
+        // Display the engine result, without a JavaScript re-fit or recenter.
+        state.modelOptpar = parameters.slice();
+        state.lastFitVector = parameters.slice(); state.lastAcceptedFitVector = parameters.slice();
+        state.pendingMatch = null; state.showPickedMatchMarkers = false;
+        state.fitMessage = `${method === "lm" ? "Levenberg-Marquardt" : "Nelder-Mead"} lens fit (shared Rust engine): RMS ${before.toFixed(2)} → ${result.rms_px.toFixed(2)} px; ${matches.length} pairs; ${result.iterations} iterations`;
+        recomputeAndRender();
+        return {accepted: true, rmsBefore: before, rmsAfter: result.rms_px, fitCount: matches.length, optpar: parameters, message: state.fitMessage};
+    }
+
     function fitLensFromMatches(options = {}) {
+        if (window.WiscRustEngine) return fitWithSharedRust(options, "nm");
         const matchesForFit = Array.isArray(options.matches) ? options.matches : fittingMatches();
         const fitCount = matchesForFit.length;
         const optmod = Number(controls.optmod.value) || 2;
@@ -10677,6 +10736,7 @@ lens-model inverse.}
     }
 
     async function fitLensFromMatchesAsync(options = {}) {
+        if (window.WiscRustEngine) {setLoadingProgress(10, "Fitting with the shared Rust engine…");await yieldToBrowser();return fitWithSharedRust(options, "nm");}
         const matchesForFit = Array.isArray(options.matches) ? options.matches : fittingMatches();
         const fitCount = matchesForFit.length;
         const optmod = Number(controls.optmod.value) || 2;
@@ -10735,6 +10795,7 @@ lens-model inverse.}
     }
 
     function fitLensLevenbergMarquardt(options = {}) {
+        if (window.WiscRustEngine) return fitWithSharedRust(options, "lm");
         const matchesForFit = Array.isArray(options.matches) ? options.matches : fittingMatches();
         const fitCount = matchesForFit.length;
         const optmod = Number(controls.optmod.value) || 2;
@@ -10781,6 +10842,7 @@ lens-model inverse.}
     }
 
     async function fitLensLevenbergMarquardtAsync(options = {}) {
+        if (window.WiscRustEngine) {setLoadingProgress(10, "Fitting with the shared Rust engine…");await yieldToBrowser();return fitWithSharedRust(options, "lm");}
         const matchesForFit = Array.isArray(options.matches) ? options.matches : fittingMatches();
         const fitCount = matchesForFit.length;
         const optmod = Number(controls.optmod.value) || 2;
@@ -15069,6 +15131,60 @@ lens-model inverse.}
     }
 
     let spacecraftDrag = null;
+    const phoneTouches = new Map();
+    let phonePinchSpan = null, phoneTap = null;
+    const phoneTouch = event => event.pointerType === "touch" && document.body.classList.contains("phone-mode");
+    const phoneSpan = () => {
+        const [a, b] = [...phoneTouches.values()];
+        return Math.hypot(a[0] - b[0], a[1] - b[1]);
+    };
+    document.getElementById("phonePickStar")?.addEventListener("click", () => {
+        state.phonePicking = true;
+        enableStarPairingMode(false);
+        document.getElementById("phonePickStar").classList.add("toggle-on");
+        document.getElementById("phonePickStar").setAttribute("aria-pressed", "true");
+        state.fitMessage = "Phone picking: tap an image star, then its catalogue star";
+        document.dispatchEvent(new Event("wisc-close-settings")); render();
+    });
+    document.getElementById("phonePan")?.addEventListener("click", () => {
+        state.phonePicking = false; state.pendingMatch = null; clearDensityEstimate();
+        enableStarPairingMode(false);
+        document.getElementById("phonePickStar").classList.remove("toggle-on");
+        document.getElementById("phonePickStar").setAttribute("aria-pressed", "false");
+        document.dispatchEvent(new Event("wisc-close-settings")); render();
+    });
+    document.addEventListener("wisc-phone-mode", event => {
+        if (!event.detail) state.phonePicking = false;
+    });
+    canvas.addEventListener("pointerdown", event => {
+        if (!phoneTouch(event)) return;
+        phoneTouches.set(event.pointerId, [event.clientX, event.clientY]);
+        phoneTap = phoneTouches.size === 1 && state.phonePicking ? {id:event.pointerId, x:event.clientX, y:event.clientY} : null;
+        if (phoneTouches.size >= 2) {
+            phonePinchSpan = phoneSpan(); state.dragging = false;
+            event.preventDefault(); event.stopImmediatePropagation(); canvas.setPointerCapture(event.pointerId);
+        }
+    }, true);
+    canvas.addEventListener("pointermove", event => {
+        if (!phoneTouch(event) || !phoneTouches.has(event.pointerId)) return;
+        phoneTouches.set(event.pointerId, [event.clientX, event.clientY]);
+        if (phoneTap && Math.hypot(event.clientX-phoneTap.x,event.clientY-phoneTap.y)>6) phoneTap=null;
+        if (phoneTouches.size >= 2) {
+            event.preventDefault(); event.stopImmediatePropagation(); phoneTap=null; state.dragging=false;
+            const next=phoneSpan(), [a,b]=[...phoneTouches.values()];
+            if (phonePinchSpan>0 && state.image) setViewZoom(state.viewZoom*next/phonePinchSpan,eventToCanvasPixel({clientX:(a[0]+b[0])/2,clientY:(a[1]+b[1])/2}));
+            phonePinchSpan=next;
+        }
+    }, true);
+    for (const kind of ["pointerup","pointercancel"]) canvas.addEventListener(kind, event => {
+        if (!phoneTouch(event)) return;
+        if (phoneTouches.size>=2 || kind==="pointercancel") phoneTap=null;
+        phoneTouches.delete(event.pointerId);phonePinchSpan=null;
+        if (phoneTap?.id===event.pointerId && state.phonePicking) {
+            phoneTap=null;state.dragging=false;
+            if (state.pendingMatch) handleCatalogPairClick(event); else handleStarMatchClick(event);
+        }
+    }, true);
     function spacecraftDragPoint(event, optpar) {
         const [cx,cy]=eventToCanvasPixel(event),vp=imageViewport();
         let x=WiscViewZoom.pixelCenterForCanvasCoordinate(cx,vp.x,vp.scale);
@@ -15096,13 +15212,13 @@ lens-model inverse.}
             playInteractionSound("delete");
             return;
         }
-        if (state.displayMode === "pairing" && state.starMatchMode && event.button === 0 && !spaceLens) {
+        if (state.displayMode === "pairing" && state.starMatchMode && event.button === 0 && !spaceLens && !(phoneTouch(event) && state.phonePicking)) {
             event.preventDefault();
             handleStarMatchClick(event);
             playInteractionSound("pick");
             return;
         }
-        if (state.displayMode === "pairing" && state.pendingMatch && event.button === 0 && !spaceLens) {
+        if (state.displayMode === "pairing" && state.pendingMatch && event.button === 0 && !spaceLens && !(phoneTouch(event) && state.phonePicking)) {
             event.preventDefault();
             handleCatalogPairClick(event);
             return;

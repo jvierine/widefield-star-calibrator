@@ -69,6 +69,12 @@ jobs:
       - name: Build native Rust CLI
         run: cargo build --locked --release -p wisc-cli
 
+      - name: Execute Rust-generated compatibility mappers
+        run: python tests/verify_rust_code_exports.py target/release/wisc
+
+      - name: Independently verify rich reports and MIRACLE fits
+        run: python tests/verify_rust_report.py target/release/wisc
+
       - name: Independently verify scientific map exports
         run: |
           mkdir -p test-report/rust-migration
@@ -86,6 +92,10 @@ jobs:
 
       - name: Test Rust browser workflows in Chromium/WebGL
         run: |
+          cargo build --locked -p aida-calibrator-server
           npm install --prefix "$RUNNER_TEMP/wisc-browser-tests" --no-save playwright@1.62.1
           "$RUNNER_TEMP/wisc-browser-tests/node_modules/.bin/playwright" install --with-deps chromium
           NODE_PATH="$RUNNER_TEMP/wisc-browser-tests/node_modules" node tests/rust_web_browser.cjs
+          NODE_PATH="$RUNNER_TEMP/wisc-browser-tests/node_modules" node tests/rust_hosted_browser.cjs
+          NODE_PATH="$RUNNER_TEMP/wisc-browser-tests/node_modules" node tests/rust_gaia_browser.cjs
+          NODE_PATH="$RUNNER_TEMP/wisc-browser-tests/node_modules" node tests/original_gui_browser.cjs

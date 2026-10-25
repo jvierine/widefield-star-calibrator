@@ -1,6 +1,55 @@
 //! Scientific image inspection shared by native and WebAssembly clients.
 //! Display transforms never change the pixels used for centroiding or fitting.
 
+/// Legacy 65,536-bin percentile stretch; `percent` is the total fraction
+/// removed from both tails (5 means 2.5% at each end). Missing pixels do not
+/// influence bounds, and flat images retain a finite positive display span.
+pub fn percentile_bounds(pixels: &[f32], percent: f64) -> Result<[f64; 2], String> {
+    if !percent.is_finite() || !(0.0..=50.0).contains(&percent) {
+        return Err("display clipping must be between 0 and 50 percent".into());
+    }
+    let (mut low, mut high, mut count) = (f64::INFINITY, f64::NEG_INFINITY, 0usize);
+    for &pixel in pixels.iter().filter(|v| v.is_finite()) {
+        low = low.min(pixel as f64);
+        high = high.max(pixel as f64);
+        count += 1;
+    }
+    if count == 0 {
+        return Ok([0.0, 1.0]);
+    }
+    if percent > 0.0 && high > low {
+        let mut bins = vec![0usize; 65536];
+        for &pixel in pixels.iter().filter(|v| v.is_finite()) {
+            let index = ((pixel as f64 - low) / (high - low) * 65535.0)
+                .floor()
+                .clamp(0.0, 65535.0) as usize;
+            bins[index] += 1;
+        }
+        let quantile = |fraction: f64| {
+            let target = fraction * (count - 1) as f64;
+            let mut sum = 0;
+            let index = bins
+                .iter()
+                .position(|n| {
+                    sum += n;
+                    sum as f64 > target
+                })
+                .unwrap_or(65535);
+            low + index as f64 * (high - low) / 65535.0
+        };
+        let tail = percent / 200.0;
+        (low, high) = (quantile(tail), quantile(1.0 - tail));
+    }
+    Ok([
+        low,
+        if high > low {
+            high
+        } else {
+            low + 1e-6_f64.max(low.abs() * 1e-9)
+        },
+    ])
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct Viewport {
     pub zoom: f64,
@@ -18,6 +67,15 @@ impl Default for Viewport {
 }
 
 impl Viewport {
+    pub fn mirror_pixel(point: [f64; 2], dimensions: [u32; 2], flips: [bool; 2]) -> [f64; 2] {
+        std::array::from_fn(|i| {
+            if flips[i] {
+                f64::from(dimensions[i]) - 1.0 - point[i]
+            } else {
+                point[i]
+            }
+        })
+    }
     pub fn image_coordinate(&self, screen: [f64; 2], dimensions: [u32; 2]) -> [f64; 2] {
         std::array::from_fn(|i| {
             (self.center[i] + (screen[i] - 0.5) / self.zoom) * f64::from(dimensions[i]) - 0.5
@@ -223,6 +281,34 @@ pub fn kde_centroid(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn percentile_stretch_matches_legacy_histogram_and_keeps_raw_pixels() {
+        let pixels: Vec<f32> = (0..1000).map(|i| i as f32).chain([f32::NAN]).collect();
+        let before = pixels.clone();
+        let bounds = percentile_bounds(&pixels, 10.0).unwrap();
+        for (actual, sample) in bounds.into_iter().zip([49.0_f64, 949.0]) {
+            let expected = (sample / 999.0 * 65535.0).floor() * 999.0 / 65535.0;
+            assert!((actual - expected).abs() < 1e-10);
+        }
+        assert_eq!(&pixels[..1000], &before[..1000]);
+        assert_eq!(percentile_bounds(&pixels, 0.0).unwrap(), [0.0, 999.0]);
+        let flat = percentile_bounds(&[12.0; 10], 50.0).unwrap();
+        assert!(flat[1] > flat[0]);
+        assert_eq!(percentile_bounds(&[f32::NAN], 5.0).unwrap(), [0.0, 1.0]);
+        assert!(percentile_bounds(&pixels, 51.0).is_err());
+    }
+    #[test]
+    fn image_flip_is_an_involution_in_raw_pixel_centre_coordinates() {
+        for flips in [[false, false], [true, false], [false, true], [true, true]] {
+            let point = [123.25, 456.75];
+            let mirrored = Viewport::mirror_pixel(point, [1024, 768], flips);
+            assert_eq!(Viewport::mirror_pixel(mirrored, [1024, 768], flips), point);
+        }
+        assert_eq!(
+            Viewport::mirror_pixel([0.0, 0.0], [1024, 768], [true, true]),
+            [1023.0, 767.0]
+        );
+    }
     #[test]
     fn zoom_keeps_cursor_anchor_and_pan_uses_zoom_scale() {
         let mut view = Viewport::default();

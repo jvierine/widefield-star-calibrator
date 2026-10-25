@@ -1,5 +1,5 @@
-// Real Chromium/WebGL acceptance checks for the Rust replacement, not the
-// compatibility JavaScript UI. Build with scripts/build_web.sh first.
+// Chromium/WebGL scientific-engine fixture, NOT the production GUI.
+// Production preserves the original GUI; see original_gui_browser.cjs.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
 const http = require('node:http');
@@ -31,7 +31,7 @@ const server = http.createServer(async (request, response) => {
     const page = await browser.newPage({viewport:{width:1440,height:1000}});
     const errors=[];
     page.on('pageerror',error=>errors.push(error.message));
-    await page.goto(`http://127.0.0.1:${server.address().port}/web/index.html`);
+    await page.goto(`http://127.0.0.1:${server.address().port}/tests/fixtures/rust_ui_harness.html`);
     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('to begin'));
     const casePath=path.join(root,'test_cases/BACC_NYA_20200218_010731/case.json');
     const directory=path.dirname(casePath);
@@ -49,6 +49,14 @@ const server = http.createServer(async (request, response) => {
     await page.waitForFunction(()=>document.querySelector('#status').textContent.includes('Fit complete'));
     const readJob=async()=>JSON.parse(await page.inputValue('#fitJob'));
     const fitted=await readJob();
+    for(const [button,index] of [['#flipModelX',0],['#flipModelY',1]]) {
+      await page.click(button);const flipped=await readJob();
+      assert.equal(flipped.initial.optpar[index],-fitted.initial.optpar[index]);
+      assert.deepEqual(flipped.pairs,fitted.pairs);
+      await page.click('#undo');assert.deepEqual((await readJob()).initial,fitted.initial);
+    }
+    await page.click('#resetPointing');assert.deepEqual((await readJob()).initial.optpar.slice(2,5),[0,0,0]);
+    await page.click('#undo');assert.deepEqual((await readJob()).initial,fitted.initial);
     const native=process.env.WISC_NATIVE || path.join(root,'target/release/wisc');
     const nativeInput=path.join(temporary,'lm-input.json'),nativeOutput=path.join(temporary,'lm-output.json');
     await fs.writeFile(nativeInput,JSON.stringify(nmJob));
@@ -70,6 +78,22 @@ const server = http.createServer(async (request, response) => {
     assert.deepEqual((await readJob()).pairs,fitted.pairs,'panning must not add a pair');
     await page.click('#resetView');
     assert.match(await page.textContent('#viewStatus'),/Zoom 1.00×/);
+    await page.click('#zoomIn');assert.match(await page.textContent('#viewStatus'),/Zoom 1.50×/);
+    await page.click('#zoomOut');assert.match(await page.textContent('#viewStatus'),/Zoom 1.00×/);
+    await canvas.evaluate(el=>{
+      const rect=el.getBoundingClientRect();
+      const touch=(id,x)=>new Touch({identifier:id,target:el,clientX:rect.left+rect.width*x,clientY:rect.top+rect.height/2});
+      el.dispatchEvent(new TouchEvent('touchstart',{bubbles:true,cancelable:true,touches:[touch(1,.4),touch(2,.6)]}));
+      el.dispatchEvent(new TouchEvent('touchmove',{bubbles:true,cancelable:true,touches:[touch(1,.3),touch(2,.7)]}));
+      el.dispatchEvent(new TouchEvent('touchend',{bubbles:true,cancelable:true,touches:[]}));
+    });
+    assert.ok(Math.abs(Number((await page.textContent('#viewStatus')).match(/Zoom ([\d.]+)/)[1])-2)<.03,'Touch client coordinates are integer pixels, so allow subpixel rounding in the 2× pinch');
+    assert.deepEqual((await readJob()).pairs,fitted.pairs,'pinch must not add measured stars');
+    await page.click('#resetView');
+    await page.check('#magnifier');await canvas.hover({position:{x:150,y:150}});
+    assert.equal(await page.locator('#magnifierCanvas').isVisible(),true);
+    await page.uncheck('#magnifier');await canvas.hover({position:{x:151,y:151}});
+    assert.equal(await page.locator('#magnifierCanvas').isVisible(),false);
     const original=await canvas.screenshot();
     await page.check('#showGrid'); await page.check('#showResiduals');
     assert.notDeepEqual(await canvas.screenshot(),original,'scientific overlays change the rendered image');
@@ -77,6 +101,9 @@ const server = http.createServer(async (request, response) => {
     await page.locator('#brightness').evaluate(input=>{input.value='0.3';input.dispatchEvent(new Event('input'));});
     assert.notDeepEqual(await canvas.screenshot(),original,'brightness changes display');
     assert.deepEqual((await readJob()).pairs,fitted.pairs,'display controls must not alter measured coordinates');
+    await page.fill('#displayClip','10');await page.locator('#displayClip').dispatchEvent('change');
+    assert.deepEqual((await readJob()).pairs,fitted.pairs,'percentile clipping must not alter measured coordinates');
+    await page.fill('#displayClip','0');await page.locator('#displayClip').dispatchEvent('change');
     await page.check('#highPass');
     await page.uncheck('#highPass');
     await page.check('#maskMode');
@@ -93,7 +120,7 @@ const server = http.createServer(async (request, response) => {
     assert.deepEqual((await readJob()).pairs,fitted.pairs,'undo restores exact scientific pairs');
     const [download]=await Promise.all([page.waitForEvent('download'),page.click('#downloadHdf5')]);
     assert.equal(download.suggestedFilename(),'calibration.h5');
-    await page.locator('details').first().evaluate(details=>{details.open=true;});
+    await page.locator('details').filter({has:page.locator('#densityPlot')}).evaluate(details=>{details.open=true;});
     const reports=path.join(root,'test-report/rust-migration');
     await fs.mkdir(reports,{recursive:true});
     await page.screenshot({path:path.join(reports,'rust-web-inspection.png'),fullPage:true});

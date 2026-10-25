@@ -1,0 +1,46 @@
+% WISC export. optmod={{MODEL}}, image {{WIDTH}}x{{HEIGHT}}. Forward az_el_to_image export; invert numerically if image_to_az_el is needed.
+{{OPT_PAR_DECLARATION}}
+optmod = round(optpar(1));
+optpar = optpar(2:end);
+image_width = {{WIDTH}};
+image_height = {{HEIGHT}};
+
+function [x, y] = az_el_to_image(az_deg, el_deg, optpar, optmod, width, height)
+if nargin < 3, optpar = evalin('base','optpar'); end
+if nargin < 4, optmod = evalin('base','optmod'); end
+if nargin < 5, width = evalin('base','image_width'); height = evalin('base','image_height'); end
+a=deg2rad(optpar(3)); b=deg2rad(optpar(4)); g=deg2rad(optpar(5));
+rot1=[cos(g) -sin(g) 0; sin(g) cos(g) 0; 0 0 1];
+rot2=[cos(a) 0 sin(a); 0 1 0; -sin(a) 0 cos(a)];
+rot3=[1 0 0; 0 cos(b) sin(b); 0 -sin(b) cos(b)];
+rot=rot2*rot3*rot1;
+az=deg2rad(az_deg); ze=deg2rad(90-el_deg); sinze=sin(ze);
+es=[sinze*sin(az), sinze*cos(az), cos(ze)];
+s=es*rot; s1=s(1); s2=s(2); s3=s(3); radial=hypot(s1,s2);
+if (optmod == 1 || optmod == 20) && s3 <= 1e-12, x=NaN; y=NaN; return; end
+f1=optpar(1); f2=optpar(2); du=optpar(6); dv=optpar(7); ar=optpar(8);
+if radial <= 1e-12
+    u=0.5+du; v=0.5+dv;
+elseif optmod == 1
+    ss3=max(abs(s3),1e-12)*sign(s3 + (s3==0)); u=f1*s1/ss3+0.5+du; v=f2*s2/ss3+0.5+dv;
+elseif optmod == 2
+    theta=atan2(radial,s3); rr=sin(ar*theta); u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
+elseif optmod == 3
+    theta=atan2(radial,s3); ss3=max(s3,1e-12); u=f1*(1-ar)*s1/ss3+f1*ar*s1/radial*theta+0.5+du; v=f2*(1-ar)*s2/ss3+f2*ar*s2/radial*theta+0.5+dv;
+elseif optmod == 4
+    theta=atan2(radial,s3); rr=abs(theta)^ar; u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
+elseif optmod == 5
+    theta=atan2(radial,s3); rr=tan(ar*theta); u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
+elseif optmod == 6
+    theta=atan2(radial,s3); rr=sin(0.5*theta); u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
+elseif optmod == 12
+    theta=atan2(radial,s3); if ar>0, rr=tan(ar*theta)/ar; elseif ar<0, rr=sin(ar*theta)/ar; else, rr=abs(theta); end
+    u=f1*s1/radial*rr+0.5+du; v=f2*s2/radial*rr+0.5+dv;
+else
+    ss3=max(abs(s3),1e-12)*sign(s3 + (s3==0)); xn=s1/ss3; yn=s2/ss3; r2=xn*xn+yn*yn; r4=r2*r2; r6=r4*r2;
+    k1=optpar(8); k2=optpar(9); k3=optpar(10); p1=optpar(11); p2=optpar(12);
+    L=1+k1*r2+k2*r4+k3*r6; xd=xn*L+2*p1*xn*yn+p2*(r2+2*xn*xn); yd=yn*L+p1*(r2+2*yn*yn)+2*p2*xn*yn;
+    u=f1*xd+0.5+du; v=f2*yd+0.5+dv;
+end
+x=u*width-1; y=v*height-1;
+end

@@ -1,0 +1,49 @@
+/* The user's original WISC design is the shared base, not a new theme. */
+@import url("../../style.css");
+body { width:100%; height:100dvh; }
+.image-panel { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); }
+#glCanvas { width:100%; height:100%; touch-action:none; }
+#starLabels { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.viewer-readout { position:absolute; bottom:0; left:0; right:0; display:grid; gap:3px; padding:7px 10px; color:#f8fafc; background:rgba(3,7,18,.72); font:12px/1.3 system-ui,sans-serif; pointer-events:none; }
+.viewer-readout output { overflow-wrap:anywhere; }
+#magnifierCanvas { position:fixed; width:288px; height:288px; z-index:60; pointer-events:none; border:2px solid #facc15; background:black; }
+[hidden],#brownFields[hidden],#magnifierCanvas[hidden] { display:none !important; }
+.controls output { display:block; font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.controls p { line-height:1.4; }
+.controls details { margin-top:10px; }
+.controls summary { cursor:pointer; font-size:13px; font-weight:700; padding:6px 0; }
+.controls textarea { width:100%; min-height:160px; font:12px/1.4 ui-monospace,monospace; }
+.controls canvas { width:100%; height:auto; }
+.match-instructions { display:block; }
+#residualPlot { background:white; }
+.density-panel { position:relative; width:100%; aspect-ratio:6/5; background:white; }
+.density-panel canvas { position:absolute; }
+#densityPlot { left:13.666667%; top:2.4%; width:68.333333%; height:84.8%; }
+#densityAxes { inset:0; width:100%; height:100%; background:transparent; pointer-events:none; }
+.top-actions button.top-link { width:auto; margin:0; color:#111827; }
+.top-actions .file-button { white-space:nowrap; }
+.settings-toggle,.settings-close,.settings-backdrop { display:none; }
+.settings-toggle { position:absolute; top:10px; right:10px; z-index:40; width:48px; height:48px; margin:0; padding:0; border:1px solid rgba(203,213,225,.6); border-radius:9px; background:rgba(3,7,18,.8); color:white; font:30px/1 system-ui,sans-serif; }
+.phone-mode .layout { grid-template-columns:minmax(0,1fr); grid-template-rows:minmax(0,1fr); gap:0; padding:6px; }
+.phone-mode .topbar { gap:6px; padding:8px 10px; flex-wrap:nowrap; align-items:center; }
+.phone-mode .topbar > div:first-child { width:auto; flex:1; }
+.phone-mode h1 { font-size:15px; }
+.phone-mode .copyright-line,.phone-mode .shortcut-line,.phone-mode .top-actions > a { display:none; }
+.phone-mode .top-actions { width:auto; flex-wrap:nowrap; }
+.phone-mode #phoneModeToggle { font-size:11px; padding:6px; width:48px; min-height:44px; }
+.phone-mode .file-button { min-height:44px; display:flex; align-items:center; padding:8px 12px; font-size:14px; }
+.phone-mode .settings-toggle { display:block; }
+.phone-mode .controls { position:fixed; z-index:55; top:0; bottom:0; right:0; width:min(360px,100%); padding:12px 12px max(12px,env(safe-area-inset-bottom)); background:#f3f4f6; transform:translateX(105%); visibility:hidden; pointer-events:none; box-shadow:-8px 0 32px rgba(0,0,0,.28); overscroll-behavior:contain; }
+.phone-mode.settings-open .controls { transform:translateX(0); visibility:visible; pointer-events:auto; }
+.phone-mode .settings-close { display:block; flex-shrink:0; min-height:44px; margin:0; }
+.phone-mode.settings-open .settings-backdrop { display:block; position:fixed; z-index:50; inset:0; width:100%; height:100%; margin:0; padding:0; border-radius:0; background:rgba(0,0,0,.35); }
+.phone-mode .controls button,.phone-mode .controls input:not([type=checkbox]),.phone-mode .controls select { min-height:44px; font-size:16px; }
+.phone-mode .controls label { font-size:14px; }
+.phone-mode .checkbox-label { min-height:44px; }
+.phone-mode input[type=checkbox] { width:22px; height:22px; }
+.phone-mode .view-zoom-controls button { min-width:40px; min-height:40px; }
+.phone-mode .viewer-readout { font-size:11px; }
+.phone-mode .button-row { gap:6px; }
+.phone-mode .controls section { flex-shrink:0; }
+body:not(.phone-mode) .layout { grid-template-columns:minmax(0,1fr) 340px; grid-template-rows:minmax(0,1fr); }
+@media (max-width:760px) { body:not(.phone-mode) .topbar .subtle { display:none; } }

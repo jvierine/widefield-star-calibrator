@@ -1,8 +1,5 @@
 //! Damped least-squares lens fitting using nalgebra for the small dense solve.
-use crate::{
-    clamp_parameters, median, objective, residual_radii, Calibration, FitResult, OpticalModel,
-    StarPair,
-};
+use crate::{median, objective, residual_radii, Calibration, FitResult, OpticalModel, StarPair};
 use nalgebra::{DMatrix, DVector};
 
 /// Levenberg–Marquardt with scaled finite-difference Jacobians, Huber IRLS
@@ -12,11 +9,26 @@ pub fn fit_lm(
     pairs: &[StarPair],
     max_iterations: usize,
 ) -> Result<FitResult, String> {
+    fit_lm_with_active(
+        start,
+        pairs,
+        max_iterations,
+        &(0..start.model.parameter_count()).collect::<Vec<_>>(),
+    )
+}
+
+pub fn fit_lm_with_active(
+    start: &Calibration,
+    pairs: &[StarPair],
+    max_iterations: usize,
+    active: &[usize],
+) -> Result<FitResult, String> {
     start.validate()?;
+    crate::validate_active(start, active)?;
     if max_iterations == 0 {
         return Err("max_iterations must be positive".into());
     }
-    let count = start.model.parameter_count();
+    let count = active.len();
     if pairs.len() < count.div_ceil(2) {
         return Err("not enough star pairs for this lens model".into());
     }
@@ -54,24 +66,26 @@ pub fn fit_lm(
             }),
         );
         let mut jacobian = DMatrix::zeros(base.len(), count);
-        let scales: Vec<_> = (0..count)
-            .map(|i| match i {
+        let scales: Vec<_> = active
+            .iter()
+            .map(|&i| match i {
                 0 | 1 => current.optpar[i].abs().max(0.1),
                 2..=4 => 10.0,
                 _ => 0.1,
             })
             .collect();
         for parameter in 0..count {
+            let index = active[parameter];
             if (current.model == OpticalModel::Equisolid || current.model == OpticalModel::Pinhole)
-                && parameter == 7
+                && index == 7
             {
                 continue;
             }
             let h = scales[parameter] * 1e-5;
             let mut plus = current.clone();
             let mut minus = current.clone();
-            plus.optpar[parameter] += h;
-            minus.optpar[parameter] -= h;
+            plus.optpar[index] += h;
+            minus.optpar[index] -= h;
             let derivative = match (residual(&plus), residual(&minus)) {
                 (Ok(p), Ok(m)) => (p - m) / (2.0 * h),
                 (Ok(p), Err(_)) => (p - &base) / h,
@@ -106,9 +120,9 @@ pub fn fit_lm(
             }
             let mut candidate = current.clone();
             for i in 0..count {
-                candidate.optpar[i] -= step[i] * scales[i];
+                candidate.optpar[active[i]] -= step[i] * scales[i];
             }
-            clamp_parameters(&mut candidate.optpar, candidate.model);
+            crate::clamp_active(&mut candidate.optpar, start, active);
             if candidate.optpar[0].signum() != signs[0] || candidate.optpar[1].signum() != signs[1]
             {
                 damping *= 10.0;
@@ -139,6 +153,52 @@ pub fn fit_lm(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn both_solvers_preserve_fixed_spacecraft_distortion_coefficients() {
+        let truth = Calibration {
+            width: 640,
+            height: 480,
+            model: OpticalModel::BrownConrady,
+            optpar: vec![
+                -0.8, 1.1, -15.0, -40.0, 8.0, 0.01, -0.02, 0.01, -0.02, 0.003, 0.001, -0.001,
+            ],
+        };
+        let rotation = nalgebra::Matrix3::from_row_slice(&crate::camera_rotation(
+            truth.optpar[2],
+            truth.optpar[3],
+            truth.optpar[4],
+        ));
+        let mut pairs = Vec::new();
+        for i in -2..=2 {
+            for j in -2..=2 {
+                let v = rotation
+                    * nalgebra::Vector3::new(i as f64 * 0.1, j as f64 * 0.1, 1.0).normalize();
+                let az = v.x.atan2(v.y);
+                let ze = v.z.acos();
+                let p = truth.project(az, ze).unwrap();
+                pairs.push(StarPair {
+                    azimuth_rad: az,
+                    zenith_rad: ze,
+                    x_px: p[0],
+                    y_px: p[1],
+                });
+            }
+        }
+        let mut start = truth.clone();
+        start.optpar[0] *= 1.05;
+        start.optpar[1] *= 1.05;
+        start.optpar[2] += 1.0;
+        start.optpar[5] += 0.01;
+        let active = crate::active_parameters(&start, &[8, 9, 10, 11]).unwrap();
+        for solver in [crate::fit_with_active, fit_lm_with_active] {
+            let result = solver(&start, &pairs, 2000, &active).unwrap();
+            assert!(result.rms_px < 0.1, "{}", result.rms_px);
+            assert_eq!(&result.calibration.optpar[8..], &start.optpar[8..]);
+        }
+        assert!(crate::active_parameters(&start, &[12]).is_err());
+        assert!(crate::active_parameters(&start, &[8, 8]).is_err());
+        assert!(crate::active_parameters(&start, &(0..12).collect::<Vec<_>>()).is_err());
+    }
     #[test]
     fn lm_recovers_every_lens_and_preserves_negative_focal_sign() {
         for model in [

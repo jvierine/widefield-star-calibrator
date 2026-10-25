@@ -10,6 +10,12 @@ use web_sys::{
 use wisc_core::imaging::{decode, FitsByteOrder};
 use wisc_core::{detect_stars, fit, DetectorConfig, FitResult, StarPair};
 
+mod engine;
+mod exports;
+mod gaia;
+mod hosted;
+mod layout;
+mod persistence;
 mod ui;
 mod viewer;
 
@@ -90,7 +96,7 @@ struct App {
     sky: Vec<wisc_core::workflow::SkyStar>,
     catalog_points: Vec<[f32; 2]>,
     pair_points: Vec<[f32; 2]>,
-    history: Vec<wisc_core::workflow::FitJob>,
+    history: Vec<persistence::EditState>,
     fitted: Option<wisc_core::workflow::CalibrationDocument>,
     viewport: wisc_core::inspection::Viewport,
     luminance: Vec<f32>,
@@ -101,8 +107,17 @@ struct App {
     suppress_click: bool,
     show_image: bool,
     show_markers: bool,
+    pure_view: bool,
     image_metadata: wisc_core::metadata::ImageMetadata,
     density_plot: Option<rustplotlib_web::HeatmapView>,
+    image_name: String,
+    image_bytes: Vec<u8>,
+    image_hash: String,
+    original_metadata: serde_json::Value,
+    session_ready: bool,
+    load_generation: u64,
+    catalog_kind: String,
+    catalog: Vec<wisc_core::catalogues::Entry>,
 }
 
 impl App {
@@ -125,10 +140,12 @@ impl App {
             uniform sampler2D image_texture;
             uniform vec3 view; // centre x/y (top-down), zoom
             uniform vec3 display; // brightness, contrast, gamma
+            uniform vec2 flip;
             in vec2 uv;
             out vec4 color;
             void main() {
                 vec2 q = view.xy + (vec2(uv.x, 1.0-uv.y)-0.5)/view.z;
+                q = mix(q,1.0-q,flip);
                 vec3 rgb = texture(image_texture, q).rgb;
                 rgb = clamp((rgb-0.5)*display.y + 0.5 + display.x, 0.0, 1.0);
                 color = vec4(pow(rgb, vec3(1.0/display.z)), 1.0);
@@ -140,8 +157,11 @@ impl App {
             in vec2 point_px;
             uniform vec2 image_size;
             uniform vec3 view;
+            uniform vec2 flip;
             void main() {
-                vec2 q = ((point_px+0.5)/image_size-view.xy)*view.z;
+                vec2 p = (point_px+0.5)/image_size;
+                p = mix(p,1.0-p,flip);
+                vec2 q = (p-view.xy)*view.z;
                 vec2 clip = vec2(2.0*q.x, -2.0*q.y);
                 gl_Position = vec4(clip, 0.0, 1.0);
                 gl_PointSize = 7.0;
@@ -192,8 +212,17 @@ impl App {
             suppress_click: false,
             show_image: true,
             show_markers: true,
+            pure_view: false,
             image_metadata: Default::default(),
             density_plot: None,
+            image_name: String::new(),
+            image_bytes: Vec::new(),
+            image_hash: String::new(),
+            original_metadata: serde_json::Value::Null,
+            session_ready: false,
+            load_generation: 0,
+            catalog_kind: String::new(),
+            catalog: Vec::new(),
         })
     }
 
@@ -204,6 +233,21 @@ impl App {
         }
     }
 
+    fn remember(&mut self, job: wisc_core::workflow::FitJob) {
+        let display = persistence::snapshot(self)
+            .map(|s| s.display)
+            .unwrap_or(serde_json::Value::Null);
+        if self.history.len() >= 128 {
+            self.history.remove(0);
+        }
+        self.history.push(persistence::EditState {
+            job,
+            metadata: self.original_metadata.clone(),
+            masks: self.masked_tiles.clone(),
+            display,
+        });
+    }
+
     fn load_image(&mut self, bytes: &[u8], filename: &str) -> Result<(), JsValue> {
         let order = element::<web_sys::HtmlSelectElement>("fitsByteOrder")?.value();
         let order = match order.as_str() {
@@ -212,6 +256,12 @@ impl App {
             _ => FitsByteOrder::Auto,
         };
         let image = decode(bytes, order).map_err(js_error)?;
+        self.load_generation = self.load_generation.wrapping_add(1);
+        self.image_name = filename.to_owned();
+        self.image_bytes = bytes.to_vec();
+        self.image_hash = wisc_core::session::image_digest(bytes);
+        self.original_metadata = serde_json::Value::Null;
+        self.session_ready = false;
         self.image_metadata = wisc_core::metadata::read(bytes, filename);
         self.width = image.width;
         self.height = image.height;
@@ -242,6 +292,7 @@ impl App {
         );
         ui::image_loaded(self, &image)?;
         viewer::update_texture(self)?;
+        persistence::restore_hint(self)?;
         status(&format!(
             "Loaded {} × {} image; {} detections. Import a saved calibration or set time and site.",
             self.width,
@@ -252,6 +303,9 @@ impl App {
     }
 
     fn draw(&self) {
+        if let Err(error) = layout::fit_viewer(self) {
+            web_sys::console::warn_1(&error);
+        }
         if let Ok(output) = element::<web_sys::HtmlElement>("viewStatus") {
             output.set_text_content(Some(&format!(
                 "Zoom {:.2}× · centre {:.4}, {:.4} · {} masked tiles",
@@ -290,6 +344,8 @@ impl App {
             self.gl.draw_arrays(Gl::TRIANGLES, 0, 3);
         }
         if !self.show_markers {
+            viewer::draw_diagnostics(self);
+            viewer::draw_labels(self);
             return;
         }
 
@@ -299,7 +355,9 @@ impl App {
             .filter(|d| !self.is_masked([d.x, d.y]))
             .flat_map(|detection| [detection.x as f32, detection.y as f32])
             .collect();
-        self.draw_points(&points, [0.3, 1.0, 0.45]);
+        if self.show_image && viewer::checked("showDetections") {
+            self.draw_points(&points, [0.3, 1.0, 0.45]);
+        }
         self.draw_points(
             &self
                 .catalog_points
@@ -309,16 +367,19 @@ impl App {
                 .collect::<Vec<_>>(),
             [1.0, 0.55, 0.2],
         );
-        self.draw_points(
-            &self
-                .pair_points
-                .iter()
-                .flatten()
-                .copied()
-                .collect::<Vec<_>>(),
-            [0.3, 0.65, 1.0],
-        );
+        if !self.pure_view {
+            self.draw_points(
+                &self
+                    .pair_points
+                    .iter()
+                    .flatten()
+                    .copied()
+                    .collect::<Vec<_>>(),
+                [0.3, 0.65, 1.0],
+            );
+        }
         viewer::draw_diagnostics(self);
+        viewer::draw_labels(self);
     }
 
     fn draw_points(&self, points: &[f32], color: [f32; 3]) {
@@ -326,6 +387,11 @@ impl App {
     }
 
     fn set_view(&self, program: &WebGlProgram) {
+        self.gl.uniform2f(
+            self.gl.get_uniform_location(program, "flip").as_ref(),
+            u8::from(viewer::checked("imageFlipX")) as f32,
+            u8::from(viewer::checked("imageFlipY")) as f32,
+        );
         self.gl.uniform3f(
             self.gl.get_uniform_location(program, "view").as_ref(),
             self.viewport.center[0] as f32,
@@ -335,10 +401,50 @@ impl App {
     }
 
     fn is_masked(&self, point: [f64; 2]) -> bool {
-        self.masked_tiles.contains(&[
+        if self.masked_tiles.contains(&[
             (point[0].max(0.0) as u32) / 128,
             (point[1].max(0.0) as u32) / 128,
-        ])
+        ]) {
+            return true;
+        }
+        let metadata = self
+            .original_metadata
+            .get("testCase")
+            .unwrap_or(&self.original_metadata);
+        if metadata.get("gaiaSettings").is_some_and(|settings| {
+            wisc_core::gaia::excluded(settings, [self.width, self.height], point, 0.0)
+        }) {
+            return true;
+        }
+        for (key, default_radius) in [
+            ("badStarFinderRegions", 0.0),
+            ("badStarFinderDetections", 1.5),
+        ] {
+            if metadata
+                .get(key)
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|rows| {
+                    rows.iter().any(|row| {
+                        let (Some(x), Some(y)) = (
+                            row.get("x").and_then(serde_json::Value::as_f64),
+                            row.get("y").and_then(serde_json::Value::as_f64),
+                        ) else {
+                            return false;
+                        };
+                        let radius = row
+                            .get("radius")
+                            .and_then(serde_json::Value::as_f64)
+                            .unwrap_or(default_radius);
+                        radius.is_finite()
+                            && radius >= 0.0
+                            && (point[0] - x).hypot(point[1] - y) <= radius
+                    })
+                })
+            {
+                return true;
+            }
+        }
+        false
     }
 
     fn draw_geometry(&self, points: &[f32], color: [f32; 3], mode: u32) {
@@ -432,48 +538,74 @@ fn connect_file_input(app: Rc<RefCell<App>>, id: &str, job_file: bool) -> Result
         let Some(file) = input.files().and_then(|files| files.get(0)) else {
             return;
         };
-        let reader = match FileReader::new() {
-            Ok(reader) => reader,
-            Err(error) => {
-                status(&format!("FileReader failed: {error:?}"));
-                return;
-            }
-        };
-        let loaded_reader = reader.clone();
-        let loaded_app = app.clone();
-        let filename = file.name();
-        let loaded = Closure::<dyn FnMut(Event)>::once(move |_| {
-            let result = loaded_reader.result().and_then(|value| {
-                let bytes = Uint8Array::new(&value).to_vec();
-                if job_file {
-                    ui::import_job(&mut loaded_app.borrow_mut(), &bytes)
-                } else {
-                    loaded_app.borrow_mut().load_image(&bytes, &filename)
-                }
-            });
-            if let Err(error) = result {
-                status(&format!("Image load failed: {error:?}"));
-            }
-        });
-        reader.set_onloadend(Some(loaded.as_ref().unchecked_ref()));
-        loaded.forget();
-        if let Err(error) = reader.read_as_array_buffer(&file) {
-            status(&format!("Cannot read image: {error:?}"));
-        }
+        read_file(app.clone(), file, job_file);
     });
     input.add_event_listener_with_callback("change", closure.as_ref().unchecked_ref())?;
     closure.forget();
     Ok(())
 }
 
+fn read_file(app: Rc<RefCell<App>>, file: web_sys::File, job_file: bool) {
+    let generation = {
+        let mut state = app.borrow_mut();
+        state.load_generation = state.load_generation.wrapping_add(1);
+        state.load_generation
+    };
+    let reader = match FileReader::new() {
+        Ok(reader) => reader,
+        Err(error) => {
+            status(&format!("FileReader failed: {error:?}"));
+            return;
+        }
+    };
+    let loaded_reader = reader.clone();
+    let loaded_app = app.clone();
+    let filename = file.name();
+    let loaded = Closure::<dyn FnMut(Event)>::once(move |_| {
+        if loaded_app.borrow().load_generation != generation {
+            return;
+        }
+        let result = loaded_reader.result().and_then(|value| {
+            let bytes = Uint8Array::new(&value).to_vec();
+            if job_file {
+                ui::import_job(&mut loaded_app.borrow_mut(), &bytes)
+            } else {
+                loaded_app.borrow_mut().load_image(&bytes, &filename)
+            }
+        });
+        if let Err(error) = result {
+            status(&format!("Image load failed: {error:?}"));
+        }
+    });
+    reader.set_onloadend(Some(loaded.as_ref().unchecked_ref()));
+    loaded.forget();
+    if let Err(error) = reader.read_as_array_buffer(&file) {
+        status(&format!("Cannot read image: {error:?}"));
+    }
+}
+
 #[wasm_bindgen(start)]
 pub fn start() -> Result<(), JsValue> {
+    // The product GUI is the original JavaScript interface. The Rust-only DOM
+    // below is retained solely as an engine acceptance fixture, never deployed.
+    if web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id("fitJob"))
+        .is_none()
+    {
+        return Ok(());
+    }
     let canvas = element::<HtmlCanvasElement>("glCanvas")?;
     let app = Rc::new(RefCell::new(App::new(canvas)?));
     connect_file_input(app.clone(), "imageFile", false)?;
     connect_file_input(app.clone(), "jobFile", true)?;
     ui::connect(app.clone())?;
     viewer::connect(app.clone())?;
+    persistence::connect(app.clone())?;
+    hosted::connect(app.clone())?;
+    gaia::connect(app.clone())?;
+    exports::connect(app.clone())?;
+    layout::connect(app.clone())?;
     APP.with(|slot| *slot.borrow_mut() = Some(app));
     status("Load a PNG, JPEG, HEIC/HEIF, or FITS image to begin");
     Ok(())

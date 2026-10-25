@@ -14,14 +14,28 @@ The binary payload is platform independent:
   `[raHours, decDeg, vtMag]`
 
 For the Tycho-2 main catalogue, the generator uses the J2000 mean position
-columns `RAmdeg` and `DEmdeg`, not the observed Tycho position columns. The
-supplement files use their `RAdeg`, `DEdeg`, and `VTmag` fields.
+columns `RAmdeg` and `DEmdeg`. Entries with no published mean position (flag X)
+retain the observed ICRS position instead; the metadata counts these fallbacks.
+They have no published proper motion and are not claimed to be precise J2000
+epoch positions. The
+supplement files use their `RAdeg`, `DEdeg`, and `VTmag` fields; their J1991.25
+positions are propagated to J2000 with the provided tangent proper motion
+where both components are available. Missing proper motion leaves the published
+position unchanged. Blank positions/magnitudes are excluded, never coerced to
+zero. This follows the [CDS byte/field definitions](https://cdsarc.cds.unistra.fr/ftp/I/259/ReadMe).
 
 Regenerate with:
 
 ```sh
 node tools/build_tycho2_catalog.js
+# Or stream the 20 CDS main-catalogue parts and two supplements without
+# keeping the roughly 500 MB of uncompressed source files on disk:
+node tools/build_tycho2_catalog.js --fetch
 ```
+
+`tycho2_mag8.ids.json.gz` is a parallel list of the original `TYC a-b-c`
+identifiers in the exact same sorted row order. Rust exports preserve these
+identities rather than inventing a persistent identifier from an array index.
 
 `yale_asterisms_mag4_min1p5_max40.bin.gz` is generated from
 `js/star_catalog.js`. It stores precomputed Yale triangular asterisms using

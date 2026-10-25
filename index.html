@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>WISC - Widefield Star Calibrator</title>
 <link rel="stylesheet" href="style.css?v=20261002-mobile-radec">
+<link rel="stylesheet" href="phone.css?v=20261025-gear">
 </head>
 <body>
 <header class="topbar">
@@ -14,7 +15,7 @@
         <div class="copyright-line" id="copyrightLine">
             Copyright &copy; Juha Vierinen and Björn Gustavsson.
         </div>
-        <div class="subtle">
+        <div class="subtle shortcut-line">
             Shortcuts:
             <kbd>S</kbd> star picking,
             <kbd>L</kbd> lucky auto fit,
@@ -41,6 +42,7 @@
         </div>
     </div>
     <div class="top-actions">
+        <button id="phoneModeToggle" class="top-link" type="button" aria-pressed="false">Phone mode</button>
         <a class="top-link" href="https://github.com/jvierine/widefield-star-calibrator" target="_blank" rel="noopener">GitHub</a>
         <a class="top-link" href="help.html" target="_blank" rel="noopener">Help</a>
         <button id="toggleAmbientMusic" class="audio-button" type="button" aria-label="Play ambient sky music">
@@ -54,7 +56,8 @@
 </header>
 
 <main class="layout">
-    <section class="viewer-panel">
+    <section class="viewer-panel" id="viewerPanel">
+        <button id="settingsToggle" class="settings-toggle" type="button" aria-label="Open settings" aria-controls="settingsPanel" aria-expanded="false">⚙</button>
         <canvas id="glCanvas" tabindex="0"></canvas>
         <div class="cardinal-layer" id="cardinalLayer" aria-hidden="true"></div>
         <div class="view-zoom-controls" role="group" aria-label="Image zoom controls">
@@ -109,7 +112,9 @@
         </div>
     </section>
 
-    <aside class="controls">
+    <button id="settingsBackdrop" class="settings-backdrop" type="button" tabindex="-1" aria-label="Close settings" hidden></button>
+    <aside class="controls" id="settingsPanel" aria-label="Calibration settings">
+        <button id="settingsClose" class="settings-close" type="button" aria-label="Close settings">Close settings ×</button>
         <section>
             <h2>Observation</h2>
             <label>Platform
@@ -176,6 +181,10 @@
 
         <section>
             <h2>Stars</h2>
+            <div class="button-row button-row-2 phone-only">
+                <button id="phonePickStar" type="button" aria-pressed="false">Pick stars</button>
+                <button id="phonePan" type="button">Pan / cancel pick</button>
+            </div>
             <label>Star catalogue
                 <select id="starCatalog">
                     <option value="yale" selected>Yale Bright Star</option>
@@ -342,5 +351,6 @@ window.MathJax = {
 <script src="js/spacecraft.js?v=20261001-forward-fit-071"></script>
 <script src="js/spacecraft_sessions.js?v=20261002-sequence-export"></script>
 <script src="js/app.js?v=20261002-spacecraft-radec-uv13"></script>
+<script src="js/phone_mode.js?v=20261025-gear"></script>
 </body>
 </html>

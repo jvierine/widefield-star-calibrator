@@ -2,12 +2,15 @@
   "sources": [
     {
       "source": "data/catalog.dat",
-      "rightAscensionColumn": 25,
-      "declinationColumn": 26,
+      "rightAscensionColumn": 3,
+      "declinationColumn": 4,
       "vtMagnitudeColumn": 20,
+      "positionEpoch": "Mean J2000 preferred; supplements propagated from J1991.25 where proper motion exists; main X-flag stars retain observed ICRS positions when no mean/PM is published",
+      "observedPositionFallbacks": 458,
+      "downloadBase": "https://cdsarc.cds.unistra.fr/ftp/I/259/",
       "inputRows": 2539913,
-      "acceptedRows": 41907,
-      "skippedRows": 2498006,
+      "acceptedRows": 41887,
+      "skippedRows": 2498026,
       "duplicateRows": 0
     },
     {
@@ -15,9 +18,12 @@
       "rightAscensionColumn": 3,
       "declinationColumn": 4,
       "vtMagnitudeColumn": 14,
+      "positionEpoch": "Mean J2000 preferred; supplements propagated from J1991.25 where proper motion exists; main X-flag stars retain observed ICRS positions when no mean/PM is published",
+      "observedPositionFallbacks": 0,
+      "downloadBase": "https://cdsarc.cds.unistra.fr/ftp/I/259/",
       "inputRows": 17588,
-      "acceptedRows": 163,
-      "skippedRows": 17425,
+      "acceptedRows": 158,
+      "skippedRows": 17430,
       "duplicateRows": 0
     },
     {
@@ -25,6 +31,9 @@
       "rightAscensionColumn": 3,
       "declinationColumn": 4,
       "vtMagnitudeColumn": 14,
+      "positionEpoch": "Mean J2000 preferred; supplements propagated from J1991.25 where proper motion exists; main X-flag stars retain observed ICRS positions when no mean/PM is published",
+      "observedPositionFallbacks": 0,
+      "downloadBase": "https://cdsarc.cds.unistra.fr/ftp/I/259/",
       "inputRows": 1146,
       "acceptedRows": 2,
       "skippedRows": 1144,
@@ -52,8 +61,8 @@
     ]
   },
   "maxMagnitudeExclusive": 8,
-  "stars": 42072,
-  "uncompressedBytes": 504880,
-  "compressedBytes": 358610,
-  "generatedAtUtc": "2026-05-26T22:23:53.973Z"
+  "stars": 42047,
+  "uncompressedBytes": 504580,
+  "compressedBytes": 357343,
+  "generatedAtUtc": "2026-10-25T07:48:38.729Z"
 }

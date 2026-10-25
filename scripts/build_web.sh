@@ -49,3 +49,4 @@ cp "$repo_root/docs/rust-feature-parity.md" "$repo_root/web/docs/rust-feature-pa
     "$repo_root/target/wasm32-unknown-unknown/release/wisc_web.wasm"
 
 echo "Built Rust/WASM application in $repo_root/web/pkg"
+node "$repo_root/tools/build_shared_engine_gui.mjs"

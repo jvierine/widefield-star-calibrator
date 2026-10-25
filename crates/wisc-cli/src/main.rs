@@ -8,10 +8,8 @@ use clap::{Parser, Subcommand, ValueEnum};
 use rustplotlib::{Axes, Figure, IntendedUse, Layer, Line, MarkerShape, MarkerStyle};
 use serde::Deserialize;
 use wisc_core::imaging::{decode, FitsByteOrder};
-use wisc_core::workflow::{
-    automatic_fit_preserving, tycho_catalog, visible_catalog, CalibrationDocument, FitJob,
-};
-use wisc_core::{detect_stars, fit, DetectorConfig, FitResult};
+use wisc_core::workflow::{automatic_fit_preserving, visible_catalog, CalibrationDocument, FitJob};
+use wisc_core::{detect_stars, DetectorConfig, FitResult};
 
 #[derive(Debug, Parser)]
 #[command(name = "wisc", version, about = "WISC wide-field star calibration")]
@@ -39,6 +37,32 @@ impl From<ByteOrder> for FitsByteOrder {
 
 #[derive(Debug, Subcommand)]
 enum Command {
+    /// Generate a complete local report, preserving the original image.
+    Report {
+        input: PathBuf,
+        #[arg(long)]
+        image: PathBuf,
+        #[arg(short, long, default_value = "wisc-calibration-report.zip")]
+        output: PathBuf,
+    },
+    /// Export equidistant/equisolid MIRACLE compatibility approximations.
+    Miracle {
+        input: PathBuf,
+        #[arg(long)]
+        ascii: bool,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Export a self-contained mapper or full-precision parameter declaration.
+    Export {
+        calibration: PathBuf,
+        #[arg(long,default_value="python",value_parser=["python","julia","matlab","c"])]
+        language: String,
+        #[arg(long)]
+        parameters_only: bool,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Measure a star with the same 40× KDE picker used by the Rust browser.
     Centroid {
         image: PathBuf,
@@ -76,6 +100,8 @@ enum Command {
         match_radius: f64,
         #[arg(long, default_value_t = 5.0)]
         max_magnitude: f64,
+        #[arg(long,default_value="tycho2",value_parser=["tycho2","yale","td1"])]
+        catalogue: String,
         #[arg(long, default_value_t = 2000)]
         max_iterations: usize,
         #[arg(long)]
@@ -113,6 +139,9 @@ enum Command {
         /// Use Levenberg–Marquardt instead of Nelder–Mead.
         #[arg(long)]
         lm: bool,
+        /// Keep these zero-based optpar indices unchanged, e.g. 8,9,10,11.
+        #[arg(long, value_delimiter = ',')]
+        fixed: Vec<usize>,
     },
     /// Project azimuth/zenith samples through an existing calibration.
     Project {
@@ -145,16 +174,41 @@ fn is_hdf5(path: &Path) -> bool {
         .is_some_and(|s| s.eq_ignore_ascii_case("h5") || s.eq_ignore_ascii_case("hdf5"))
 }
 
-fn save_fit(output: &Path, plot: Option<&Path>, result: &FitResult, job: &FitJob) -> Result<()> {
+fn save_fit(
+    output: &Path,
+    plot: Option<&Path>,
+    result: &FitResult,
+    job: &FitJob,
+    source: &Path,
+) -> Result<()> {
     let document = CalibrationDocument::from_fit(result, job).map_err(anyhow::Error::msg)?;
+    let mut session =
+        wisc_core::products::read_session(&fs::read(source)?).map_err(anyhow::Error::msg)?;
+    let metadata =
+        wisc_core::products::source_metadata(&fs::read(source)?).map_err(anyhow::Error::msg)?;
+    if let Some(session) = &mut session {
+        session.job = job.clone();
+        session.job.initial = result.calibration.clone();
+    }
     if let Some(path) = plot {
         residual_plot(path, &document.residuals_px, result.rms_px)
             .with_context(|| format!("writing residual plot {}", path.display()))?;
     }
     let bytes = if is_hdf5(output) {
-        wisc_core::products::calibration_hdf5(job, Some(result)).map_err(anyhow::Error::msg)?
+        if let Some(session) = &session {
+            wisc_core::products::session_hdf5(session, Some(result)).map_err(anyhow::Error::msg)?
+        } else {
+            wisc_core::products::calibration_with_metadata_hdf5(job, Some(result), &metadata)
+                .map_err(anyhow::Error::msg)?
+        }
     } else {
-        serde_json::to_vec_pretty(&document)?
+        let mut value = serde_json::to_value(&document)?;
+        if let Some(session) = session {
+            value["session"] = serde_json::to_value(session)?;
+        } else {
+            value["source_metadata"] = metadata;
+        }
+        serde_json::to_vec_pretty(&value)?
     };
     fs::write(output, bytes)?;
     println!(
@@ -207,8 +261,188 @@ fn residual_plot(path: &Path, residuals: &[[f64; 2]], rms: f64) -> Result<()> {
     Ok(())
 }
 
+fn overlay_plot(path: &Path, bytes: &[u8], session: &wisc_core::session::Session) -> Result<()> {
+    let job = &session.job;
+    let order = match session
+        .display
+        .get("fitsByteOrder")
+        .and_then(serde_json::Value::as_str)
+    {
+        Some("big") => FitsByteOrder::Big,
+        Some("little") => FitsByteOrder::Little,
+        _ => FitsByteOrder::Auto,
+    };
+    let decoded = decode(bytes, order).map_err(anyhow::Error::msg)?;
+    anyhow::ensure!(
+        (decoded.width, decoded.height) == (job.initial.width, job.initial.height),
+        "overlay image dimensions differ from calibration"
+    );
+    let image = image::RgbaImage::from_raw(decoded.width, decoded.height, decoded.rgba)
+        .context("invalid image pixels")?;
+    let mut figure = Figure::new(IntendedUse::ArticleColumn);
+    figure.height_mm =
+        figure.width_mm * job.initial.height as f64 / job.initial.width as f64 + 18.0;
+    figure.raster_dpi = 300.0;
+    let panel = figure.grid(1, 1)?[0];
+    figure.panels[panel].axes = Some(Axes::new(
+        [-0.5, job.initial.width as f64 - 0.5],
+        [-(job.initial.height as f64) + 0.5, 0.5],
+        "x [pixel]",
+        "-y [pixel]",
+    ));
+    figure.panels[panel].push(Layer::Image(image));
+    let measured: Vec<_> = job.pairs.iter().map(|p| [p.x_px, -p.y_px]).collect();
+    let predicted: Vec<_> = job
+        .pairs
+        .iter()
+        .filter_map(|p| job.initial.project(p.azimuth_rad, p.zenith_rad))
+        .map(|p| [p[0], -p[1]])
+        .collect();
+    let mut panel = figure.panels.remove(panel);
+    panel.markers(
+        &mut figure,
+        &measured,
+        &MarkerStyle {
+            shape: MarkerShape::Circle,
+            size_pt: 3.5,
+            color: [0.1, 0.8, 0.9],
+        },
+    )?;
+    panel.markers(
+        &mut figure,
+        &predicted,
+        &MarkerStyle {
+            shape: MarkerShape::Circle,
+            size_pt: 2.0,
+            color: [1.0, 0.5, 0.1],
+        },
+    )?;
+    figure.panels.push(panel);
+    figure.save(path)?;
+    Ok(())
+}
+
 fn run() -> Result<()> {
     match Cli::parse().command {
+        Command::Report {
+            input,
+            image,
+            output,
+        } => {
+            let source = fs::read(&input)?;
+            let job = read_job(&input)?;
+            let bytes = fs::read(&image)?;
+            let session = if let Some(session) =
+                wisc_core::products::read_session(&source).map_err(anyhow::Error::msg)?
+            {
+                session
+            } else {
+                wisc_core::session::Session {
+                    schema: wisc_core::session::SCHEMA.into(),
+                    image_sha256: wisc_core::session::image_digest(&bytes),
+                    image_name: image
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("image")
+                        .into(),
+                    job: job.clone(),
+                    metadata: wisc_core::products::source_metadata(&source)
+                        .map_err(anyhow::Error::msg)?,
+                    display: serde_json::Value::Null,
+                    masked_tiles: vec![],
+                }
+            };
+            session
+                .verify_image(&bytes, job.initial.width, job.initial.height)
+                .map_err(anyhow::Error::msg)?;
+            let directory = tempfile::tempdir()?;
+            let residuals: Vec<_> = job
+                .pairs
+                .iter()
+                .map(|p| {
+                    job.initial
+                        .project(p.azimuth_rad, p.zenith_rad)
+                        .map(|q| [q[0] - p.x_px, q[1] - p.y_px])
+                        .context("invalid selected-star projection")
+                })
+                .collect::<Result<_>>()?;
+            let rms = (residuals
+                .iter()
+                .map(|r| r[0] * r[0] + r[1] * r[1])
+                .sum::<f64>()
+                / residuals.len().max(1) as f64)
+                .sqrt();
+            let path = directory.path().join("residuals.png");
+            residual_plot(&path, &residuals, rms)?;
+            let mut assets = vec![("residuals.png", fs::read(&path)?)];
+            let compatibility = wisc_core::miracle::product(&job).map_err(anyhow::Error::msg)?;
+            for (name, rows, summary) in [
+                (
+                    "miracle_equidistant.png",
+                    &compatibility.equidistant_residuals,
+                    &compatibility.equidistant_summary,
+                ),
+                (
+                    "miracle_equisolid.png",
+                    &compatibility.equisolid_residuals,
+                    &compatibility.equisolid_summary,
+                ),
+            ] {
+                let path = directory.path().join(name);
+                let xy: Vec<_> = rows.iter().map(|r| [r[1], r[0]]).collect();
+                residual_plot(&path, &xy, summary.rms_pixel.unwrap_or(0.0))?;
+                assets.push((name, fs::read(path)?));
+            }
+            let overlay = directory.path().join("overlay.png");
+            overlay_plot(&overlay, &bytes, &session)?;
+            assets.push(("overlay.png", fs::read(overlay)?));
+            let archive =
+                wisc_core::report::bundle(&session, &bytes, &assets).map_err(anyhow::Error::msg)?;
+            fs::write(&output, archive)?;
+            println!(
+                "{}: complete Rust report, {} stars, RMS {:.6} px",
+                output.display(),
+                job.pairs.len(),
+                rms
+            );
+        }
+        Command::Miracle {
+            input,
+            ascii,
+            output,
+        } => {
+            let product =
+                wisc_core::miracle::product(&read_job(&input)?).map_err(anyhow::Error::msg)?;
+            let text = if ascii {
+                wisc_core::miracle::ascii(&product)
+            } else {
+                serde_json::to_string_pretty(&product)?
+            };
+            if let Some(path) = output {
+                fs::write(path, text)?;
+            } else {
+                println!("{text}");
+            }
+        }
+        Command::Export {
+            calibration,
+            language,
+            parameters_only,
+            output,
+        } => {
+            let job = read_job(&calibration)?;
+            let text = if parameters_only {
+                wisc_core::code_exports::parameters(&job.initial, &language)
+            } else {
+                wisc_core::code_exports::mapper(&job.initial, &language)
+            }
+            .map_err(anyhow::Error::msg)?;
+            if let Some(path) = output {
+                fs::write(path, text)?;
+            } else {
+                println!("{text}");
+            }
+        }
         Command::Centroid {
             image,
             x,
@@ -261,6 +495,7 @@ fn run() -> Result<()> {
             output,
             match_radius,
             max_magnitude,
+            catalogue,
             max_iterations,
             residual_plot,
             triangles,
@@ -282,12 +517,13 @@ fn run() -> Result<()> {
                 decoded.height,
                 DetectorConfig::default(),
             );
-            let sky = visible_catalog(
-                &tycho_catalog().map_err(anyhow::Error::msg)?,
-                observation,
-                max_magnitude,
-            )
-            .map_err(anyhow::Error::msg)?;
+            let catalogue: Vec<_> = wisc_core::catalogues::load(&catalogue)
+                .map_err(anyhow::Error::msg)?
+                .into_iter()
+                .map(|entry| entry.star)
+                .collect();
+            let sky = visible_catalog(&catalogue, observation, max_magnitude)
+                .map_err(anyhow::Error::msg)?;
             let matcher = if triangles {
                 wisc_core::asterism::triangle_fit
             } else {
@@ -303,7 +539,7 @@ fn run() -> Result<()> {
             )
             .map_err(anyhow::Error::msg)?;
             job.pairs = pairs;
-            save_fit(&output, residual_plot.as_deref(), &result, &job)?;
+            save_fit(&output, residual_plot.as_deref(), &result, &job, &initial)?;
         }
         Command::Detect {
             image,
@@ -341,16 +577,19 @@ fn run() -> Result<()> {
             residual_plot: plot,
             max_iterations,
             lm,
+            fixed,
         } => {
             let job = read_job(&input)?;
+            let active =
+                wisc_core::active_parameters(&job.initial, &fixed).map_err(anyhow::Error::msg)?;
             let solver = if lm {
-                wisc_core::optimization::fit_lm
+                wisc_core::optimization::fit_lm_with_active
             } else {
-                fit
+                wisc_core::fit_with_active
             };
-            let result =
-                solver(&job.initial, &job.pairs, max_iterations).map_err(anyhow::Error::msg)?;
-            save_fit(&output, plot.as_deref(), &result, &job)?;
+            let result = solver(&job.initial, &job.pairs, max_iterations, &active)
+                .map_err(anyhow::Error::msg)?;
+            save_fit(&output, plot.as_deref(), &result, &job, &input)?;
         }
         Command::Project {
             calibration,

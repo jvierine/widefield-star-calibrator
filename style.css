@@ -383,6 +383,12 @@ h2 {
     display: block;
 }
 
+/* Rustplotlib owns only the scientific figure, inside the original panel. */
+.residual-histogram canvas.residual-scatter-svg {
+    background: #ffffff;
+    border-radius: 3px;
+}
+
 .residual-scatter-axis {
     stroke: rgba(255, 225, 221, 0.8);
     stroke-width: 1;

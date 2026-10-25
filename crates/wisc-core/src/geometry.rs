@@ -3,6 +3,49 @@ use crate::{camera_rotation, Calibration, OpticalModel};
 use nalgebra::{Matrix2, Matrix3, Vector2, Vector3};
 use std::f64::consts::PI;
 
+/// Repoint a camera so a grabbed sky ray follows a cursor drag. Camera-space
+/// rotation keeps the radial law, focal lengths and measured pixels unchanged.
+pub fn drag_camera(
+    calibration: &crate::Calibration,
+    from: [f64; 2],
+    to: [f64; 2],
+) -> Result<crate::Calibration, String> {
+    let from = camera_ray(calibration, from).ok_or("drag begins outside the lens branch")?;
+    let to = camera_ray(calibration, to).ok_or("drag ends outside the lens branch")?;
+    let rotation =
+        nalgebra::UnitQuaternion::rotation_between(&to, &from).ok_or("ambiguous antipodal drag")?;
+    rotate_camera(calibration, rotation.to_rotation_matrix().matrix())
+}
+
+pub fn roll_camera(
+    calibration: &crate::Calibration,
+    radians: f64,
+) -> Result<crate::Calibration, String> {
+    if !radians.is_finite() {
+        return Err("invalid roll angle".into());
+    }
+    let rotation = nalgebra::Rotation3::from_axis_angle(&Vector3::z_axis(), radians);
+    rotate_camera(calibration, rotation.matrix())
+}
+
+fn rotate_camera(
+    calibration: &crate::Calibration,
+    delta: &Matrix3<f64>,
+) -> Result<crate::Calibration, String> {
+    calibration.validate()?;
+    let old = crate::camera_rotation(
+        calibration.optpar[2],
+        calibration.optpar[3],
+        calibration.optpar[4],
+    );
+    let rotation = Matrix3::from_row_slice(&old) * delta;
+    let angles = crate::camera_angles(&std::array::from_fn(|i| rotation[(i / 3, i % 3)]));
+    let mut next = calibration.clone();
+    next.optpar[2..5].copy_from_slice(&angles);
+    next.validate()?;
+    Ok(next)
+}
+
 /// Invert a zero-based pixel centre into a unit direction in camera space.
 /// Radial models use their monotonic principal branch. Pixels outside that
 /// branch return `None`, rather than silently choosing another direction.
@@ -129,6 +172,29 @@ pub fn pixel_to_azimuth_zenith(calibration: &Calibration, pixel: [f64; 2]) -> Op
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn camera_drag_moves_grabbed_world_ray_to_the_cursor_for_radial_and_brown_lenses() {
+        for model in [OpticalModel::Sine, OpticalModel::BrownConrady] {
+            let calibration = Calibration {
+                width: 1024,
+                height: 768,
+                model,
+                optpar: crate::default_optpar(1024, 768, model),
+            };
+            let from = [330.0, 280.0];
+            let to = [420.0, 325.0];
+            let sky = pixel_to_azimuth_zenith(&calibration, from).unwrap();
+            let changed = drag_camera(&calibration, from, to).unwrap();
+            let pixel = changed.project(sky[0], sky[1]).unwrap();
+            assert!(
+                (pixel[0] - to[0]).hypot(pixel[1] - to[1]) < 1e-8,
+                "{pixel:?}"
+            );
+            for i in [0, 1, 5, 6, 7] {
+                assert_eq!(calibration.optpar[i], changed.optpar[i]);
+            }
+        }
+    }
     #[test]
     fn inverse_roundtrips_all_lens_models_with_rotation_and_mirrored_axis() {
         for model in [1, 2, 3, 4, 5, 6, 12, 20] {

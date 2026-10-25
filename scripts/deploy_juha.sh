@@ -8,7 +8,7 @@ live_dir=${AIDA_DEPLOY_LIVE_DIR:-/var/www/aida}
 mirror_dir=${AIDA_DEPLOY_MIRROR_DIR:-/var/www/html/aida}
 service=${AIDA_DEPLOY_SERVICE:-wisc-aida-api.service}
 api_url=${AIDA_DEPLOY_API_URL:-https://juha.no/api/test-cases}
-app_url=${AIDA_DEPLOY_APP_URL:-https://juha.no/aida/bootstrap.js}
+app_url=${AIDA_DEPLOY_APP_URL:-https://juha.no/aida/js/start_rust_app.js}
 json_body_limit=${AIDA_DEPLOY_JSON_BODY_LIMIT:-134217728}
 image_body_limit=${AIDA_DEPLOY_IMAGE_BODY_LIMIT:-67108864}
 

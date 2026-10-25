@@ -1,54 +1,57 @@
-# Full Rust migration acceptance
+# Shared Rust engine acceptance — original GUI preserved
 
-Full feature parity is required before switching the public application.
-The legacy application stays available while this checklist is incomplete.
-Passing compatibility tests checks the old algorithms; it does **not** mean
-that every legacy workflow has been ported to the new Rust application.
+The product GUI is the original `index.html`, `style.css`, and `js/app.js`.
+Its layout, white cards, controls, labels, interactions and existing features
+are not replaced by a Rust-specific UI. JavaScript GUI code is explicitly
+allowed. On phones the same sidebar is hidden behind a gear button.
 
-Sources: root `index.html`, `js/app.js`, the helper modules under `js/`, and
-README/help. The Rust replacement is `web/` plus the three `crates/wisc-*`
-packages. No feature below is intentionally dropped.
+The built `web/index.html` must equal the original HTML with only the app
+bootstrap replaced. `web/style.css` must equal the original stylesheet byte for
+byte. `tests/original_gui_browser.cjs` enforces these invariants. The Rust DOM
+fixture under `tests/fixtures/` is test infrastructure, not a deployable GUI.
 
-| Area | Current replacement | Remaining acceptance work |
+The native `wisc` executable builds and runs without JavaScript, Node.js or a
+Python runtime. The browser calls the same portable `wisc-core` via WASM.
+Retaining an old GUI workflow does not mean all of its numerical internals
+have already been ported; outstanding engine work is explicit below.
+
+| Area | Current shared/native implementation | Remaining engine acceptance work |
 |---|---|---|
-| Eight optical models and inverse projection | Shared Rust implementation, reference and round-trip tests | Continue real-image regressions across every model |
-| Nelder–Mead and Levenberg–Marquardt | Both shared native/WASM; LM tested on every model and BACC | Broader robust/outlier and cross-target LM regressions |
-| Manual star pairing, deleting, undo, clearing | Rust UI, detection snapping, 40× KDE picker | Legacy selection shortcuts, KDE-only dots, configurable patch/search controls and full density diagnostics |
-| Automatic identification | Seeded matching and triangle pointing recovery; retains manual pairs | Full lucky multi-stage lens/annulus hypotheses, faint-star expansion, pruning, NN tuning and asterism diagnostics |
-| Image input | PNG/JPEG/HEIC/HEIF/FITS, stack integration, byte-order override | Drag/drop, startup demo, sequence workflows |
-| Image metadata | Shared EXIF date/offset/subseconds/GPS/camera metadata; station/date filename fallbacks; FITS time/site | Broader metadata fixtures, expose/preserve altitude and all metadata in exported sessions |
-| Zoom/pan | Cursor-anchored wheel zoom 1–16×, drag pan, reset | Legacy +/- controls, magnifier, touch controls and persistent view state |
-| Display | Brightness, contrast, gamma, RGB and Gaussian high-pass display | Percentile clipping/stretch parity and image flips |
-| Bad detections | Toggle 128×128 mask tiles, excluded from automatic matching | Paint-on-drag/keyboard masking, detector re-run with masks, serialize/undo masks and individual rejected detections |
-| Sky and image views | Catalogue projections, image/sky and marker toggles | Full Stellarium appearance, names/identities, independent marker layers and exact shortcut semantics |
-| Coordinate overlays | Azimuth/zenith grid | Celestial RA/Dec grid, labels and exact legacy grid controls |
-| Residual diagnostics | Rustplotlib plot, on-image ×20 vectors | Full residual tables/statistics, legacy residual-only view and plot export buttons |
-| Lens controls | All 8/12 coefficients editable; native CLI model parameters | Model/image flips, modifier-wheel/drag lens manipulation, pointing reset, FOV controls, 3D orientation visualization and equations |
-| Catalogues | Bundled Tycho-2 to magnitude 8 | TD1 UV, Yale asterism index/names and catalogue selector |
-| Calibration interchange | JSON and new Rust HDF5; legacy raw-coordinate ground HDF5 import | Preserve rich star identities/exclusions/session metadata; older ambiguous-coordinate files require explicit conversion; spacecraft HDF5 and report ZIP import |
-| Coordinate maps | FITS planes; compressed full pixel-corner HDF5 | Complete legacy metadata/product naming compatibility |
-| MIRACLE compatibility | Not ported | Equidistant/equisolid fits, residual statistics, summary tables and legacy datasets |
-| Reports | Standalone calibration/map files, native Rustplotlib residual figures | ZIP bundles, LaTeX, overlays/montages, base image, standalone reader/overlay/map scripts |
-| Code exports | Native Rust CLI and JSON | Copy/export optpar and Python/MATLAB/Julia/C compatibility generators |
-| Hosted test cases | Rust API backend exists independently | New UI list/load/save, passkey handling, share links and quick-link routing |
-| GAIA integration | Existing public legacy UI remains connected | Image/settings/refit-proposal import, masks, observation headers, calibration upload and opener notification |
-| Spacecraft geometry | Not integrated into replacement | ECEF/ENU, attitude seeding, WGS84 limb/occultation, UV selection, disc detection and fitting |
-| SMILE handoff and sessions | Not ported | Validated observation import/export, origin/token checks, opener messaging, per-frame autosave, session archives and star-pick restoration |
-| Help and accessibility | Rust workflow documented separately; labelled controls/status | Feature-by-feature help, shortcut parity, progress/cancel, keyboard/mobile acceptance |
-| Optional audio/easter eggs | Not ported | Retain optional legacy interactions without adding scientific dependencies |
-| Deployment | Native CLI installed on juha.no/revontuli; API already Rust | Full UI parity gate, complete host verification, urdr access and rollout/rollback checks |
+| Original desktop GUI | Original HTML/CSS/JS, not a recreation; browser invariant and screenshot tests | Keep visual/interaction regressions covered |
+| Phone GUI | Same settings panel behind ⚙, automatic phone/coarse-pointer mode, 44px controls, modal focus/backdrop/Escape, portrait/landscape | Broader real iOS/Android checks |
+| Phone star picking | Two-tap image/catalogue pairing and safe pinch/pan without a keyboard; browser test | More real-device/multi-touch regressions |
+| Eight lens models and inverse mapping | Shared Rust, browser projection adapter, native independent Python/C checks | Broader real-image model regressions |
+| Camera rotations and ground star coordinates | Browser adapters call shared Rust; native Astropy checks | Broader epoch/near-pole regressions |
+| NM/LM fitting | Production GUI and CLI use same engine, no JS recenter/refit; native/WASM agreement tested | Robust/outlier regressions across more fixtures |
+| Fixed coefficients | Shared NM/LM active-parameter API; spacecraft Brown k2/k3/p1/p2 remain exactly fixed; CLI --fixed | Broader spacecraft parameter-policy fixtures |
+| Manual pairing/deleting/undo | Original full JavaScript GUI retained | All centroid/detection internals to shared Rust |
+| Detection/KDE | Rust detector and 40× KDE available natively and in WASM acceptance fixture | Connect original GUI detector/KDE paths without changing picker behavior |
+| Automatic identification | Full original lucky/annulus/NN/faint-star/diagnostic GUI remains; native seeded and triangle matching exist | Full native lucky pipeline, annulus/NN/faint-star expansion and Yale index |
+| Image decoding/metadata | Native/core PNG/JPEG/HEIC/FITS stack decoder and EXIF/site metadata | Converge original GUI decode paths with the same native implementation |
+| Display/grids/labels | Original GUI controls and appearance retained; shared histogram and viewport primitives tested | Connect remaining display/grid internals where useful, no redesign |
+| Catalogues | Corrected 42,047-star Tycho subset, original TYC IDs, named Yale and TD1; shared native catalogue loader | Native precomputed Yale asterism index |
+| Ground interchange | Native JSON/HDF5/report ZIP/session import; exact SHA binding; legacy names, altitude, flips/excluded table provenance | Uncommon older attributes and ambiguous-coordinate explicit conversion |
+| Maps | Native FITS degree planes and compressed full pixel-corner HDF5; independent Astropy/SciPy/h5py checks | Complete product naming compatibility |
+| MIRACLE | Shared SVD fits, ASCII/JSON/HDF5, statistics and explicit fallback; independent NumPy checks | Full native comparison-table/absolute-angular-error figure |
+| Reports | Native Rustplotlib ZIP/HTML/LaTeX, source manifest/hash, no duplicate source PNG, rich HDF5, mappers/readers | Remaining original montage/TSV/embedded catalogue examples |
+| Code exports | Rust Python/MATLAB/Julia/C mappers and optpar, all eight models; Python/C actually executed | Execute generated Julia/MATLAB when runtimes are available |
+| Hosted/GAIA | Original full GUI retained; Rust API; native-engine fit integrated; real local API/protocol tests | Production read-only checks and original-GUI submission acceptance |
+| Spacecraft/SMILE | Original ECEF/limb/disc/UV/SMILE/session GUI retained; constrained fitting shared Rust | Native ephemeris/limb/disc/occultation/sequence engine and legacy spacecraft HDF5 |
+| Help/audio/keyboard | Original GUI interactions retained; phone controls supplement keyboard | Keep help accurate about which numerical ports are complete |
+| Deployment | Public API already Rust; pure-Rust CLI available | Push/CI, original-GUI engine rollout and rollback checks; urdr access still required |
 
 ## Verification
 
-Run `cargo test --locked --workspace`, strict Clippy, and `scripts/build_web.sh`.
-`tests/rust_web_browser.cjs` exercises the **Rust** UI in real Chromium/WebGL:
-NM/LM fit (including native/WASM LM projection agreement within 0.00001 pixel),
-zoom/pan without accidental pairing, scientific overlays, display
-isolation, masks, KDE, undo, and HDF5 download. CI runs this after the WASM build.
-Install Playwright 1.62.1 and its Chromium binary to run it locally; a separately
-installed package may be supplied through `NODE_PATH`. An existing browser
-binary can be selected with `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
+Run `cargo test --locked --workspace`, strict Clippy, `scripts/build_web.sh`,
+and the complete `npm run test:all` scientific compatibility gate with no skips.
+The original GUI browser test is the production UI acceptance test; the older
+`rust_*_browser.cjs` tests exercise a separate engine fixture, local API,
+session/report and GAIA protocol behavior. They never submit to production.
 
-Keep the legacy full scientific suite (`npm run test:all`) green throughout the
-migration. New features need Rust-native tests and browser/native workflow tests;
-retaining the old JavaScript implementation is not a completed Rust port.
+`verify_rust_report.py` checks original image bytes, rich HDF5 through h5py,
+independent NumPy MIRACLE fits and native ZIP/JSON/HDF provenance round trips.
+`verify_rust_code_exports.py` executes generated Python/C for all models.
+`verify_rust_exports.py` independently checks maps with Astropy and SciPy.
+
+No feature is intentionally removed. Do not claim the entire numerical
+migration complete merely because compatibility tests or the GUI pass.

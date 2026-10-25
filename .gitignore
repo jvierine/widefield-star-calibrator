@@ -6,6 +6,12 @@ npm-debug.log*
 /.latex-cache/
 /web/pkg/
 /web/help.html
+/web/original-layout.css
+/web/style.css
+/web/phone.css
+/web/js/
+/web/data/
+/web/calibration_images/
 /web/docs/
 
 __pycache__/

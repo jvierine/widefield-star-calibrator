@@ -4,6 +4,21 @@ const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
 const zlib = require("node:zlib");
+const {parseRow}=require('../tools/build_tycho2_catalog.js');
+
+test('Tycho builder rejects blanks, uses mean J2000 columns and propagates supplements',()=>{
+    const input={raIndex:2,decIndex:3,vtIndex:19};
+    const fields=Array(32).fill('');fields[2]='30';fields[3]='40';fields[19]='5';fields[24]='60';fields[25]='-70';
+    assert.deepEqual(parseRow(fields.join('|'),input),[2,40,5]);
+    for(const index of [2,3,19]) {const missing=fields.slice();missing[index]='   ';assert.equal(parseRow(missing.join('|'),input),null);}
+    const noMean=fields.slice();noMean[2]='';noMean[3]='';
+    assert.deepEqual(parseRow(noMean.join('|'),{...input,fallbackRaIndex:24,fallbackDecIndex:25}),[4,-70,5],'X-flag stars retain a labelled observed-position fallback, not a spurious zero coordinate');
+    const zero=fields.slice();zero[2]='0';zero[3]='0';zero[19]='0';assert.deepEqual(parseRow(zero.join('|'),input),[0,0,0],'real numeric zero is not missing');
+    const supplement=Array(17).fill('');supplement[2]='0';supplement[3]='0';supplement[4]='1000';supplement[5]='0';supplement[13]='1';
+    const propagated=parseRow(supplement.join('|'),{raIndex:2,decIndex:3,vtIndex:13,epoch:1991.25});
+    assert.ok(Math.abs(propagated[0]*15-8.75/3600)<1e-10);
+    assert.equal(propagated[1],0);
+});
 
 function angularSeparationDeg(a, b) {
     const ra1 = a.raDeg * Math.PI / 180;
@@ -72,10 +87,18 @@ test("Tycho-2 metadata specifies the portable binary layout", () => {
         metadata.sources.map(source => source.source),
         ["data/catalog.dat", "data/suppl_1.dat", "data/suppl_2.dat"],
     );
-    assert.equal(metadata.sources[0].rightAscensionColumn, 25);
-    assert.equal(metadata.sources[0].declinationColumn, 26);
+    assert.equal(metadata.sources[0].rightAscensionColumn, 3);
+    assert.equal(metadata.sources[0].declinationColumn, 4);
     assert.equal(metadata.sources[0].vtMagnitudeColumn, 20);
     assert.equal(metadata.maxMagnitudeExclusive, 8);
+});
+
+test('Tycho identifiers are the original catalogue identifiers, not array indices',()=>{
+    const {rows}=loadTychoRows();
+    const ids=JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(__dirname,'../data/tycho2_mag8.ids.json.gz'))));
+    assert.equal(ids.length,rows.length);
+    assert.ok(ids.every(id=>/^TYC \d+-\d+-\d+$/.test(id)));
+    assert.equal(new Set(ids).size,ids.length);
 });
 
 test("Tycho-2 browser catalogue contains all Yale stars brighter than magnitude 4", () => {

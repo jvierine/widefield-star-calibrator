@@ -6,12 +6,18 @@ use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
 pub mod asterism;
+pub mod catalogues;
+pub mod code_exports;
+pub mod gaia;
 pub mod geometry;
 pub mod imaging;
 pub mod inspection;
 pub mod metadata;
+pub mod miracle;
 pub mod optimization;
 pub mod products;
+pub mod report;
+pub mod session;
 pub mod workflow;
 
 pub const DEG: f64 = PI / 180.0;
@@ -355,14 +361,69 @@ pub fn fit(
     pairs: &[StarPair],
     max_iterations: usize,
 ) -> Result<FitResult, String> {
+    fit_with_active(
+        start,
+        pairs,
+        max_iterations,
+        &(0..start.model.parameter_count()).collect::<Vec<_>>(),
+    )
+}
+
+pub(crate) fn validate_active(start: &Calibration, active: &[usize]) -> Result<(), String> {
+    if active.is_empty()
+        || active.iter().any(|i| *i >= start.model.parameter_count())
+        || active
+            .iter()
+            .enumerate()
+            .any(|(i, p)| active[..i].contains(p))
+    {
+        return Err("invalid or duplicated active lens parameter".into());
+    }
+    Ok(())
+}
+
+pub fn active_parameters(start: &Calibration, fixed: &[usize]) -> Result<Vec<usize>, String> {
+    if fixed.iter().any(|i| *i >= start.model.parameter_count())
+        || fixed
+            .iter()
+            .enumerate()
+            .any(|(i, p)| fixed[..i].contains(p))
+    {
+        return Err("invalid or duplicated fixed lens parameter".into());
+    }
+    let active: Vec<_> = (0..start.model.parameter_count())
+        .filter(|i| !fixed.contains(i))
+        .collect();
+    validate_active(start, &active)?;
+    Ok(active)
+}
+
+pub(crate) fn clamp_active(values: &mut [f64], start: &Calibration, active: &[usize]) {
+    clamp_parameters(values, start.model);
+    for (i, value) in values.iter_mut().enumerate() {
+        if !active.contains(&i) {
+            *value = start.optpar[i];
+        }
+    }
+}
+
+/// Fit only the selected zero-based optpar indices; all other coefficients
+/// remain bit-for-bit unchanged. Useful for spacecraft distortion constraints.
+pub fn fit_with_active(
+    start: &Calibration,
+    pairs: &[StarPair],
+    max_iterations: usize,
+    active: &[usize],
+) -> Result<FitResult, String> {
     start.validate()?;
+    validate_active(start, active)?;
     if max_iterations == 0 {
         return Err("max_iterations must be positive".into());
     }
-    if pairs.len() * 2 < start.model.parameter_count() {
+    if pairs.len() * 2 < active.len() {
         return Err(format!(
             "need at least {} star pairs for model {}",
-            start.model.parameter_count().div_ceil(2),
+            active.len().div_ceil(2),
             u8::from(start.model)
         ));
     }
@@ -380,13 +441,13 @@ pub fn fit(
     } else {
         vec![0.05, 0.05, 1.5, 1.5, 2.0, 0.006, 0.006, 0.03]
     };
-    let count = start.model.parameter_count();
+    let count = active.len();
     let mut simplex = Vec::with_capacity(count + 1);
     simplex.push(start.optpar.clone());
-    for index in 0..count {
+    for &index in active {
         let mut vertex = start.optpar.clone();
         vertex[index] += steps[index];
-        clamp_parameters(&mut vertex, start.model);
+        clamp_active(&mut vertex, start, active);
         simplex.push(vertex);
     }
     let evaluate = |values: &[f64]| {
@@ -410,7 +471,7 @@ pub fn fit(
         if (scores[count] - scores[0]).abs() <= 1e-10 * (1.0 + scores[0].abs()) {
             break;
         }
-        let mut centroid = vec![0.0; count];
+        let mut centroid = vec![0.0; start.model.parameter_count()];
         for vertex in &simplex[..count] {
             for (sum, value) in centroid.iter_mut().zip(vertex) {
                 *sum += value / count as f64;
@@ -422,7 +483,7 @@ pub fn fit(
                 .zip(&simplex[count])
                 .map(|(center, worst)| center + factor * (center - worst))
                 .collect();
-            clamp_parameters(&mut values, start.model);
+            clamp_active(&mut values, start, active);
             values
         };
         let reflected = candidate(1.0);
@@ -457,11 +518,11 @@ pub fn fit(
             } else {
                 let best = simplex[0].clone();
                 for index in 1..=count {
-                    for parameter in 0..count {
+                    for &parameter in active {
                         simplex[index][parameter] =
                             best[parameter] + 0.5 * (simplex[index][parameter] - best[parameter]);
                     }
-                    clamp_parameters(&mut simplex[index], start.model);
+                    clamp_active(&mut simplex[index], start, active);
                     scores[index] = evaluate(&simplex[index]);
                 }
             }
